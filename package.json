@@ -2,11 +2,16 @@
   "name": "yingzuo",
   "version": "0.1.0-alpha.1",
   "private": true,
-  "description": "映作：Windows 桌面绘图工作台的 A 测前端原型",
+  "description": "映作：Windows 本地绘图工作台，桌面接入验证版",
+  "main": "desktop/main.cjs",
   "scripts": {
-    "test": "node --test tests/workflow-import.test.cjs tests/compatibility.test.cjs"
+    "test": "node --test tests/workflow-import.test.cjs tests/compatibility.test.cjs tests/comfy-bridge-source.test.cjs tests/workspace-store.test.cjs",
+    "desktop": "electron ."
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
+  },
+  "devDependencies": {
+    "electron": "44.4.3"
   }
 }
