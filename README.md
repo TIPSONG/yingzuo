@@ -175,6 +175,7 @@ docs/                             产品规格、预览说明和既有环境说�
 - [产品规格](./docs/产品规格.md)
 - [验收记录](./验收记录.md)
 - [P0 桌面接入验证与后续建议](./docs/research/P0桌面接入验证.md)
+- [P0 工作记录与上下文交接](./P0工作记录与上下文交接.md)
 - [桌面容器选型调查](./docs/research/desktop-options.md)
 - [A 测预览详细说明](./docs/A测预览说明.md)
 - [既有 Gemma 集成说明](./docs/Gemma集成说明.md)
