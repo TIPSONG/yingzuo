@@ -1,0 +1,40 @@
+# Local runtimes and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+.cache/
+coverage/
+dist/
+build/
+
+# Credentials and machine-local configuration
+.env
+.env.*
+!.env.example
+*.local.*
+.codex/
+*.pem
+*.key
+
+# User data and downloaded model files
+input/
+output/
+downloads/
+backups/
+logs/
+*.log
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.zip
+
+# Editor and OS files
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+.DS_Store

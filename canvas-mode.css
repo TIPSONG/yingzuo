@@ -1,0 +1,30 @@
+/* Both creation modes remain primary, visible destinations. */
+.creation-entry{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:0 0 22px}
+.creation-entry button{display:flex;align-items:center;gap:14px;padding:17px 21px;background:var(--panel);border:1px solid var(--line);border-radius:10px;text-align:left}
+.creation-entry button:hover{border-color:var(--accent);background:var(--hover)}
+.creation-entry button>.icon:first-child{width:22px;height:22px;color:var(--accent)}
+.creation-entry button>.icon:last-child{margin-left:auto;color:var(--muted);width:15px}
+.creation-entry strong{display:block;font-size:14px;font-weight:500}
+.creation-entry small{display:block;font-size:11px;color:var(--muted);margin-top:4px}
+.canvas-mode-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 20px;border:1px solid #45553a;border-radius:10px;background:var(--panel);margin-bottom:23px}
+.canvas-mode-banner>div{display:flex;gap:12px;align-items:center}
+.canvas-mode-banner>div>.icon{color:var(--accent);width:24px;height:24px}
+.canvas-mode-banner strong{font-size:16px;font-weight:500;display:block}
+.canvas-mode-banner small{display:block;color:var(--sub);font-size:11px;margin-top:3px}
+.canvas-controls{display:flex;align-items:center;justify-content:space-between;gap:15px;margin-bottom:12px;color:var(--sub);font-size:11px}
+.canvas-controls .mono{min-width:40px;text-align:center}
+.canvas-run-group{display:flex;align-items:center;gap:13px;min-width:0}
+.canvas-run-button{min-width:103px;flex-shrink:0}
+.canvas-run-button small{font-size:10px;opacity:.75}
+.canvas-run-group>span{font-size:11px;color:var(--sub)}
+.canvas-page #main{max-width:none;padding-left:25px;padding-right:25px}
+.canvas-page .canvas-board{min-height:550px;height:calc(100vh - 342px);padding:20px 24px}
+.canvas-page .graph-inner{margin:25px auto 40px;transform-origin:top left}
+.canvas-page .graph-node h3{font-size:12px;padding:10px}
+.canvas-page .graph-node-content{font-size:10px}
+.canvas-page .graph-node textarea{font-size:11px;line-height:1.7}
+.canvas-page .node-chip{font-size:10px}
+.canvas-page .create-heading{margin-bottom:16px}
+.canvas-page .canvas-notice{font-size:11px}
+@media(max-width:980px){.creation-entry small{font-size:10px}.canvas-mode-banner{padding:15px}.canvas-mode-banner small{max-width:330px}}
+@media(max-width:720px){.creation-entry{gap:10px}.creation-entry button{padding:13px;gap:8px}.creation-entry strong{font-size:12px}.creation-entry small{font-size:9px}.creation-entry button>.icon:last-child{display:none}.canvas-mode-banner{flex-wrap:wrap}.canvas-mode-banner small{font-size:10px}.canvas-page #main{padding:20px 13px 55px}.canvas-controls{flex-wrap:wrap}.canvas-page .canvas-board{min-height:430px;height:65vh}}

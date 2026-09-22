@@ -1,0 +1,12 @@
+{
+  "name": "yingzuo",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "description": "映作：Windows 桌面绘图工作台的 A 测前端原型",
+  "scripts": {
+    "test": "node --test tests/workflow-import.test.cjs tests/compatibility.test.cjs"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

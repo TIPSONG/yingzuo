@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#131514">
+  <meta name="color-scheme" content="dark">
+  <title>映作 · 绘图工作台 A 测</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="canvas-mode.css">
+  <link rel="stylesheet" href="workspace-tabs.css">
+  <link rel="stylesheet" href="workflow-start.css">
+  <link rel="stylesheet" href="compatibility.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <a class="brand" href="#home" aria-label="映作首页"><img src="assets/mark.svg" alt=""><span>映作<small>LOCAL IMAGE STUDIO</small></span></a>
+      <div class="space-label">我的工作空间 <span>01</span></div>
+      <nav id="nav"></nav>
+      <div class="sidebar-bottom">
+        <div class="environment"><span class="tiny-label">本地创作环境</span><strong>Qwen Image 2.1 <span class="dot muted"></span></strong><small>按需启动 · 预览中未连接</small><div class="env-line"><span>RTX 5080 Laptop</span><b>16 GB</b></div></div>
+        <button class="nav-link" data-page="settings" id="settings-nav"></button>
+        <div class="build-label"><span>A / 01</span> 美术预览版 <span class="build-dot"></span></div>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="breadcrumb"><span>工作空间</span><span class="slash">/</span><strong id="breadcrumb">开始</strong></div>
+        <div class="top-actions"><button class="search-launch" data-action="search"><span id="search-icon"></span><span>快速查找</span><kbd>Ctrl K</kbd></button><span class="preview-label">A 测 · 前端演示</span><button class="icon-button queue-trigger" data-action="queue" aria-label="任务队列"><span id="queue-icon"></span><span id="queue-count" hidden>0</span></button><div class="avatar" title="本地工作空间">Y</div></div>
+      </header>
+      <main id="main" tabindex="-1"></main>
+      <footer class="statusbar"><span><span class="dot"></span>前端预览 <span class="status-separator">/</span> 操作仅用于界面演示</span><span id="footer-right">本地素材 · 不启动绘图服务</span></footer>
+    </div>
+  </div>
+  <div id="overlay-root"></div>
+  <div id="toast-root" role="status" aria-live="polite"></div>
+  <input type="file" id="image-upload" accept="image/*" multiple hidden>
+  <input type="file" id="workflow-file" accept=".json,application/json" hidden>
+  <script src="icons.js"></script>
+  <script src="workflow-import.js"></script>
+  <script src="compatibility-catalog.js"></script>
+  <script src="compatibility.js"></script>
+  <script src="workspace-tabs.js"></script>
+  <script src="workflow-start.js"></script>
+  <script src="compatibility-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
