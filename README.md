@@ -103,7 +103,7 @@ npm test
 也可直接执行：
 
 ```powershell
-node --test tests/workflow-import.test.cjs tests/compatibility.test.cjs tests/comfy-bridge-source.test.cjs tests/workspace-store.test.cjs
+node --test tests/*.test.cjs
 ```
 
 默认不要求本机安装 ComfyUI；涉及实际工作流目录的集成检查会明确跳过。需要执行该可选检查时，设置实际目录：
@@ -131,6 +131,8 @@ python tools/p0_baseline.py --verify
 基线默认保存在 `.local/p0-baseline/`，不复制模型、不改动 ComfyUI。已有基线不会被重复运行覆盖。
 
 自动测试不代替桌面操作验收。A 测操作记录见[验收记录](./验收记录.md)，桌面实际证据与待验证项见 [P0 桌面接入验证](./docs/research/P0桌面接入验证.md)。
+
+2026-09-30 补充的云端回归覆盖宿主事务式切换、失败恢复、参数表单与草稿校验。`npm test` 会运行所有新增测试。CI 在 Linux / Windows 上运行单元测试和模拟集成，仍不代表原生桌面验收。环境限制和剩余验收步骤见 [P0 云端回归与待验收](./docs/research/P0云端回归与待验收.md)。
 
 ## 开发排期
 

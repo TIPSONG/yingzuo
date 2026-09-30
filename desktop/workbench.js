@@ -3,7 +3,7 @@ const api=window.yingzuoDesktop;
 const $=selector=>document.querySelector(selector);
 const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 let current={tabs:[],activeId:null,connected:false,currentView:'editor'}, snapshot=null, busy=false;
-let fieldRefs=[];
+let fieldRefs=[], contextVersion=0;
 function status(message,error=false){$('#status').textContent=message;$('#status').classList.toggle('error',error);reportBounds();}
 function reportBounds(){const rect=$('#editor-portal').getBoundingClientRect();api.setBounds({x:rect.x,y:rect.y,width:rect.width,height:rect.height});}
 function renderState(){
@@ -17,6 +17,9 @@ function renderState(){
  document.querySelectorAll('[data-mode]').forEach(button=>{button.classList.toggle('active',button.dataset.mode===tab?.mode&&current.currentView==='editor');button.disabled=!tab||!current.connected||busy;});
  $('#save').disabled=!tab||busy;$('#export').disabled=!tab||busy;$('#duplicate').disabled=!tab||busy;
  $('#fields').inert=busy;
+ $('#tabs').inert=busy;$('#templates').inert=busy;
+ for(const id of ['connect','import','blank','preview','editor-home'])$('#'+id).disabled=busy;
+ $('#refresh-fields').disabled=!tab||!current.connected||busy;
  $('#save-state').textContent=current.savedPath?`草稿：${current.savedPath}`:'独立工作副本 · 本机保存';
  if(current.currentView==='preview')$('#graph-info').textContent='A 测界面 · 保留原型预览';
  else if(snapshot&&tab)$('#graph-info').textContent=`${snapshot.graph?.nodes?.length||0} 个顶层节点 · ${snapshot.nodes?.length||0} 个已读取节点（含子图）`;
@@ -25,16 +28,26 @@ function renderState(){
  reportBounds();
 }
 function accept(result,fields=true){
+ const previousId=current.activeId, previousConnection=current.connected, previousView=current.currentView;
  if(result.state)current={...current,...result.state};
- if(Object.hasOwn(result,'snapshot')){snapshot=result.snapshot;if(fields)renderFields();}
+ const changed=previousId!==current.activeId||previousConnection!==current.connected||previousView!==current.currentView;
+ if(changed)contextVersion++;
+ const invalid=!current.connected||!current.tabs.some(tab=>tab.id===current.activeId);
+ if(Object.hasOwn(result,'snapshot')){
+  const next=invalid?null:result.snapshot;
+  if(snapshot&&!next)contextVersion++;
+  snapshot=next;
+  if(fields||!snapshot||changed)renderFields();
+ }else if(previousId!==current.activeId||invalid){snapshot=null;renderFields();}
  renderState();
  if(!result.ok)throw new Error(result.error||'操作未完成。');
  return result;
 }
-async function run(operation,message,fields=true){
+async function run(operation,message,fields=true,isCurrent=()=>true){
  if(busy)return;busy=true;renderState();status('正在处理，请稍候…');
- try{const result=accept(await operation(),fields);status(result.cancelled?'已取消操作。':result.message||message||'已完成。');return result;}
- catch(error){status(error.message,true);}
+ let responseIsCurrent=false;
+ try{const response=await operation();if(!isCurrent())return;responseIsCurrent=true;const result=accept(response,fields);status(result.cancelled?'已取消操作。':result.message||message||'已完成。');return result;}
+ catch(error){if(responseIsCurrent||isCurrent()){if(fields)renderFields();status(error.message,true);}}
  finally{busy=false;renderState();}
 }
 async function requireConnection(){if(!current.connected)accept(await api.connect());}
@@ -43,7 +56,7 @@ function renderFields(){
  const nodes=(snapshot?.nodes||[]).filter(node=>node.widgets.some(widget=>widget.editable));
  $('#fields').innerHTML=nodes.map(node=>{
   const fields=node.widgets.filter(widget=>widget.editable).map(widget=>{
-   const index=fieldRefs.push({nodeId:node.nodeId,graphId:node.graphId,widgetName:widget.name,type:typeof widget.value})-1;
+   const index=fieldRefs.push({nodeId:node.nodeId,graphId:node.graphId,widgetName:widget.name,type:typeof widget.value,value:widget.value})-1;
    const label=`${node.title||node.type} / ${widget.name}`;
    const attrs=`data-field="${index}" aria-label="${escapeHtml(label)}"`;
    let input;
@@ -76,17 +89,16 @@ $('#refresh-fields').addEventListener('click',()=>run(()=>api.snapshot(),'已从
 $('#fields').addEventListener('change',async event=>{
  const input=event.target.closest('[data-field]');if(!input)return;
  const ref=fieldRefs[Number(input.dataset.field)];if(!ref||busy)return;
- const originTabId=current.activeId;
+ const originTabId=current.activeId, originVersion=contextVersion;
  const value=ref.type==='boolean'?input.checked:ref.type==='number'?Number(input.value):input.value;
- if(ref.type==='number'&&(!input.value.trim()||!Number.isFinite(value))){status('请输入有效数字。',true);return;}
- input.disabled=true;
- try{accept(await api.applyParameters([{nodeId:ref.nodeId,graphId:ref.graphId,widgetName:ref.widgetName,value}],originTabId),false);status('参数已同步到真实画布，草稿已保存。');}
- catch(error){status(error.message,true);}
- finally{input.disabled=false;}
+ if(ref.type==='number'&&(!input.value.trim()||!Number.isFinite(value))){input.value=String(ref.value);status('请输入有效数字。',true);return;}
+ return run(()=>api.applyParameters([{nodeId:ref.nodeId,graphId:ref.graphId,widgetName:ref.widgetName,value}],originTabId),
+  '参数已同步到真实画布，草稿已保存。',true,
+  ()=>current.activeId===originTabId&&current.connected&&contextVersion===originVersion);
 });
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();run(()=>api.save(),'当前工作区已保存。',false);}});
 new ResizeObserver(reportBounds).observe($('#editor-portal'));
-api.onStatus(data=>{current={...current,...data};renderState();if(data.error)status(data.error,true);else if(data.message)status(data.message);});
+api.onStatus(data=>{accept({ok:true,state:data,...(Object.hasOwn(data,'snapshot')?{snapshot:data.snapshot}:{})},false);if(data.error)status(data.error,true);else if(data.message)status(data.message);});
 api.boot().then(result=>{
  accept(result);
  $('#templates').innerHTML=result.templates.map(template=>`<button data-template="${template.id}" ${template.available?'':'disabled'}>${escapeHtml(template.name)}${template.available?'':' · 未找到'}</button>`).join('');

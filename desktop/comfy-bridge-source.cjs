@@ -9,22 +9,59 @@ function bridgeRuntime(operation, payload, app) {
   const root = app?.rootGraph;
   if (!root || typeof root.serialize !== 'function' || !app.canvas) return fail('NOT_READY', 'ComfyUI 画布尚未就绪。');
   const store = app.extensionManager?.workflow;
-  const stateKey = Symbol.for('yingzuo.comfyBridge.v1');
-  const state = globalThis[stateKey] ??= { workflows: new Map() };
+  const documentId = workflow => workflow?.activeState?.id ?? workflow?.initialState?.id;
+  const stateKey = Symbol.for('yingzuo.comfyBridge.v3');
+  const state = globalThis[stateKey] ??= { workflows: new Map(), loading: false, canvasBound: true, nativeLoads: 0, nativeEpoch: 0, guardedMethods: new Map() };
+  // In frontend 1.53.6 loadGraphData clears the root BEFORE several awaits and
+  // before ChangeTracker.isLoadingGraph becomes true. Cover the whole public
+  // load call, including calls made by the native UI, not just the host bridge.
+  // These guards are session-local; no installed frontend files are modified.
+  for (const method of ['loadGraphData', 'loadApiJson']) {
+    if (typeof app[method] !== 'function') continue;
+    const installed = state.guardedMethods.get(method);
+    if (app[method] === installed) continue;
+    if (installed) state.canvasBound = false;
+    const original = app[method];
+    const guarded = function (...args) {
+      const wasBound=state.canvasBound;
+      const previous=store?.activeWorkflow;
+      const previousPath=previous?.path, previousId=documentId(previous);
+      state.nativeLoads++;const epoch=++state.nativeEpoch;state.canvasBound=false;
+      let result;
+      try { result = Reflect.apply(original, this, args); }
+      catch (error) { state.nativeLoads--;throw error; }
+      return Promise.resolve(result).then(value => {
+        // Native undo/redo reloads the same document. Restore its existing host
+        // binding only after a complete, successful, non-overlapping reload.
+        if (value === true && wasBound && method === 'loadGraphData' && state.nativeLoads === 1 && state.nativeEpoch === epoch && previousId != null && args[0]?.id === previousId && args[3]?.path === previousPath && documentId(args[3]) === previousId && store?.activeWorkflow?.path === previousPath && documentId(store.activeWorkflow) === previousId && app.rootGraph?.id === previousId) state.canvasBound=true;
+        return value;
+      }).finally(() => { state.nativeLoads--; });
+    };
+    app[method] = guarded;
+    if (app[method] !== guarded) return fail('LOAD_GUARD_UNAVAILABLE', '无法保护原生工作流加载过程，暂不读取或修改画布。');
+    state.guardedMethods.set(method, guarded);
+  }
+  const nativeLoading = () => state.nativeLoads > 0 || store?.activeWorkflow?.changeTracker?.constructor?.isLoadingGraph === true;
+  if (nativeLoading()) return fail('NOT_READY', 'ComfyUI 正在恢复原生工作流，请稍后重试。');
+  if (state.loading) return fail('NOT_READY', 'ComfyUI 正在切换工作流，请等待加载完成。');
   const connected = app.api?.socket?.readyState === 1;
   // Pinia can expose the loaded ComfyWorkflow through a Vue Proxy. Its object
   // reference need not equal createNewTemporary's raw return value.
-  const documentId = workflow => workflow?.activeState?.id ?? workflow?.initialState?.id;
   const sameWorkflow = (left, right) => !!left && !!right && typeof left.path === 'string' && !!left.path && left.path === right.path && documentId(left) != null && documentId(left) === documentId(right);
+  // Keep the document ID by value: native reloads can replace activeState on
+  // the same ComfyWorkflow object. Keep its path live to allow native renames.
+  const bindWorkflow = workflow => ({ workflow, documentId: documentId(workflow) });
+  const matchesBinding = (binding, workflow) => !!binding && binding.documentId != null && binding.documentId === documentId(workflow) && sameWorkflow(binding.workflow, workflow);
   const workflowInfo = () => {
     const active = store?.activeWorkflow;
     let hostName = null;
-    for (const [name, workflow] of state.workflows) if (sameWorkflow(workflow, active)) hostName = name;
+    if (state.canvasBound) for (const [name, binding] of state.workflows) if (matchesBinding(binding, active)) hostName = name;
     return { path: active?.path ?? null, documentId: documentId(active) ?? null, name: active?.key ?? null, hostName, mode: active?.activeMode ?? active?.initialMode ?? 'graph', connected };
   };
-  const identityMatches = () => payload.expectedName === undefined || (typeof payload.expectedName === 'string' && state.workflows.has(payload.expectedName) && sameWorkflow(state.workflows.get(payload.expectedName), store?.activeWorkflow));
+  const identityMatches = () => payload.expectedName === undefined || (state.canvasBound && typeof payload.expectedName === 'string' && matchesBinding(state.workflows.get(payload.expectedName), store?.activeWorkflow));
   const changedWorkflow = () => ({ ...fail('WORKFLOW_CHANGED', 'ComfyUI 当前工作流已改变，请先切回对应标签，再读取或修改。'), workflow: workflowInfo() });
   if (['snapshot', 'parameters', 'mode'].includes(operation) && !identityMatches()) return changedWorkflow();
+  if (['parameters', 'mode'].includes(operation) && !state.canvasBound) return changedWorkflow();
   const graphs = () => {
     const result = [{ graph: root, graphId: String(root.id ?? 'root'), path: [] }];
     const seen = new Set([root]);
@@ -40,8 +77,13 @@ function bridgeRuntime(operation, payload, app) {
     return result;
   };
   const editable = (node, widget) => {
-    if (!widget || typeof widget.name !== 'string' || !scalar(widget.value) || widget.serialize === false || widget.disabled || widget.options?.read_only) return false;
-    if (!['number', 'string', 'text', 'customtext', 'toggle', 'combo'].includes(String(widget.type).toLowerCase())) return false;
+    if (!widget || typeof widget.name !== 'string' || !scalar(widget.value) || widget.serialize === false || widget.disabled || widget.computedDisabled || widget.options?.disabled || widget.options?.read_only) return false;
+    const type = String(widget.type).toLowerCase();
+    if (!['number', 'string', 'text', 'customtext', 'toggle', 'combo'].includes(type)) return false;
+    // Dynamic/function-backed combos need their native UI. Presenting them as
+    // free text would silently bypass the node's available-options constraint.
+    if (type === 'combo' && !Array.isArray(widget.options?.values)) return false;
+    if ((node.widgets ?? []).filter(other => other.name === widget.name).length !== 1) return false;
     return !(node.inputs ?? []).some(input => (input.widget?.name === widget.name || input.name === widget.name) && input.link != null);
   };
   const describeWidget = (node, widget) => {
@@ -56,6 +98,7 @@ function bridgeRuntime(operation, payload, app) {
     return info;
   };
   const snapshot = () => {
+    if (nativeLoading()) return fail('NOT_READY', 'ComfyUI 正在恢复原生工作流，请稍后重试。');
     if (!identityMatches()) return changedWorkflow();
     // app.graph can be the visible subgraph. Always serialize the root.
     const graph = JSON.parse(JSON.stringify(root.serialize()));
@@ -72,6 +115,7 @@ function bridgeRuntime(operation, payload, app) {
         nodes.push({ nodeId: node.id, graphId: item.graphId, path: item.path, title: String(node.title ?? node.type ?? node.id), type: String(node.type ?? ''), widgets });
       }
     }
+    if (nativeLoading()) return fail('NOT_READY', 'ComfyUI 正在恢复原生工作流，请稍后重试。');
     if (!identityMatches()) return changedWorkflow();
     return { ok: true, graph, nodes, workflow: workflowInfo(), connected, truncated };
   };
@@ -91,23 +135,44 @@ function bridgeRuntime(operation, payload, app) {
     if (hasSavedIdentity && (typeof payload.workflowPath !== 'string' || !payload.workflowPath || typeof payload.documentId !== 'string' || !payload.documentId)) return fail('INVALID_WORKFLOW_IDENTITY', '恢复标签时必须同时提供完整工作流路径和文档 ID。');
     if (typeof app.loadGraphData !== 'function' || !store || typeof store.createNewTemporary !== 'function') return fail('LOAD_UNAVAILABLE', '当前 ComfyUI 前端不支持可识别身份的工作流加载接口。');
     const existing = state.workflows.get(payload.name);
-    let reusable = existing ? store.openWorkflows?.find(workflow => sameWorkflow(existing, workflow)) ?? null : null;
+    const existingMatches = existing ? (store.openWorkflows ?? []).filter(workflow => matchesBinding(existing, workflow)) : [];
+    if (existingMatches.length > 1) return fail('INVALID_WORKFLOW_IDENTITY', '工作流身份不唯一，请重新选择标签。');
+    let reusable = existingMatches[0] ?? null;
     if (!reusable && hasSavedIdentity) {
       const matches = (store.openWorkflows ?? []).filter(workflow => workflow.path === payload.workflowPath && documentId(workflow) === payload.documentId);
       if (matches.length > 1) return fail('INVALID_WORKFLOW_IDENTITY', '恢复的工作流身份不唯一，请重新选择标签。');
       reusable = matches[0] ?? null;
     }
     const target = reusable ?? store.createNewTemporary(`${payload.name}.json`, payload.graph);
-    return app.loadGraphData(payload.graph, true, true, target).then(result => {
+    for (const [name, binding] of state.workflows) {
+      if (name !== payload.name && matchesBinding(binding, target)) return fail('INVALID_WORKFLOW_IDENTITY', '该原生工作流已经属于另一个桌面标签，不能作为独立副本复用。');
+    }
+    // createNewTemporary returns an unloaded object in frontend 1.53.6; its
+    // change tracker and document ID are only assigned by loadGraphData.
+    const targetBinding = documentId(target) == null ? null : bindWorkflow(target);
+    // Loading clears/configures the canvas before it resolves. A failed load
+    // must not leave that partial canvas authorized as the previous document.
+    // Retain the document bindings only for reuse on a subsequent safe retry.
+    state.loading = true;
+    state.canvasBound = false;
+    let expectedEpoch;
+    return Promise.resolve().then(() => {
+      expectedEpoch=state.nativeEpoch+1;
+      return app.loadGraphData(payload.graph, true, true, target);
+    }).then(result => {
+      if (nativeLoading() || state.nativeEpoch !== expectedEpoch) return changedWorkflow();
       if (result !== true) return fail('LOAD_FAILED', 'ComfyUI 未能加载工作流；请查看画布中的错误信息。');
-      if (!sameWorkflow(store.activeWorkflow, target)) return changedWorkflow();
-      state.workflows.set(payload.name, store.activeWorkflow);
+      if (targetBinding ? !matchesBinding(targetBinding, store.activeWorkflow) : !sameWorkflow(store.activeWorkflow, target)) return changedWorkflow();
+      state.workflows.set(payload.name, bindWorkflow(store.activeWorkflow));
+      state.canvasBound = true;
       payload.expectedName = payload.name;
       return snapshot();
-    });
+    }).finally(() => { state.loading = false; });
   }
   if (operation === 'parameters') {
-    if (app.extensionManager?.queueSettings?.mode !== 'disabled' || app.ui?.autoQueueEnabled === true) return fail('AUTO_QUEUE_ENABLED', '请先在 ComfyUI 运行菜单选择普通“运行”并关闭旧版自动队列；无法确认手动模式时不会回写参数。');
+    const manualQueue = () => app.extensionManager?.queueSettings?.mode === 'disabled' && app.ui?.autoQueueEnabled !== true;
+    const autoQueue = () => fail('AUTO_QUEUE_ENABLED', '请先在 ComfyUI 运行菜单选择普通“运行”并关闭旧版自动队列；无法确认手动模式时不会回写参数。');
+    if (!manualQueue()) return autoQueue();
     if (!Array.isArray(payload.updates) || !payload.updates.length || payload.updates.length > 100) return fail('INVALID_UPDATES', '每次需要 1–100 个参数修改。');
     const availableGraphs = graphs();
     const changes = [];
@@ -127,11 +192,23 @@ function bridgeRuntime(operation, payload, app) {
       if (String(widget.type).toLowerCase() === 'combo' && Array.isArray(widget.options?.values) && !widget.options.values.includes(update.value)) return fail('INVALID_OPTION', '所选值不在当前节点的可用选项中。');
       if (targets.has(widget)) return fail('DUPLICATE_UPDATE', '同一参数不能在一次修改中重复出现。');
       targets.add(widget);
-      changes.push({ node, widget, value: update.value, oldValue: widget.value });
+      changes.push({ graph, graphId: graphMatches[0].graphId, node, nodeId: String(node.id), widget, widgetName: update.widgetName, value: update.value, oldValue: widget.value });
     }
     let applied = 0;
     try {
       for (const change of changes) {
+        // Extension callbacks can change queue mode, remove nodes, replace
+        // widgets or connect inputs. Recheck each target just before mutation.
+        if (!identityMatches()) return { ...changedWorkflow(), applied, needsSnapshot: true };
+        if (nativeLoading()) return { ...fail('NOT_READY', 'ComfyUI 正在恢复原生工作流，请稍后重试。'), applied, needsSnapshot: true };
+        if (!manualQueue()) return { ...autoQueue(), applied, needsSnapshot: true };
+        const currentGraphs = graphs().filter(item => item.graph === change.graph && item.graphId === change.graphId);
+        const currentNodes = (change.graph.nodes ?? change.graph._nodes ?? []).filter(node => String(node.id) === change.nodeId);
+        const currentWidgets = (change.node.widgets ?? []).filter(widget => widget.name === change.widgetName);
+        if (currentGraphs.length !== 1 || currentNodes.length !== 1 || currentNodes[0] !== change.node || currentWidgets.length !== 1 || currentWidgets[0] !== change.widget || !editable(change.node, change.widget) || typeof change.value !== typeof change.widget.value) {
+          return { ...fail('WIDGET_NOT_EDITABLE', '参数映射在修改期间发生变化，请重新读取参数。'), applied, needsSnapshot: true };
+        }
+        if (String(change.widget.type).toLowerCase() === 'combo' && Array.isArray(change.widget.options?.values) && !change.widget.options.values.includes(change.value)) return { ...fail('INVALID_OPTION', '可用选项在修改期间发生变化，请重新读取参数。'), applied, needsSnapshot: true };
         if (typeof change.widget.setValue === 'function') change.widget.setValue(change.value, { node: change.node, canvas: app.canvas });
         else {
           change.widget.value = change.value;
@@ -139,6 +216,7 @@ function bridgeRuntime(operation, payload, app) {
           change.node.onWidgetChanged?.(change.widget.name, change.value, change.oldValue, change.widget);
         }
         applied++;
+        if (nativeLoading()) return { ...fail('NOT_READY', 'ComfyUI 正在恢复原生工作流，请稍后重试。'), applied, needsSnapshot: true };
         if (!identityMatches()) return { ...changedWorkflow(), applied, needsSnapshot: true };
       }
       store?.activeWorkflow?.changeTracker?.captureCanvasState?.();

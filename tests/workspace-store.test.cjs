@@ -112,3 +112,66 @@ test('the exported file size limit enforces the same boundary as graph validatio
   const tooLarge = {nodes:[],extra:{payload:'x'.repeat(Store.MAX_GRAPH_BYTES)}};
   assert.throws(() => Store.validateGraph(tooLarge), /8 MB/);
 });
+
+test('invalid writes cannot replace an existing readable workspace', t => {
+  const {file} = temporary(t);
+  const workspace = Store.emptyWorkspace();
+  const tab = Store.addTab(workspace,'original',graph('keep'));
+  workspace.activeId = tab.id;
+  Store.writeWorkspace(file,workspace);
+  const original = fs.readFileSync(file);
+  const invalid = [
+    null, [], {version:2,tabs:[]}, {version:1,tabs:[null]},
+    {...workspace,tabs:[tab,tab]},
+    {...workspace,tabs:[{...tab,id:'../outside'}]},
+    {...workspace,tabs:[{...tab,graph:{nodes:[{id:1}]}}]},
+    {...workspace,tabs:Array(Store.MAX_TABS+1).fill(tab)},
+    {...workspace,tabs:Array(1)},
+    {...workspace,tabs:[{...tab,graph:{nodes:Array(1)}}]},
+    {...workspace,tabs:[{...tab,graph:{nodes:[],extra:{payload:'x'.repeat(Store.MAX_GRAPH_BYTES)}}}]},
+  ];
+  for (const data of invalid) {
+    assert.throws(() => Store.writeWorkspace(file,data));
+    assert.deepEqual(fs.readFileSync(file),original);
+    assert.deepEqual(Store.readWorkspace(file),workspace);
+    assert.equal(fs.existsSync(file+'.tmp'),false);
+  }
+});
+
+test('writes and reads normalize metadata consistently without changing the caller', t => {
+  const {file} = temporary(t);
+  const workspace = Store.emptyWorkspace();
+  const tab = Store.addTab(workspace,'draft',graph('keep'));
+  tab.title = 'CON.txt... '; tab.mode = 'future-mode'; workspace.activeId='missing';
+  const before = JSON.stringify(workspace);
+  Store.writeWorkspace(file,workspace);
+  const saved = JSON.parse(fs.readFileSync(file,'utf8'));
+  assert.deepEqual(Store.readWorkspace(file),saved);
+  assert.equal(saved.activeId,tab.id);
+  assert.equal(saved.tabs[0].title,'_CON.txt');
+  assert.equal(saved.tabs[0].mode,'graph');
+  assert.equal(JSON.stringify(workspace),before);
+});
+
+test('null and malformed workspace data get a readable validation error', t => {
+  const {file} = temporary(t);
+  for (const data of [null,[],{version:1,tabs:[null]}]) {
+    const original = JSON.stringify(data);
+    fs.writeFileSync(file,original);
+    assert.throws(() => Store.readWorkspace(file), /工作区/);
+    assert.equal(fs.readFileSync(file,'utf8'),original);
+  }
+});
+
+test('Windows filenames reject device aliases, trailing dots, separators and control characters', () => {
+  for (const name of ['CON','con.json','CON .json','CONIN$','CONOUT$','PrN','AUX.png','NUL','COM1','LPT9.txt','COM¹.json','LPT²','COM³']) {
+    assert.equal(Store.safeName(name),'_'+name);
+  }
+  for (const name of ['COM0','COM10','LPT10','console.json','文生图.json']) assert.equal(Store.safeName(name),name);
+  assert.equal(Store.safeName('  draft...  '),'draft');
+  assert.equal(Store.safeName(' . .. '),'工作流');
+  assert.equal(Store.safeName('a<>:"/\\|?*\x00\x1f'),'a'+'_'.repeat(11));
+  assert.equal(Store.safeName('a'.repeat(79)+'.ending'),'a'.repeat(79));
+  assert.equal(Store.safeName('CON.'+'x'.repeat(100)).length,80);
+  assert.equal(Store.safeName('CON.'+'x'.repeat(74)+'.a'),'_CON.'+'x'.repeat(74));
+});
