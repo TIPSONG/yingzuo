@@ -1,0 +1,30 @@
+name: P0 regression
+
+on:
+  pull_request:
+  push:
+    branches: [main, feat/p0-desktop-integration]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Unit and mocked integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      # Tests use Node built-ins; installing Electron is unnecessary here.
+      # This job does not claim native dialog or real ComfyUI acceptance.
+      - run: npm test
+      - run: python -m unittest discover -s tests -p test_p0_baseline.py -v

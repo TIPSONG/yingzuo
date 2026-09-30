@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'">
+  <title>映作 · 桌面接入验证 P0</title>
+  <link rel="stylesheet" href="workbench.css">
+</head>
+<body>
+  <aside>
+    <div class="brand"><img src="../assets/mark.svg" alt=""><span>映作<small>LOCAL IMAGE STUDIO</small></span></div>
+    <div class="eyebrow">桌面接入验证 · P0</div>
+    <button id="editor-home">创作工作区</button>
+    <button id="preview">查看 A 测界面</button>
+    <div class="divider"></div>
+    <div class="eyebrow">现有工作流</div>
+    <div id="templates"></div>
+    <div class="side-bottom"><strong id="connection">ComfyUI 未连接</strong><small id="endpoint">本机绘图环境</small><button id="connect">连接已有服务</button><p>本阶段验证真实画布与草稿。服务自动启停和托盘将在 P1 接入。</p></div>
+  </aside>
+  <main>
+    <header><div><span class="eyebrow">WINDOWS DESKTOP / P0</span><h1>创作工作区</h1></div><div class="header-actions"><button id="import">导入 JSON</button><button id="blank">空白画布</button><button id="save">保存草稿</button><button id="export" class="primary">导出 JSON 副本</button></div></header>
+    <div class="tab-row"><div id="tabs" role="tablist" aria-label="桌面工作流标签"></div><button id="duplicate" title="新建当前工作流副本">复制标签</button></div>
+    <section class="toolbar"><div class="mode-buttons" aria-label="编辑模式"><button data-mode="graph">节点画布</button><button data-mode="parameters">参数表单</button><button data-mode="app">官方 App Mode</button></div><span id="graph-info">打开一个工作流开始验证</span></section>
+    <div id="status" role="status" aria-live="polite">工作副本保存在本机，不覆盖原模板。</div>
+    <section id="editor-portal" aria-label="工作流编辑区域">
+      <div id="empty"><span class="empty-mark">↗</span><h2>从真实工作流开始</h2><p>选择左侧模板，或导入 JSON。节点画布直接使用当前 ComfyUI，参数表单读取同一张图。</p><p>需要先启动现有 ComfyUI 服务。</p></div>
+      <div id="parameters" hidden><div class="form-note"><strong>与真实画布共享参数</strong><span>修改后自动同步并保存；已连线或暂不支持的控件保持在节点画布中编辑。</span><button id="refresh-fields">从画布刷新参数</button></div><div id="fields"></div></div>
+    </section>
+    <footer><span id="save-state">独立工作副本 · 本机保存</span><span id="transport">尚未检测 WebSocket</span></footer>
+  </main>
+  <script src="workbench.js"></script>
+</body>
+</html>
