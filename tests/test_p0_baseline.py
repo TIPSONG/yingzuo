@@ -15,7 +15,8 @@ class BaselineTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # Match production canonical paths, including Windows 8.3 TEMP aliases.
+        self.root = Path(self.temp.name).resolve()
         self.comfy = self.root / 'ComfyUI'
         self.output = self.root / 'baseline'
         self.files = {}
