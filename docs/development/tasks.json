@@ -433,81 +433,81 @@
   "id": "A01",
   "name": "输出索引",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
  },
  {
   "id": "A02",
   "name": "任务输出关联",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
  },
  {
   "id": "A03",
   "name": "日期／工作流输出",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
  },
  {
   "id": "A04",
   "name": "缩略图与查看器",
   "batch": 3,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "后端完成（assets 分支），UI 本轮补"
  },
  {
   "id": "A05",
   "name": "文件入口",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
  },
  {
   "id": "A06",
   "name": "原图导出",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
  },
  {
   "id": "A07",
   "name": "分享副本导出",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
  },
  {
   "id": "A08",
   "name": "收藏板",
   "batch": 3,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "后端完成（assets 分支），UI 本轮补"
  },
  {
   "id": "T01",
@@ -606,51 +606,51 @@
   "id": "R01",
   "name": "目录扫描",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
  },
  {
   "id": "R02",
   "name": "资源详情",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
  },
  {
   "id": "R03",
   "name": "引用索引",
   "batch": 3,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md"
  },
  {
   "id": "R04",
   "name": "快捷使用",
   "batch": 3,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md"
  },
  {
   "id": "R05",
   "name": "插件清单",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
  },
  {
   "id": "R06",
@@ -780,41 +780,41 @@
   "id": "U01",
   "name": "环境清单",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
  },
  {
   "id": "U02",
   "name": "可恢复备份",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
  },
  {
   "id": "U03",
   "name": "恢复引擎",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
  },
  {
   "id": "U04",
   "name": "维护事务与锁",
   "batch": 3,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md"
  },
  {
   "id": "U05",

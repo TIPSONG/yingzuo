@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 51 / 实现中 4 / 阻塞 4 / 未开始 23（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 63 / 实现中 9 / 阻塞 4 / 未开始 6（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -70,14 +70,14 @@
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A01 | 输出索引 | 未开始 |  |  |  |  |  |
-| A02 | 任务输出关联 | 未开始 |  |  |  |  |  |
-| A03 | 日期／工作流输出 | 未开始 |  |  |  |  |  |
-| A04 | 缩略图与查看器 | 未开始 |  |  |  |  |  |
-| A05 | 文件入口 | 未开始 |  |  |  |  |  |
-| A06 | 原图导出 | 未开始 |  |  |  |  |  |
-| A07 | 分享副本导出 | 未开始 |  |  |  |  |  |
-| A08 | 收藏板 | 未开始 |  |  |  |  |  |
+| A01 | 输出索引 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
+| A02 | 任务输出关联 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
+| A03 | 日期／工作流输出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
+| A04 | 缩略图与查看器 | 实现中 |  |  |  | 后端完成（assets 分支），UI 本轮补 |  |
+| A05 | 文件入口 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
+| A06 | 原图导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
+| A07 | 分享副本导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
+| A08 | 收藏板 | 实现中 |  |  |  | 后端完成（assets 分支），UI 本轮补 |  |
 | T01 | 模板仓库 | 程序完成 |  | desktop/repositories/template-repo.cjs<br>desktop/ui/templates.js | tests/templates.test.cjs | 导入/搜索/文件夹/标签/收藏/内置五模板只读导入；缩略图仅仓库方法 setThumbnail，界面未接（无缩略图生成来源） |  |
 | T02 | 保存与历史 | 程序完成 |  |  | tests/templates.test.cjs | 版本只追加、恢复生成新版本、另存、导出（含 .yingzuo-form.json）；原模板文件只读 |  |
 | T03 | 表单编辑器 | 程序完成 |  | shared/form-schema.cjs | tests/templates.test.cjs | 表单设置弹窗：名称/分组/顺序/范围/添加/移除；与 ParameterBinding schema 共用。参数表单页仍用 P0 画布读取，不读模板 schema |  |
@@ -85,15 +85,15 @@
 | T05 | 实时诊断清单 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 实时诊断：object_info/模型目录/LM Studio 合并，单独采集时间，离线缓存标注；插件版本号需 R01（maint 分支）提供，当前只列插件模块与节点数 |  |
 | T06 | 替代建议 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 沿用 compatibility.js 规则，按用途/格式/加载器/架构给候选；未知保持待核实 |  |
 | T07 | 修复与撤销 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 单字段事务（版本号校验）→替换标签图→自动复查；撤销（被改动则拒绝）；导出修复副本。改连线类建议只给说明不提供直接应用 |  |
-| R01 | 目录扫描 | 未开始 |  |  |  |  |  |
-| R02 | 资源详情 | 未开始 |  |  |  |  |  |
-| R03 | 引用索引 | 未开始 |  |  |  |  |  |
-| R04 | 快捷使用 | 未开始 |  |  |  |  |  |
-| R05 | 插件清单 | 未开始 |  |  |  |  |  |
-| U01 | 环境清单 | 未开始 |  |  |  |  |  |
-| U02 | 可恢复备份 | 未开始 |  |  |  |  |  |
-| U03 | 恢复引擎 | 未开始 |  |  |  |  |  |
-| U04 | 维护事务与锁 | 未开始 |  |  |  |  |  |
+| R01 | 目录扫描 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
+| R02 | 资源详情 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
+| R03 | 引用索引 | 实现中 |  |  |  | feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md |  |
+| R04 | 快捷使用 | 实现中 |  |  |  | feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md |  |
+| R05 | 插件清单 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
+| U01 | 环境清单 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
+| U02 | 可恢复备份 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
+| U03 | 恢复引擎 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
+| U04 | 维护事务与锁 | 实现中 |  |  |  | feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md |  |
 
 ### 批次 4
 
