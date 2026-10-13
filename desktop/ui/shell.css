@@ -56,8 +56,35 @@
 .titlebar-btn-close:hover { background: #e81123; color: #fff; border-color: transparent; }
 [data-skin="nasa-punk"] .titlebar {
   background: #0b1424;
-  border-bottom: 3px solid transparent;
-  border-image: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%) 1;
+  border-bottom: 1px solid #2e4a6a;
+  /* 色条不画在整条 titlebar 上，避免盖住窗口按钮 */
+}
+[data-skin="nasa-punk"] .titlebar-drag {
+  position: relative;
+  padding-bottom: 3px; /* 给底部色条留位 */
+}
+[data-skin="nasa-punk"] .titlebar-drag::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+[data-skin="nasa-punk"] .titlebar-controls {
+  position: relative;
+  z-index: 2;
+  background: #0b1424;
+  border-bottom: 1px solid #2e4a6a;
+  box-shadow: -8px 0 12px #0b1424; /* 与拖拽区色条隔开 */
+}
+[data-skin="nasa-punk"] .titlebar-btn {
+  background: #0b1424;
+  position: relative;
+  z-index: 3;
 }
 [data-skin="nasa-punk"] .titlebar-title {
   color: #e85d04;
@@ -65,12 +92,16 @@
   font-weight: 800;
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
   text-transform: uppercase;
+  position: relative;
+  z-index: 1;
 }
 [data-skin="nasa-punk"] .titlebar-sub {
   color: #ffffff;
   font-family: "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.22em;
   opacity: 0.9;
+  position: relative;
+  z-index: 1;
 }
 [data-skin="nasa-punk"] .titlebar-btn:hover { background: #1a2740; color: #ffffff; }
 [data-skin="nasa-punk"] .titlebar-btn-close:hover { background: #e85d04; color: #ffffff; }
