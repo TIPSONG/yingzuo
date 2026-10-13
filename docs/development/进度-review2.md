@@ -10,13 +10,13 @@
 | R16 / D13 | 分享 JPEG 完整遍历标记（多 SOS、扫描间 APP/COM），Exif 方向非 1 时拒绝无损剥离 | desktop/core/image-meta.cjs、tests/image-meta-jpeg.test.cjs | 完成（6 项回归，sharp 真实夹具；方向策略=拒绝分享副本，不做像素旋转）|
 | R18（部分）/ D15 | 新增独立脱敏工具 shared/secret-fields.cjs（识别 password/已知 secret 字段，替换为 credentialRef 占位）+ 测试；接入快照存储留给主线 worker 决定 | shared/secret-fields.cjs、tests/secret-fields.test.cjs | 工具完成（3 项回归）；**未接入**快照存储/导出，需主线在 task-repo/提交路径调用 redactForStorage/resolveSecrets |
 
-全量：`npm test` 248 项，247 通过、1 跳过；`node tools/check.cjs` 通过。
+全量（第二轮后）：`npm test` 259 项，258 通过、1 跳过；`node tools/check.cjs` 通过。
 
 ## 第二轮（R14/R17/R19/R20）
 
 | 项 | 内容 | 范围 | 状态 |
 | --- | --- | --- | --- |
-| R14 | 回收区登记/列表/恢复/清理计划（只限本应用登记条目，保护在用备份/引用） | desktop/maintenance/trash-store.cjs（新增）| 进行中 |
+| R14 | 回收区登记/列表/恢复/清理计划（只限本应用登记条目，保护在用备份/引用） | desktop/maintenance/trash-store.cjs（新增）| 模块完成（tests/trash-store.test.cjs）；**接入钩子**：pruneBackups/plugin removePlan/favorites 改用 trash.move，新增 trash.* IPC 与页面（maintenance-service/api 在主线范围，未改）|
 | R17 | worker 执行层（sha256/大图读取上限，可取消） | desktop/core/worker-pool.cjs、desktop/core/workers/file-worker.cjs（新增）| 执行层完成（tests/worker-pool.test.cjs）；打包 files 已含 desktop/**；**接入钩子**：资源扫描/hash、缩略图、备份复制改用 pool.run（涉及 maintenance/resources 服务，未改）|
 | R19 | 批量纯规划校验（全量校验后才返回计划，第 N 项无效不提交任何项） | shared/batch-plan.cjs（新增）| 纯函数完成（tests/batch-plan.test.cjs）；**接入钩子**：task-service 批量入口先调 planBatch，ok 时在同一 DB 事务中登记整组（queue-service 需提供 enqueueGroup）；正式 UI 参数变化入口未做（UI 在主线范围）|
 | R20 | 稳定 workflowId + SaveImageAdvanced 适配纯函数 | shared/output-plan.cjs（新增）| 纯函数完成（tests/output-plan.test.cjs）；**接入钩子**：task-service 中 `workflowId: c.tabId` 改为 `stableWorkflowId(...)`，applyOutputPrefix 改用/合并 planSavePrefix(objectInfo) |
