@@ -109,6 +109,8 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 批次 2–5：见进度表。
 
 ## 第四轮（PR11 审阅修复）进度 — 2026-10-13
-- 审阅原文：docs/development/PR11代码审阅与下一轮程序计划.md；逐项状态：`node tools/pr11.cjs render`（数据 docs/development/pr11-status.json，渲染到 Grovebot开发进度.md 的 PR11 区块）。
-- 已完成：D01、D02、D03/PR11-R09、PR11-R08、D05/PR11-R01。实现中：PR11-R07（ResolutionSelector/SaveImageAdvanced 输入名未核实）、D04/PR11-R10（运行按钮已走表单；左侧参数面板/批量/润色未走）、D06/PR11-R02（缺测试与 UI）、D09（缺测试）。
-- 下一步按顺序：D10 定向中断探测 → PR11-R04/D11 进程退出确认与 LM Studio 归属 → PR11-R13 应用数据备份 → R03/D07 → R06/D12 → R11 → R12/D08 → R18/D15 → R14 → R15/D14 → R16/D13 → R17 → R19 → R20 → R21 → R22（含更新 PR #11 标题正文、待Codex验收.md）。
+- 审阅原文：docs/development/PR11代码审阅与下一轮程序计划.md；逐项状态以 `node tools/pr11.cjs render` 为准（数据 docs/development/pr11-status.json）。
+- 已合并 origin/feat/grovebot-review2（R15/D14、R16/D13、secret-fields、trash-store、worker-pool、batch-plan、output-plan），并已接入 R14/R17(部分)/R18/R19(后端)/R20。
+- 程序完成：D01 D02 D03 D05 D06 D09 D10 D11 D15、R01 R02 R04 R05 R08 R09 R14 R18 R20（D13/D14/R15/R16 由 review2 完成）。
+- 实现中：R07（两节点输入名未核实）、D04/R10（运行按钮已走表单；左侧参数面板/批量/润色未走）、D12/R06（缺 journal 启动续传）、R17（扫描/缩略图/备份未走 worker）、R19（UI 变化参数未做）。
+- 下一步：R03/D07 → R11 → R12/D08 → R13 → R21（CI 业务初始化、单实例锁先于迁移）→ R22 最后（复核 82 项、更新 PR #11 标题正文、README、待Codex验收）。
