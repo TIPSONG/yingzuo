@@ -112,7 +112,10 @@
       "id": "D15",
       "level": "P1",
       "name": "任务快照未隔离敏感输入",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "5729991",
+      "tests": "task-service.test R18 两项；review2 的 secret-fields.test",
+      "note": "合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理"
     },
     {
       "id": "PR11-R01",
@@ -241,7 +244,10 @@
       "id": "PR11-R18",
       "level": "P1",
       "name": "敏感输入引用与快照脱敏",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "5729991",
+      "tests": "task-service.test R18 两项；review2 的 secret-fields.test",
+      "note": "合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理"
     },
     {
       "id": "PR11-R19",
