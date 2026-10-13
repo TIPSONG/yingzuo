@@ -24,6 +24,13 @@ class QueueService {
     this.kick();
     return task;
   }
+  /** R19：整组在同一数据库事务中登记；任一项失败整组不登记。 */
+  enqueueGroup(specs) {
+    for (const sp of specs) if (!sp.snapshot?.apiPrompt || !Object.keys(sp.snapshot.apiPrompt).length) throw new AppError(CODES.INVALID_ARGUMENT, '空图不能运行：没有可提交的节点。');
+    const created = this.tasks.db.transaction(() => specs.map(({kind = 'generate', workflowId, snapshot, inputRevision, groupId = null}) => this.tasks.create({kind, workflowId, snapshot, inputRevision, clientId: this.clientId, groupId})));
+    this.kick();
+    return created;
+  }
   activeTasks() { return this.tasks.list({states: ACTIVE, limit: 50}); }
   isIdle() { return !this.activeTasks().length && !this.tasks.nextQueued(); }
   /** 等待本应用任务全部结束；timeoutMs 到期抛 TIMEOUT（不当作空闲）。 */

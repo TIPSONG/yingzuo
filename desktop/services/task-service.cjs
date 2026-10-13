@@ -11,7 +11,9 @@ const {checkPrompt} = require('../../shared/prompt-check.cjs');
 const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
 const SF = require('../../shared/secret-fields.cjs');
-const {applyOutputPrefix} = require('./output-prefix.cjs');
+const {stableWorkflowId, planSavePrefix} = require('../../shared/output-plan.cjs');
+const {planBatch} = require('../../shared/batch-plan.cjs');
+const {prefixDir} = require('./output-prefix.cjs');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const MIME = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'};
@@ -73,11 +75,14 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     onTerminal: task => { if (!onTerminal || task.state !== 'succeeded') return; Promise.resolve().then(() => onTerminal(task)).catch(e => logger?.warn('作品关联失败', {id: task.id, error: e.message})); },
   });
   /** A03：按设置（或单次覆盖）调整已登记保存节点的输出前缀；返回调整后的 prompt 与改动说明。 */
+  const workflowIdOf = c => stableWorkflowId({templateId: c.templateId, uiGraph: c.uiGraph}) ?? c.tabId;
   function withPrefix(prompt, c, mode) {
     const m = mode ?? configRepo.config.output?.prefixMode ?? 'none';
     if (m === 'none') return {prompt, prefix: null};
-    const r = applyOutputPrefix(prompt, {mode: m, workflowId: c.tabId, workflowName: c.title});
-    return {prompt: r.prompt, prefix: {dir: r.dir, changed: r.changed, untouched: r.untouched}};
+    // R20：目录用稳定工作流身份；SaveImageAdvanced 等按 object_info 确认前缀字段
+    const dir = prefixDir({mode: m, workflowId: workflowIdOf(c), workflowName: c.title});
+    const r = planSavePrefix(prompt, {dir, objectInfo});
+    return {prompt: r.prompt, prefix: {dir, changed: r.changed, untouched: r.untouched}};
   }
   let socket = null;
   function connectSocket() {
@@ -149,22 +154,28 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
-      return enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
+      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
     'tasks.runBatch': async (tabId, spec = {}) => {
       const c = await compile(tabId, {expectedRevision: spec.expectedRevision}); assertRunnable(c.issues);
-      const items = expandBatch(spec);
+      // R19：先全量规划与校验，任何一项无效整体拒绝；之后整组一次登记
+      const types = {}; for (const [k, b] of Object.entries(c.bindings)) if (b && !b.readonly && 'value' in b) types[k] = {type: typeof b.value === 'number' ? (Number.isInteger(b.value) ? 'int' : 'float') : typeof b.value === 'boolean' ? 'bool' : 'string', label: k};
+      const plan = planBatch({prompts: spec.prompts?.length ? spec.prompts : null, seeds: spec.seeds, count: spec.count, seedStart: spec.seedStart, variations: spec.variations}, types);
+      if (!plan.ok) throw new AppError(CODES.INVALID_ARGUMENT, `批量计划无效：${plan.errors[0].message}`, {details: {errors: plan.errors}});
+      const params = Array.isArray(spec.params) && spec.params.length ? spec.params : [{}];
+      if (plan.total * params.length > 100) throw new AppError(CODES.INVALID_ARGUMENT, `批量共 ${plan.total * params.length} 个任务，超过上限 100。`);
+      const items = plan.items.flatMap(it => params.map(p => ({prompt: it.prompt, seed: it.seed, params: {...p, ...it.values}})));
       if ((spec.prompts?.length > 0) && !c.bindings.prompt) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的提示词输入，不能批量替换提示词。');
       if (items.some(i => i.seed !== null) && !(c.bindings.seed && (!c.bindings.seed.readonly || c.bindings.seedSource))) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的 seed 输入。');
       const groupId = crypto.randomUUID();
-      const created = [];
-      for (const item of items) {
+      const specs = items.map(item => {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
         const p = withPrefix(B.applyValues(c.apiPrompt, c.bindings, values), c, spec.prefixMode);
-        created.push(enqueue({workflowId: c.tabId, inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: spec.references, params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})}));
-      }
+        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: redactSnapshot(snapshotFor(c, p.prompt, {references: spec.references, params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}}))};
+      });
+      const created = queue.enqueueGroup(specs);
       return {groupId, tasks: created};
     },
     /** Q08：仅润色。只提交润色节点及其上游，完成后在任务输出中读取文本，不执行绘图。 */

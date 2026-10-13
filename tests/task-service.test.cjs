@@ -89,7 +89,8 @@ test('A03 输出前缀进入运行路径；A01 成功终态回调作品关联', 
   const task = await svc.methods['tasks.run']('tab1', {});
   await settle(); await new Promise(r => setTimeout(r, 5));
   const save = Object.values(submitted[0].prompt).find(n => n.class_type === 'SaveImage');
-  assert.match(save.inputs.filename_prefix, /^映作\/T_tab1\//);
+  assert.match(save.inputs.filename_prefix, /^映作\/T_fp[0-9a-f]{6}\//, 'R20：目录用稳定结构指纹而非 tabId');
+  assert.match(svc.tasks.get(task.id).workflowId, /^fp_/);
   assert.deepEqual(linked, [task.id]);
   const none = await svc.methods['tasks.run']('tab1', {prefixMode: 'none'});
   await settle();
@@ -160,4 +161,17 @@ test('R18/D15：系统加密不可用时拒绝创建含敏感输入的任务', a
   const {svc, editor} = setup(t, {credentials: {available: () => false}});
   editor.commands.compileTab = async id => { const p = prompt(); p[3].inputs.lmstudio_api_key = 'sk-fictional'; return {tabId: id, title: 'T', revision: 3, uiGraph: {}, apiPrompt: p}; };
   await assert.rejects(svc.methods['tasks.run']('tab1', {}), e => e.code === 'CREDENTIAL_UNAVAILABLE');
+});
+
+test('R19：批量任一项无效时整组不登记；R20：模板来源用稳定 workflowId', async t => {
+  const {svc, submitted, settle, editor} = setup(t);
+  await assert.rejects(svc.methods['tasks.runBatch']('tab1', {count: 2, seedStart: 1, variations: {steps: [10, 'x']}}), /批量计划无效/);
+  await assert.rejects(svc.methods['tasks.runBatch']('tab1', {seeds: [1, -5]}), /seed 无效/);
+  assert.equal(svc.tasks.list({limit: 50}).length, 0); await settle(); assert.equal(submitted.length, 0);
+  const r = await svc.methods['tasks.runBatch']('tab1', {seeds: [1, 2], variations: {steps: [10, 20]}}); await settle();
+  assert.equal(r.tasks.length, 4);
+  assert.deepEqual(submitted.map(x => x.prompt[7].inputs.steps), [10, 20, 10, 20]);
+  editor.commands.compileTab = async id => ({tabId: id, templateId: 'tplA', title: 'T', revision: 3, uiGraph: {nodes: []}, apiPrompt: prompt()});
+  const t1 = await svc.methods['tasks.run']('tab1', {});
+  assert.equal(svc.tasks.get(t1.id).workflowId, 'tpl_tplA');
 });
