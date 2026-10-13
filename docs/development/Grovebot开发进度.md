@@ -50,7 +50,7 @@
 | PR11-R02 | P1 | 首次/继续恢复走同一保护入口 | 实现中 | ea187ce |  | restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds |
 | PR11-R03 | P1 | 补丁冲突不记为成功更新 | 未开始 |  |  |  |
 | PR11-R04 | P1 | 服务归属与停止闭环 | 未开始 |  |  |  |
-| PR11-R05 | P1 | 取消、退出和精确中断 | 未开始 |  |  |  |
+| PR11-R05 | P1 | 取消、退出和精确中断 | 实现中 | 7c097d7 |  | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
 | PR11-R06 | P1 | 模型移动与环境操作共用锁 | 未开始 |  |  |  |
 | PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 实现中 | fdbe85a | tests/fixtures/qwen21-gemma-api.json 脱敏夹具 | Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定 |
 | PR11-R08 | P1 | Gemma 原文连线与采用结果 | 程序完成 | fdbe85a | bindings-real.test | 读取图中 context_length/release_vram/disable_thinking/model/URL；上下文以节点值为准；重新润色改 cache_buster |
