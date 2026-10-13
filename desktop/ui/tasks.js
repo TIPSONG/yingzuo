@@ -75,7 +75,7 @@ q('#pkg-export')?.addEventListener('click', () => { if (!current.activeId) retur
 q('#pkg-import')?.addEventListener('click', () => call(yz.tasks.importPackage(), d => (d.cancelled ? '已取消。' : `已导入为新的工作副本（${d.references} 张参考图${missingNote(d)}）。`)).catch(swallow));
 q('#closed-list')?.addEventListener('click', async () => {
   let list; try { list = await call(yz.tasks.closedList()); } catch (e) { swallow(e); return; }
-  const id = await modal(`<h3>最近关闭</h3><div class="list">${list.map(c => `<div class="row"><span>${esc(c.title)} <small class="muted">${esc(c.closedAt)}${c.references ? ` · ${c.references} 张参考图` : ''}</small></span><button data-open="${esc(c.id)}">重新打开</button></div>`).join('') || '<p class="muted">没有已关闭的标签。</p>'}</div><div class="actions"><button data-x="no">关闭</button></div>`, (back, done) => back.addEventListener('click', e => { const o = e.target.closest('[data-open]'), x = e.target.closest('[data-x]'); if (o) done(o.dataset.open); else if (x) done(null); }));
+  const id = await modal(`<h3>最近关闭</h3><div class="list">${list.map(c => `<div class="row"><span>${esc(c.title)} <small class="muted">${esc(c.closedAt)}${c.references ? ` · ${c.references} 张参考图` : ''}</small></span><button data-open="${esc(c.id)}">重新打开</button></div>`).join('') || '<div class="empty-state"><h3>没有已关闭的标签</h3><p>关闭标签后可在这里重新打开。</p></div>'}</div><div class="actions"><button data-x="no">关闭</button></div>`, (back, done) => back.addEventListener('click', e => { const o = e.target.closest('[data-open]'), x = e.target.closest('[data-x]'); if (o) done(o.dataset.open); else if (x) done(null); }));
   if (id) call(yz.tasks.reopenClosed(id), d => `已重新打开${missingNote(d)}。`).catch(swallow);
 });
 
@@ -160,7 +160,7 @@ function renderQueue() {
     return `<div class="task"><span class="badge ${t.state === 'succeeded' ? 'ok' : t.state === 'failed' || t.state === 'unknown' ? 'bad' : 'warn'}">${STATE[t.state] ?? t.state}</span>
       <div><div>${t.kind === 'enhance' ? '润色 · ' : ''}${esc(t.workflowId)} <span class="meta">#${t.seq} · ${esc(new Date(t.createdAt).toLocaleString())}${t.retryOf ? ' · 重试' : ''}${t.groupId ? ' · 批量' : ''}${outs ? ` · ${outs} 张图` : ''}</span></div>${prog}${t.state === 'unknown' ? '<div class="err">提交后与 ComfyUI 失去联系，无法确认是否已执行。不会自动重发；可重新核对或放弃。</div>' : ''}<div class="err">${esc(describeError(t))}</div></div>
       <div class="actions">${btns}</div></div>`;
-  }).join('') : '<p class="muted">还没有任务。</p>';
+  }).join('') : '<div class="empty-state"><h3>还没有任务</h3><p>在创作页打开工作流并点击「运行」后，任务会出现在这里。</p></div>';
 }
 async function refresh() {
   try { const r = await call(yz.tasks.list({limit: 200})); tasks = r.tasks; queueState = r.queue; renderQueue(); syncRunBar(); }

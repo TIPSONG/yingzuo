@@ -25,7 +25,7 @@ async function loadAll(more = false) {
     items.push(...r.items); offset += r.items.length;
     q('#as-count').textContent = `共 ${r.total ?? items.length} 张`;
     q('#as-more').hidden = r.nextOffset == null;
-    q('#as-grid').innerHTML = items.map(a => `<div class="asset-card" data-asset="${esc(a.id)}"><div class="thumb" data-thumb="${esc(a.id)}">${a.kind === 'image' ? '…' : esc(a.format ?? a.kind)}</div><div class="cap" title="${esc(a.path)}">${esc(a.name)} <small class="muted">${a.width ? `${a.width}×${a.height}` : ''}${a.taskId ? ' · 任务' : ''}</small></div></div>`).join('') || '<p class="muted">还没有作品。点击“扫描输出目录”，或在创作页运行任务后自动出现。</p>';
+    q('#as-grid').innerHTML = items.map(a => `<div class="asset-card" data-asset="${esc(a.id)}"><div class="thumb" data-thumb="${esc(a.id)}">${a.kind === 'image' ? '…' : esc(a.format ?? a.kind)}</div><div class="cap" title="${esc(a.path)}">${esc(a.name)} <small class="muted">${a.width ? `${a.width}×${a.height}` : ''}${a.taskId ? ' · 任务' : ''}</small></div></div>`).join('') || '<div class="empty-state"><h3>还没有作品</h3><p>点击“扫描输出目录”，或在创作页运行任务后自动出现。</p></div>';
     fillThumbs(q('#as-grid'));
   } catch (e) { q('#as-grid').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
@@ -38,7 +38,7 @@ async function loadBoard() {
     const byId = new Map(r.items.map(i => [i.id, i]));
     q('#as-count').textContent = `收藏 ${r.total} 张${r.items.some(i => i.broken) ? `（${r.items.filter(i => i.broken).length} 张收藏文件丢失）` : ''}`;
     board.style.height = `${lay.height}px`;
-    board.innerHTML = lay.cells.map(c => { const f = byId.get(c.id); return `<div class="cell" data-cell="${esc(c.id)}" title="${esc(f.storedPath)}${f.sourceMissing ? '（原图已删除，收藏副本仍在）' : ''}"><div class="fill" data-fav-thumb="${esc(f.assetId ?? '')}"></div><button data-unfav="${esc(f.id)}">取消收藏</button></div>`; }).join('') || '<p class="muted">还没有收藏。在作品查看器中点“收藏”。</p>';
+    board.innerHTML = lay.cells.map(c => { const f = byId.get(c.id); return `<div class="cell" data-cell="${esc(c.id)}" title="${esc(f.storedPath)}${f.sourceMissing ? '（原图已删除，收藏副本仍在）' : ''}"><div class="fill" data-fav-thumb="${esc(f.assetId ?? '')}"></div><button data-unfav="${esc(f.id)}">取消收藏</button></div>`; }).join('') || '<div class="empty-state"><h3>还没有收藏</h3><p>在作品查看器中点“收藏”。</p></div>';
     // CSP 禁止内联 style 属性：位置用 CSSOM 设置
     const cells = new Map(lay.cells.map(c => [c.id, c]));
     for (const el of board.querySelectorAll('[data-cell]')) { const c = cells.get(el.dataset.cell); Object.assign(el.style, {left: `${c.x}px`, top: `${c.y}px`, width: `${c.width}px`, height: `${c.height}px`}); }

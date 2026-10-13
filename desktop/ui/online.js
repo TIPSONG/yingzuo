@@ -14,7 +14,7 @@ async function search(more) {
     const r = await call(yz.downloads.search(provider, query, {cursor: more ? cursor : null, limit: 20}));
     cursor = r.nextCursor; q('#on-more').hidden = !cursor;
     const html = r.items.map(i => `<div class="row"><span>${esc(i.name)} <small class="muted">${provider === 'civitai' ? `${esc(i.type)} · ${esc(i.creator ?? '')}${i.nsfw ? ' · NSFW' : ''}` : `${i.downloads ?? 0} 下载${i.gated ? ' · 需同意许可' : ''}`}</small></span><button data-detail="${esc(i.id)}" data-provider="${provider}">查看文件</button></div>`).join('');
-    q('#on-results').innerHTML = more ? q('#on-results').innerHTML + html : html || '<p class="muted">没有结果。</p>';
+    q('#on-results').innerHTML = more ? q('#on-results').innerHTML + html : html || '<div class="empty-state"><h3>没有结果</h3><p>换个关键词再试，或检查本机网络与来源凭据。</p></div>';
   } catch (e) { q('#on-results').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 q('#on-search').addEventListener('click', () => search(false));
