@@ -89,3 +89,16 @@ test('SamplerCustomAdvanced：guider 的正负条件与 RandomNoise 的 seed', (
   assert.equal(b.prompt.nodeId, '20'); assert.equal(b.negative.input, 'negative_prompt');
   assert.deepEqual([b.seed.nodeId, b.seed.value], ['51', 99]);
 });
+
+test('PR11-R07：SaveImageAdvanced 仅在 object_info 确认 filename_prefix 为 STRING 时改写前缀；ResolutionSelector 尺寸只读', () => {
+  const {planSavePrefix} = require('../shared/output-plan.cjs');
+  const fx = require('./fixtures/qwen21-gemma-api.json');
+  const none = planSavePrefix(fx.t2i, {dir: '映作/x'});
+  assert.equal(none.changed.length, 0); assert.ok(none.untouched.some(u => u.classType === 'SaveImageAdvanced'));
+  const info = {SaveImageAdvanced: {output_node: true, input: {required: {images: ['IMAGE'], filename_prefix: ['STRING', {default: 'ComfyUI'}], format: [['png', 'jpeg']]}}}};
+  const r = planSavePrefix(fx.t2i, {dir: '映作/x', objectInfo: info});
+  assert.deepEqual(r.changed.map(c => [c.classType, c.after]), [['SaveImageAdvanced', '映作/x/Qwen_image_2.1']]);
+  assert.equal(r.prompt[Object.keys(r.prompt).find(k => r.prompt[k].class_type === 'SaveImageAdvanced')].inputs['format.bit_depth'], '8-bit', '其他保存设置不变');
+  const b = require('../shared/bindings.cjs').inferBindings(fx.edit);
+  assert.ok(b.width?.readonly && b.height?.readonly, '尺寸来自 ResolutionSelector 连线时只读');
+});
