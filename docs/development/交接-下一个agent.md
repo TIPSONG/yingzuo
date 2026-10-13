@@ -107,3 +107,8 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 2026-10-13 本轮：合入 maint/assets；接线完成；R07、R08、U05、U06、U07、R06、O08、E10 与 B01–B06 全部程序完成。最后推送的提交见 `git log -1`；`npm run check`：214 项，213 通过，1 跳过，0 失败；Windows Actions run 38371603344 成功（含打包自检）。
 - 批次 1：全部程序完成（F08：GitHub Actions Windows 构建在 cd4862b 首次全绿；之前 Windows 上的测试因 SQLite 文件句柄未关闭导致 EBUSY 失败，已修复）。
 - 批次 2–5：见进度表。
+
+## 第四轮（PR11 审阅修复）进度 — 2026-10-13
+- 审阅原文：docs/development/PR11代码审阅与下一轮程序计划.md；逐项状态：`node tools/pr11.cjs render`（数据 docs/development/pr11-status.json，渲染到 Grovebot开发进度.md 的 PR11 区块）。
+- 已完成：D01、D02、D03/PR11-R09、PR11-R08；PR11-R07 实现中（ResolutionSelector/SaveImageAdvanced 输入名未核实）。
+- 下一步按顺序：D04/PR11-R10 自定义表单进入正式创作与运行 → D05/PR11-R01 暂停租约、恢复失败不启动服务不恢复队列 → PR11-R05/D09/D10 → PR11-R04/D11 → PR11-R13 → 文档顺序其余项。
