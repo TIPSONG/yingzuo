@@ -188,3 +188,19 @@ test('D10：旧后端发送前再核对，目标已切换时不发中断', async
   await assert.rejects(q.cancel(other.id), e => e.code === 'CONFLICT');
   assert.deepEqual(fake.interrupts, []);
 });
+test('R12/D08：重启后只有后端运行中的任务——不需新任务或继续即跟踪到终态；恢复期间新建任务等 ready 后提交', async t => {
+  const {q, tasks, fake} = setup(t);
+  const p = tasks.create({workflowId: 'w', snapshot: snap('old'), clientId: 'c'});
+  const s = tasks.create({workflowId: 'w', snapshot: snap('s'), clientId: 'c'});
+  tasks.transition(s.id, 'preparing'); tasks.transition(s.id, 'submitting'); tasks.transition(s.id, 'submitted', {patch: {comfyPromptId: 'p-run'}});
+  fake.queueRunning = [{n: 1, id: 'p-run', extra: {}}];
+  const ready = q.recoverOnStartup();
+  assert.equal(tasks.get(p.id).state, 'paused');
+  await ready;
+  assert.ok(q.followers.has(s.id), '存量任务独立跟踪');
+  // 后端完成
+  fake.queueRunning = []; fake.historyMap['p-run'] = done({}, 'success');
+  await q.followers.get(s.id);
+  assert.equal(tasks.get(s.id).state, 'succeeded');
+  assert.equal(fake.submits.length, 0, '暂停的旧任务不自动提交');
+});

@@ -15,7 +15,7 @@ class QueueService {
    */
   constructor({tasks, client, gpuLock, events, logger, clientId, prepare = async (_t, s) => s.apiPrompt, onTerminal = () => {}, pollMs = 1500, externalWaitMs = 3000, sleep = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()}) {
     Object.assign(this, {tasks, client, gpuLock, events, logger, clientId, prepare, onTerminal, pollMs, externalWaitMs, sleep, now});
-    this.paused = false; this.running = null; this.tokens = new Map(); this.external = new Map(); this.pumping = false; this.stopped = false; this.idleWaiters = []; this.leases = new Map(); this.leaseSeq = 0;
+    this.paused = false; this.running = null; this.tokens = new Map(); this.external = new Map(); this.pumping = false; this.stopped = false; this.idleWaiters = []; this.leases = new Map(); this.leaseSeq = 0; this.ready = Promise.resolve(); this.followers = new Map();
   }
   /* ---------- 入队 ---------- */
   enqueue({kind = 'generate', workflowId, snapshot, inputRevision, groupId = null}) {
@@ -66,7 +66,9 @@ class QueueService {
   async pump() {
     this.pumping = true;
     try {
+      await this.ready; // R12：启动恢复完成前不提交
       while (!this.paused && !this.leases.size && !this.stopped) {
+        if (this.followers.size) { await Promise.race(this.followers.values()); continue; } // 存量后端任务结束前不提交新任务
         if (!this.running && this.activeTasks().length) { await this.resumeActive(); continue; }
         const next = this.tasks.nextQueued();
         if (!next) break;
@@ -187,13 +189,27 @@ class QueueService {
     return this.tasks.get(taskId);
   }
   /** 启动恢复（Q10）：未提交 → paused；提交中/已提交 → 核对。 */
-  async recoverOnStartup() {
-    for (const t of this.tasks.list({states: ['queued', 'preparing'], limit: 1000})) this.tasks.transition(t.id, 'paused', {reason: '应用重启：未提交任务暂停，等待继续'});
-    for (const t of this.tasks.list({states: ['submitting', 'submitted', 'running', 'reconciling'], limit: 100})) {
-      if (t.state !== 'reconciling') this.tasks.transition(t.id, 'reconciling', {reason: '应用重启，核对后端状态'});
-      await this.reconcile(t.id);
-    }
-    if (this.tasks.list({states: ['paused'], limit: 1}).length) this.paused = true;
+  /** R12/D08：返回的 Promise 即 ready；恢复期间 pump 等待。存量后端任务独立跟踪到终态，不依赖新任务或“继续”。 */
+  recoverOnStartup() {
+    // 同步阶段：只暂停此刻已存在的未提交任务（恢复期间新建的任务保持排队，等 ready 后提交）
+    const before = this.tasks.list({states: ['queued', 'preparing'], limit: 1000});
+    for (const t of before) this.tasks.transition(t.id, 'paused', {reason: '应用重启：未提交任务暂停，等待继续'});
+    const stale = this.tasks.list({states: ['submitting', 'submitted', 'running', 'reconciling'], limit: 100});
+    if (before.length) this.paused = true;
+    this.ready = (async () => {
+      for (const t of stale) {
+        if (this.tasks.get(t.id).state !== 'reconciling') this.tasks.transition(t.id, 'reconciling', {reason: '应用重启，核对后端状态'});
+        try { await this.reconcile(t.id); } catch (e) { this.logger?.warn('启动核对失败', {id: t.id, error: e.message}); }
+        const now = this.tasks.get(t.id);
+        if (['submitted', 'running', 'reconciling'].includes(now.state)) this.startFollower(now.id);
+      }
+    })();
+    return this.ready;
+  }
+  startFollower(id) {
+    if (this.followers.has(id)) return this.followers.get(id);
+    const p = this.follow(id, new CancelToken()).catch(e => this.logger?.warn('跟踪失败', {id, error: e.message})).finally(() => { this.followers.delete(id); this.kick(); });
+    this.followers.set(id, p); return p;
   }
   /** 重启或断连后，继续跟踪仍在后端的任务 */
   async resumeActive() {

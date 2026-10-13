@@ -202,7 +202,11 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     'tasks.list': async (filter = {}) => ({tasks: tasks.list({states: filter.states, limit: Math.min(500, filter.limit ?? 100), groupId: filter.groupId}), queue: queue.state()}),
     'tasks.get': async id => { const t = tasks.get(id); if (!t) throw new AppError(CODES.NOT_FOUND, '任务不存在。'); return {...t, events: tasks.events_(id), lineage: tasks.lineage(id)}; },
     'tasks.cancel': id => queue.cancel(id),
-    'tasks.retry': async id => queue.retry(id),
+    /** R12：状态未知的任务可能已在后端执行；重试必须显式确认可能重复出图。 */
+    'tasks.retry': async (id, {confirmDuplicate = false} = {}) => {
+      if (queue.tasks.get(id)?.state === 'unknown' && confirmDuplicate !== true) throw new AppError(CODES.INVALID_STATE, '该任务状态未知，可能已经执行过；重试可能重复出图，需要确认。', {details: {needsConfirm: true}});
+      return queue.retry(id);
+    },
     'tasks.recheck': id => queue.recheck(id),
     'tasks.pause': async () => { queue.pause(); return queue.state(); },
     'tasks.resume': async () => { queue.resume(); return queue.state(); },

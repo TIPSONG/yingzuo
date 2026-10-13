@@ -175,3 +175,11 @@ test('R19：批量任一项无效时整组不登记；R20：模板来源用稳�
   const t1 = await svc.methods['tasks.run']('tab1', {});
   assert.equal(svc.tasks.get(t1.id).workflowId, 'tpl_tplA');
 });
+
+test('R12：状态未知的任务重试需要显式确认', async t => {
+  const {svc} = setup(t);
+  const x = svc.tasks.create({workflowId: 'w', snapshot: {apiPrompt: prompt()}, clientId: 'c'});
+  for (const st of ['preparing', 'submitting', 'unknown']) svc.tasks.transition(x.id, st);
+  await assert.rejects(svc.methods['tasks.retry'](x.id), e => e.details?.needsConfirm);
+  assert.ok(await svc.methods['tasks.retry'](x.id, {confirmDuplicate: true}));
+});
