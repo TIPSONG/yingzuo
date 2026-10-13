@@ -33,6 +33,7 @@ class ReferenceStore {
     if (!fs.existsSync(target)) { fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target + '.tmp', buf); fs.renameSync(target + '.tmp', target); }
     return {id: `${hash}${ext}`, hash, ext, name: path.basename(file), size: st.size};
   }
+  has(id) { try { this.pathOf(id); return true; } catch { return false; } }
   pathOf(id) {
     if (!/^[0-9a-f]{64}\.(png|jpe?g|webp)$/.test(id)) throw new AppError(CODES.INVALID_ARGUMENT, '参考图编号无效。');
     const p = path.join(this.dir, id.slice(0, 2), id);
@@ -106,6 +107,26 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
   function assertRunnable(issues) { const e = blocking(issues); if (e.length) throw new AppError(CODES.INVALID_ARGUMENT, `提交前检查未通过：${e[0].message}`, {details: {issues: e}}); }
   function snapshotFor(c, apiPrompt, extra = {}) { return {uiGraph: c.uiGraph, apiPrompt, tabId: c.tabId, title: c.title, references: extra.references ?? [], params: extra.params ?? {}, ...extra.meta}; }
 
+  /* ---------- R11：参考图关系持久化到应用数据（按标签，记录版本），不再依赖浏览器 localStorage ---------- */
+  const relFile = path.join(layout.root, 'reference-relations.json');
+  const readRel = () => { try { return JSON.parse(fs.readFileSync(relFile, 'utf8')); } catch { return {version: 1, tabs: {}}; } };
+  const writeRel = d => { const tmp = `${relFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(d, null, 2)); fs.renameSync(tmp, relFile); };
+  const REF_ID = /^[0-9a-f]{64}(\.[a-z0-9]{1,8})?$/i;
+  function setRelations(tabId, items, revision = null) {
+    if (typeof tabId !== 'string' || !tabId) throw new AppError(CODES.INVALID_ARGUMENT, '缺少标签。');
+    if (!Array.isArray(items) || items.length > 64) throw new AppError(CODES.INVALID_ARGUMENT, '参考图关系无效。');
+    const clean = items.map(r => { if (!r || typeof r.nodeId !== 'string' || typeof r.refId !== 'string' || !REF_ID.test(r.refId)) throw new AppError(CODES.INVALID_ARGUMENT, '参考图编号无效。'); return {nodeId: r.nodeId, input: typeof r.input === 'string' ? r.input : 'image', refId: r.refId, name: String(r.name ?? '').slice(0, 200)}; });
+    const d = readRel(); d.tabs[tabId] = {revision, items: clean, updatedAt: new Date().toISOString()}; writeRel(d); return clean;
+  }
+  /** 关系 + 每项素材是否仍在本机（不能仅凭目录存在就认为引用有效）。 */
+  function relationsOf(tabId) { return (readRel().tabs[tabId]?.items ?? []).map(r => ({...r, missing: !refs.has(r.refId)})); }
+  function refsForRun(tabId, given) {
+    if (given) return given;
+    const list = relationsOf(tabId), lost = list.filter(r => r.missing);
+    if (lost.length) throw new AppError(CODES.NOT_FOUND, `参考图文件已丢失：${lost.map(r => r.name || r.refId).join('、')}。请在“参考图”中重新选择或移除。`, {details: {missing: lost}});
+    return list.map(({nodeId, input, refId}) => ({nodeId, input, refId}));
+  }
+
   /* ---------- R18/D15：快照不存敏感输入明文；提交前在内存中还原 ---------- */
   function redactSnapshot(snapshot) {
     const r = SF.redactForStorage({prompt: snapshot.apiPrompt, objectInfo});
@@ -154,7 +175,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
-      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
+      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
@@ -173,13 +194,13 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       const specs = items.map(item => {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
         const p = withPrefix(B.applyValues(c.apiPrompt, c.bindings, values), c, spec.prefixMode);
-        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: redactSnapshot(snapshotFor(c, p.prompt, {references: spec.references, params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}}))};
+        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: redactSnapshot(snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}}))};
       });
       const created = queue.enqueueGroup(specs);
       return {groupId, tasks: created};
     },
     /** Q08：仅润色。只提交润色节点及其上游，完成后在任务输出中读取文本，不执行绘图。 */
-    'tasks.enhance': async (tabId, {text, references = [], rerun = false, expectedRevision = null} = {}) => {
+    'tasks.enhance': async (tabId, {text, references = null, rerun = false, expectedRevision = null} = {}) => {
       const c = await compile(tabId, {expectedRevision});
       const enh = c.bindings.enhancer;
       if (!enh) throw new AppError(CODES.NOT_FOUND, '此工作流没有 Gemma 润色节点。');
@@ -190,7 +211,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       let sub;
       try { sub = B.extractEnhanceOnly(prompt, enh.nodeId, {objectInfo: info, rerun}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       assertRunnable([...checkPrompt(sub.prompt, {objectInfo: info}), ...B.checkEnhancerRun(sub.prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages})]);
-      return enqueue({kind: 'enhance', workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: references.filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
+      return enqueue({kind: 'enhance', workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: refsForRun(c.tabId, references).filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
     },
     'tasks.enhanceResult': async id => {
       const t = tasks.get(id); if (!t || t.kind !== 'enhance') throw new AppError(CODES.NOT_FOUND, '不是润色任务。');
@@ -210,6 +231,9 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     'tasks.recheck': id => queue.recheck(id),
     'tasks.pause': async () => { queue.pause(); return queue.state(); },
     'tasks.resume': async () => { queue.resume(); return queue.state(); },
+    'tasks.refs': async tabId => relationsOf(tabId),
+    'tasks.setRefs': async (tabId, items) => setRelations(tabId, items, editor.workspace?.tabs?.find(t => t.id === tabId)?.revision ?? null),
+    'tasks.copyRefs': async (fromTabId, toTabId) => setRelations(toTabId, relationsOf(fromTabId).map(({missing, ...r}) => r)),
     'tasks.pickReference': async () => {
       const r = await dialog.showOpenDialog(getWindow(), {title: '选择参考图', properties: ['openFile'], filters: [{name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp']}]});
       if (r.canceled || !r.filePaths?.length) return {cancelled: true};

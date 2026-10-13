@@ -18,24 +18,31 @@ function syncRunBar() {
 setInterval(syncRunBar, 1000);
 
 /* ---------- E08 参考图：按标签保存选择（内容寻址编号），每次运行前由主进程上传 ---------- */
+// R11：关系保存在主进程应用数据中；旧版 localStorage 记录首次读取时迁移
 const refKey = tabId => `yingzuo.refs.${tabId}`;
-const loadRefs = tabId => { try { return JSON.parse(localStorage.getItem(refKey(tabId)) || '[]'); } catch { return []; } };
-const saveRefs = (tabId, refs) => localStorage.setItem(refKey(tabId), JSON.stringify(refs));
+async function loadRefs(tabId) {
+  let items = await call(yz.tasks.refs(tabId));
+  let legacy = null; try { legacy = JSON.parse(localStorage.getItem(refKey(tabId)) || 'null'); } catch { legacy = null; }
+  if (!items.length && Array.isArray(legacy) && legacy.length) { items = await call(yz.tasks.setRefs(tabId, legacy)); }
+  if (legacy) try { localStorage.removeItem(refKey(tabId)); } catch { /* 忽略 */ }
+  return items;
+}
+const saveRefs = (tabId, refs) => call(yz.tasks.setRefs(tabId, refs.map(({missing, ...r}) => r)));
 q('#run-refs').addEventListener('click', async () => {
   const tabId = current.activeId; // PR11-R09：先固定发起标签，之后不再读取 current
   let preview;
   try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
   const slots = (preview.bindings.references ?? []).filter(r => r && !r.readonly);
   if (!slots.length) { toast('此工作流没有可替换的 LoadImage 参考图节点。'); return; }
-  let refs = loadRefs(tabId).filter(r => slots.some(s => s.nodeId === r.nodeId));
+  let refs; try { refs = (await loadRefs(tabId)).filter(r => slots.some(s => s.nodeId === r.nodeId)); } catch (e) { swallow(e); return; }
   const enh = preview.bindings.enhancer;
-  const render = back => { back.querySelector('#r-list').innerHTML = slots.map((s, i) => { const r = refs.find(x => x.nodeId === s.nodeId); return `<div class="row"><span>图 ${i + 1} · 节点 #${esc(s.nodeId)}：${r ? esc(r.name) : `沿用工作流中的 ${esc(s.value)}`}</span><span><button data-pick="${esc(s.nodeId)}">选择…</button>${r ? `<button data-clear="${esc(s.nodeId)}">移除</button>` : ''}</span></div>`; }).join(''); };
+  const render = back => { back.querySelector('#r-list').innerHTML = slots.map((s, i) => { const r = refs.find(x => x.nodeId === s.nodeId); return `<div class="row"><span>图 ${i + 1} · 节点 #${esc(s.nodeId)}：${r ? `${esc(r.name)}${r.missing ? ' <span class="err">（文件已丢失，请重新选择）</span>' : ''}` : `沿用工作流中的 ${esc(s.value)}`}</span><span><button data-pick="${esc(s.nodeId)}">选择…</button>${r ? `<button data-clear="${esc(s.nodeId)}">移除</button>` : ''}</span></div>`; }).join(''); };
   await modal(`<h3>参考图</h3><p class="muted">图片复制到本机数据目录保存，运行时上传到 ComfyUI。${enh ? `Gemma 润色节点最多读取 ${enh.imageInputs.length > 2 ? 2 : '前 2'} 张，之后的参考图仍交给 Qwen。` : ''}</p><div id="r-list" class="list"></div><div class="actions"><button data-x="done" class="primary">完成</button></div>`, (back, done) => {
     render(back);
     back.addEventListener('click', async e => {
       const pick = e.target.closest('[data-pick]'), clear = e.target.closest('[data-clear]'), x = e.target.closest('[data-x]');
-      if (pick) { try { const r = await call(yz.tasks.pickReference()); if (!r.cancelled) { refs = [...refs.filter(v => v.nodeId !== pick.dataset.pick), {nodeId: pick.dataset.pick, input: 'image', refId: r.id, name: r.name}]; saveRefs(tabId, refs); render(back); } } catch (err) { swallow(err); } }
-      if (clear) { refs = refs.filter(v => v.nodeId !== clear.dataset.clear); saveRefs(tabId, refs); render(back); }
+      if (pick) { try { const r = await call(yz.tasks.pickReference()); if (!r.cancelled) { refs = [...refs.filter(v => v.nodeId !== pick.dataset.pick), {nodeId: pick.dataset.pick, input: 'image', refId: r.id, name: r.name}]; await saveRefs(tabId, refs); render(back); } } catch (err) { swallow(err); } }
+      if (clear) { refs = refs.filter(v => v.nodeId !== clear.dataset.clear); saveRefs(tabId, refs).then(() => render(back), swallow); }
       if (x) done();
     });
   });
@@ -48,9 +55,8 @@ async function confirmStale(origin, err) {
   return modal(`<h3>原标签已被修改</h3><p>「${esc(origin.title ?? tabTitle(origin.tabId))}」在等待期间被修改。可以用它的最新内容继续，或取消。结果不会用于其他标签。</p><div class="actions"><button data-x="no">取消</button><button data-x="yes" class="primary">用该标签最新内容继续</button></div>`, (back, done) => back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done(x.dataset.x === 'yes'); }));
 }
 async function runFor(origin, options = {}) {
-  const references = loadRefs(origin.tabId).map(({nodeId, input, refId}) => ({nodeId, input, refId}));
   try {
-    const t = await call(yz.tasks.run(origin.tabId, {references, expectedRevision: origin.revision ?? null, ...options}), '已加入队列。');
+    const t = await call(yz.tasks.run(origin.tabId, {expectedRevision: origin.revision ?? null, ...options}), '已加入队列。');
     scheduleRefresh(); return t;
   } catch (e) {
     if (origin.revision != null && await confirmStale(origin, e)) return runFor({...origin, revision: null}, options);
@@ -113,7 +119,7 @@ q('#run-batch').addEventListener('click', async () => {
     back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done(x.dataset.x === 'yes' ? read() : null); });
   });
   if (!spec) return;
-  const submit = async rev => { spec.references = loadRefs(origin.tabId).map(({nodeId, input, refId}) => ({nodeId, input, refId})); const r = await call(yz.tasks.runBatch(origin.tabId, {...spec, expectedRevision: rev}), d => `已加入 ${d.tasks.length} 个任务。`); scheduleRefresh(); return r; };
+  const submit = async rev => { const r = await call(yz.tasks.runBatch(origin.tabId, {...spec, expectedRevision: rev}), d => `已加入 ${d.tasks.length} 个任务。`); scheduleRefresh(); return r; };
   try { return await submit(origin.revision); } catch (e) { if (await confirmStale(origin, e)) { try { return await submit(null); } catch { /* 已提示 */ } } }
 });
 
@@ -132,7 +138,7 @@ q('#run-enhance').addEventListener('click', async () => {
     if (input === null) return;
     text = input;
     let task;
-    try { task = await call(yz.tasks.enhance(origin.tabId, {text, rerun: text === lastText, expectedRevision: origin.revision, references: loadRefs(origin.tabId).map(({nodeId, input, refId}) => ({nodeId, input, refId}))})); } catch (e) { if (await confirmStale(origin, e)) { origin.revision = null; continue; } return; }
+    try { task = await call(yz.tasks.enhance(origin.tabId, {text, rerun: text === lastText, expectedRevision: origin.revision})); } catch (e) { if (await confirmStale(origin, e)) { origin.revision = null; continue; } return; }
     lastText = text;
     toast('润色任务已加入队列…'); scheduleRefresh();
     await waitTerminal(task.id);

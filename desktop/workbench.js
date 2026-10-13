@@ -82,7 +82,7 @@ $('#save').addEventListener('click',()=>run(()=>api.save(),'当前工作区已�
 $('#export').addEventListener('click',()=>run(()=>api.exportWorkflow(),'JSON 副本已导出。',false));
 $('#import').addEventListener('click',()=>run(async()=>{await requireConnection();return api.importWorkflow();},'已导入工作流。'));
 $('#blank').addEventListener('click',()=>run(async()=>{await requireConnection();return api.newBlank();},'已创建零节点工作副本。'));
-$('#duplicate').addEventListener('click',()=>run(()=>api.duplicateTab(),'已创建独立副本。'));
+$('#duplicate').addEventListener('click',()=>{const from=current.activeId;run(async()=>{const r=await api.duplicateTab();const to=r?.state?.activeId;if(from&&to&&to!==from)await window.yingzuo?.tasks?.copyRefs(from,to);return r;},'已创建独立副本（含参考图选择）。');});
 $('#preview').addEventListener('click',()=>run(()=>api.showPreview(),'当前是 A 测界面，点击“创作工作区”返回真实编辑器。',false));
 $('#editor-home').addEventListener('click',()=>run(()=>api.showEditor(),'已返回桌面创作工作区。'));
 $('#refresh-fields').addEventListener('click',()=>run(()=>api.snapshot(),'已从真实画布读取参数。'));

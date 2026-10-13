@@ -183,3 +183,18 @@ test('R12：状态未知的任务重试需要显式确认', async t => {
   await assert.rejects(svc.methods['tasks.retry'](x.id), e => e.details?.needsConfirm);
   assert.ok(await svc.methods['tasks.retry'](x.id, {confirmDuplicate: true}));
 });
+
+test('R11：参考图关系保存在应用数据中（不依赖 localStorage），运行时自动使用；文件丢失时标记且不提交该项；可复制到新标签', async t => {
+  const {svc, submitted, settle} = setup(t);
+  const id = 'a'.repeat(64) + '.png';
+  await assert.rejects(svc.methods['tasks.setRefs']('tab1', [{nodeId: '9', refId: '../x'}]), /编号无效/);
+  await svc.methods['tasks.setRefs']('tab1', [{nodeId: '9', input: 'image', refId: id, name: 'x.png'}]);
+  const got = await svc.methods['tasks.refs']('tab1');
+  assert.deepEqual(got.map(r => [r.refId, r.missing]), [[id, true]]);
+  await svc.methods['tasks.copyRefs']('tab1', 'tab2');
+  assert.equal((await svc.methods['tasks.refs']('tab2')).length, 1);
+  await assert.rejects(svc.methods['tasks.run']('tab1', {}), /参考图文件已丢失/);
+  await svc.methods['tasks.setRefs']('tab1', []);
+  await svc.methods['tasks.run']('tab1', {}); await settle();
+  assert.equal(submitted.length, 1);
+});
