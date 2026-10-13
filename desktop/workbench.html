@@ -15,6 +15,7 @@
       <button data-page="home" class="nav active">首页</button>
       <button data-page="create" class="nav" id="editor-home">创作工作区</button>
       <button data-page="templates" class="nav">模板库</button>
+      <button data-page="online" class="nav">在线资源</button>
       <button data-page="queue" class="nav">任务队列 <span id="queue-badge" class="count" hidden></span></button>
       <button data-page="services" class="nav">服务与日志</button>
       <button data-page="settings" class="nav">设置</button>
@@ -63,8 +64,15 @@
       <footer><span id="save-state">独立工作副本 · 本机保存</span><span id="transport">尚未检测 WebSocket</span></footer>
     </main>
     <section id="page-templates" class="page" hidden aria-label="模板库">
-      <header class="page-head"><div><span class="eyebrow">TEMPLATES</span><h1>模板库</h1></div><div class="header-actions"><button id="tpl-builtins">导入内置五个模板</button><button id="tpl-import" class="primary">导入模板…</button></div></header>
+      <header class="page-head"><div><span class="eyebrow">TEMPLATES</span><h1>模板库</h1></div><div class="header-actions"><button id="tpl-online">从链接导入…</button><button id="tpl-builtins">导入内置五个模板</button><button id="tpl-import" class="primary">导入模板…</button></div></header>
       <div class="page-body"><div class="actions"><input id="tpl-search" placeholder="搜索名称、标签、文件夹"><select id="tpl-folder"><option value="">全部文件夹</option></select><label><input type="checkbox" id="tpl-fav"> 只看收藏</label></div><div id="tpl-list" class="list"></div></div>
+    </section>
+    <section id="page-online" class="page" hidden aria-label="在线资源">
+      <header class="page-head"><div><span class="eyebrow">ONLINE</span><h1>在线资源</h1></div><div class="header-actions"><button id="on-link">粘贴链接…</button></div></header>
+      <div class="page-body"><div class="actions"><select id="on-provider"><option value="huggingface">Hugging Face</option><option value="civitai">Civitai</option></select><input id="on-q" placeholder="搜索模型"><button id="on-search" class="primary">搜索</button></div>
+      <p class="muted">联网失败只影响本页，不影响本地创作。下载只保存到你确认的目录，不自动安装插件。</p>
+      <div id="on-results" class="list"></div><button id="on-more" hidden>下一页</button>
+      <h2 class="section-title">下载</h2><div id="dl-list" class="list"></div></div>
     </section>
     <section id="page-queue" class="page" hidden aria-label="任务队列">
       <header class="page-head"><div><span class="eyebrow">QUEUE</span><h1>任务队列</h1></div><div class="header-actions"><button id="queue-pause">暂停提交</button><button id="queue-resume">继续</button><button id="queue-refresh">刷新</button></div></header>
@@ -95,5 +103,6 @@
   <script src="ui/shell.js"></script>
   <script src="ui/tasks.js"></script>
   <script src="ui/templates.js"></script>
+  <script src="ui/online.js"></script>
 </body>
 </html>

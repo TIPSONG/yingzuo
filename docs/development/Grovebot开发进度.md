@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 41 / 实现中 2 / 阻塞 0 / 未开始 39（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 48 / 实现中 2 / 阻塞 0 / 未开始 32（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -103,13 +103,13 @@
 | R06 | Manager 适配 | 未开始 |  |  |  |  |  |
 | R07 | 插件操作事务 | 未开始 |  |  |  |  |  |
 | R08 | 模型位置管理 | 未开始 |  |  |  |  |  |
-| O01 | 来源接口 | 未开始 |  |  |  |  |  |
-| O02 | Hugging Face | 未开始 |  |  |  |  |  |
-| O03 | Civitai | 未开始 |  |  |  |  |  |
-| O04 | 下载规划 | 未开始 |  |  |  |  |  |
-| O05 | 通用下载器 | 未开始 |  |  |  |  |  |
-| O06 | 下载恢复 | 未开始 |  |  |  |  |  |
-| O07 | 在线模板导入 | 未开始 |  |  |  |  |  |
+| O01 | 来源接口 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 统一 search/detail/listFiles/resolveDownload/parseLink，内存 TTL 缓存、AbortSignal 取消、429/5xx 退避；联网失败只影响在线页 |  |
+| O02 | Hugging Face | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 仓库/固定 revision/具体文件/大小/sha256/许可/gated；Link 头分页；box 上实测搜索+详情+下载 README 成功 |  |
+| O03 | Civitai | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 模型/版本/文件/底模/触发词/授权错误/分页；box 上实测搜索成功；下载需用户凭据，需 Codex 验收 |  |
+| O04 | 下载规划 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 按用途选 ComfyUI models 子目录或自选目录、空间（保留 1GB）、重名与 .part 提示、Windows 文件名校验 |  |
+| O05 | 通用下载器 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 流式 .part、Range/If-Range 续传、并发、取消、退避重试、大小与 sha256、原子改名；本机 HTTP 服务测试 |  |
+| O06 | 下载恢复 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 启动时中断任务置暂停并按 .part 大小续传；源变化从头下载；每次重新解析 URL，令牌不入库 |  |
+| O07 | 在线模板导入 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | HF/GitHub/https JSON 链接 → 校验 UI 格式 → 存模板（作者/许可/revision）+本地缓存；不安装不执行 |  |
 | O08 | 联合补齐 | 未开始 |  |  |  |  |  |
 
 ### 批次 5

@@ -684,71 +684,85 @@
   "id": "O01",
   "name": "来源接口",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "统一 search/detail/listFiles/resolveDownload/parseLink，内存 TTL 缓存、AbortSignal 取消、429/5xx 退避；联网失败只影响在线页"
  },
  {
   "id": "O02",
   "name": "Hugging Face",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "仓库/固定 revision/具体文件/大小/sha256/许可/gated；Link 头分页；box 上实测搜索+详情+下载 README 成功"
  },
  {
   "id": "O03",
   "name": "Civitai",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "模型/版本/文件/底模/触发词/授权错误/分页；box 上实测搜索成功；下载需用户凭据，需 Codex 验收"
  },
  {
   "id": "O04",
   "name": "下载规划",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "按用途选 ComfyUI models 子目录或自选目录、空间（保留 1GB）、重名与 .part 提示、Windows 文件名校验"
  },
  {
   "id": "O05",
   "name": "通用下载器",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "流式 .part、Range/If-Range 续传、并发、取消、退避重试、大小与 sha256、原子改名；本机 HTTP 服务测试"
  },
  {
   "id": "O06",
   "name": "下载恢复",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "启动时中断任务置暂停并按 .part 大小续传；源变化从头下载；每次重新解析 URL，令牌不入库"
  },
  {
   "id": "O07",
   "name": "在线模板导入",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "HF/GitHub/https JSON 链接 → 校验 UI 格式 → 存模板（作者/许可/revision）+本地缓存；不安装不执行"
  },
  {
   "id": "O08",
