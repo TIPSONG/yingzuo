@@ -95,6 +95,20 @@
 | S09 | P2 | 完成 Worker 接入与生命周期 | 程序完成 | 372d900 | worker-pool.test S09×2、Windows 打包自检 worker 步骤 | 扫描/监视元数据走 worker（只回传小结果、读取上限 200MB）；缩略图在 worker 中由 sharp 生成，限制像素与大小、同键去重、tmp→原子改名、源变化丢弃；模型移动与备份中≥16MB 文件流式复制在 worker；共享池并发 2，退出 closeShared。单文件任务输出关联仍同步读取（有上限）；收藏复制图片仍同步 |
 | S10 | P2 | 完整收尾与事实一致的交接 | 程序完成 | ff3604e | online.test O07/S10、task-service.test T01；npm run check | T01 缩略图、O07 在线模板库、T03 完成；E07/S04 有限支持（外部契约交 Codex）、R06 范围说明；交接/待验收/README 统一为当前状态（旧“82 项全部完成”标为历史） |
 
+### 第三轮收尾任务（PR11第三轮代码审阅与最终收尾计划.md，审阅 head f493fce）
+
+| 编号 | 级别 | 名称 | 状态 | 提交 | 回归检查 | 说明 |
+| --- | --- | --- | --- | --- | --- | --- |
+| C01 | P0 | 工作流图密钥：存储/导出统一策略与启动迁移 | 程序完成 | 990ce24 | graph-storage-policy.test；desktop-main C01 e2e | 草稿自动保存、关闭归档、模板版本、诊断/模板导出均脱敏；启动迁移覆盖历史数据并写 migrations/secret-scan.json；无 object_info 时识别为启发式（有限） |
+| C02 | P0 | 维护事务：锁内门禁、先暂停后检查、write-ahead 阶段 | 程序完成 | 035c9a1 | maint.test / maint-service.test | 启动按事务记录恢复 hold；plan/backup/staging 中断标记 cancelled |
+| C03 | P0 | 恢复保护：guardedRestore 顺序与 hold 保留 | 程序完成 | 035c9a1 | maint-service.test | 恢复失败保留 hold；被 hold 引用的备份不可清理 |
+| C04 | P0 | 应用恢复回滚可重入与恢复模式窗口 | 程序完成 | cfeeeeb | maint.test / entry.test | 回滚冲突即停；标记损坏时按 journal 重建；进入独立恢复窗口 |
+| C05 | P1 | 模型移动：空闲+服务检查、无覆盖提交、源变化冲突 | 程序完成 | 035c9a1 | maint-service.test | 临时文件哈希不符时报 needs-attention，不删除 |
+| C06 | P1 | 表单版本固定与字段约束 | 程序完成 | 34c1738 | task-service / workbench / templates / desktop-main | applyFormField 带 revision；运行/批量/增强前校验；标签复制保留模板/表单绑定 |
+| C07 | P1 | 图包导入导出（worker、子图槽位、模板落地、回滚） | 程序完成 | b78acd4 | graph-package / task-service C07 | 离线时槽位输入仅标记“未验证”（有限）；setTemplateVersion 失败时本地模板条目可能残留 |
+| C08 | P1 | WorkerPool 关闭收尾；任务输出关联/收藏复制走 worker | 程序完成 | feab742 | worker-pool.test C08 ×3；assets.test C08 | 主进程只写数据库 |
+| C09 | P2 | 交接/验收文档与 CI 记录收口 | 程序完成 | 见交接文档 | — | 范围在本轮后冻结 |
+
 <!-- /PR11 -->
 
 <!-- TABLE -->

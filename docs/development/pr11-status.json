@@ -473,6 +473,87 @@
       "commit": "ff3604e",
       "tests": "online.test O07/S10、task-service.test T01；npm run check",
       "note": "T01 缩略图、O07 在线模板库、T03 完成；E07/S04 有限支持（外部契约交 Codex）、R06 范围说明；交接/待验收/README 统一为当前状态（旧“82 项全部完成”标为历史）"
+    },
+    {
+      "id": "C01",
+      "level": "P0",
+      "name": "工作流图密钥：存储/导出统一策略与启动迁移",
+      "status": "程序完成",
+      "commit": "990ce24",
+      "tests": "graph-storage-policy.test；desktop-main C01 e2e",
+      "note": "草稿自动保存、关闭归档、模板版本、诊断/模板导出均脱敏；启动迁移覆盖历史数据并写 migrations/secret-scan.json；无 object_info 时识别为启发式（有限）"
+    },
+    {
+      "id": "C02",
+      "level": "P0",
+      "name": "维护事务：锁内门禁、先暂停后检查、write-ahead 阶段",
+      "status": "程序完成",
+      "commit": "035c9a1",
+      "tests": "maint.test / maint-service.test",
+      "note": "启动按事务记录恢复 hold；plan/backup/staging 中断标记 cancelled"
+    },
+    {
+      "id": "C03",
+      "level": "P0",
+      "name": "恢复保护：guardedRestore 顺序与 hold 保留",
+      "status": "程序完成",
+      "commit": "035c9a1",
+      "tests": "maint-service.test",
+      "note": "恢复失败保留 hold；被 hold 引用的备份不可清理"
+    },
+    {
+      "id": "C04",
+      "level": "P0",
+      "name": "应用恢复回滚可重入与恢复模式窗口",
+      "status": "程序完成",
+      "commit": "cfeeeeb",
+      "tests": "maint.test / entry.test",
+      "note": "回滚冲突即停；标记损坏时按 journal 重建；进入独立恢复窗口"
+    },
+    {
+      "id": "C05",
+      "level": "P1",
+      "name": "模型移动：空闲+服务检查、无覆盖提交、源变化冲突",
+      "status": "程序完成",
+      "commit": "035c9a1",
+      "tests": "maint-service.test",
+      "note": "临时文件哈希不符时报 needs-attention，不删除"
+    },
+    {
+      "id": "C06",
+      "level": "P1",
+      "name": "表单版本固定与字段约束",
+      "status": "程序完成",
+      "commit": "34c1738",
+      "tests": "task-service / workbench / templates / desktop-main",
+      "note": "applyFormField 带 revision；运行/批量/增强前校验；标签复制保留模板/表单绑定"
+    },
+    {
+      "id": "C07",
+      "level": "P1",
+      "name": "图包导入导出（worker、子图槽位、模板落地、回滚）",
+      "status": "程序完成",
+      "commit": "b78acd4",
+      "tests": "graph-package / task-service C07",
+      "note": "离线时槽位输入仅标记“未验证”（有限）；setTemplateVersion 失败时本地模板条目可能残留"
+    },
+    {
+      "id": "C08",
+      "level": "P1",
+      "name": "WorkerPool 关闭收尾；任务输出关联/收藏复制走 worker",
+      "status": "程序完成",
+      "commit": "feab742",
+      "tests": "worker-pool.test C08 ×3；assets.test C08",
+      "note": "主进程只写数据库"
+    },
+    {
+      "id": "C09",
+      "level": "P2",
+      "name": "交接/验收文档与 CI 记录收口",
+      "status": "程序完成",
+      "commit": "见交接文档",
+      "tests": "—",
+      "note": "范围在本轮后冻结"
     }
   ]
 }

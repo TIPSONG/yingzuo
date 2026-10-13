@@ -14,7 +14,8 @@ const {buildPackage} = require('../desktop/services/graph-package.cjs');
 
 const KEY = 'fictional-key-value-123';
 const safe = (ok = true) => ({isEncryptionAvailable: () => ok, getSelectedStorageBackend: () => 'dpapi', encryptString: s => Buffer.from(`enc:${s}`), decryptString: b => b.toString().slice(4)});
-const tmp = t => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-gsp-')); t.after(() => fs.rmSync(d, {recursive: true, force: true})); return d; };
+// Windows：after 钩子按注册顺序执行，先关数据库再删目录，否则 EBUSY
+const tmp = (t, pre = []) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-gsp-')); t.after(() => { for (const f of pre) f(); fs.rmSync(d, {recursive: true, force: true}); }); return d; };
 const objectInfo = {MyLLM: {input: {required: {prompt: ['STRING', {multiline: true}], seed: ['INT', {}], api_key: ['STRING', {password: true}]}, optional: {model: [['a', 'b']]}}}};
 const g = () => ({nodes: [{id: 1, type: 'MyLLM', widgets_values: ['写一首诗', 7, 'randomize', KEY, 'a']}, {id: 2, type: 'CLIPTextEncode', widgets_values: ['正常提示词']}], definitions: {subgraphs: [{id: 's', nodes: [{id: 1, type: 'MyLLM', widgets_values: ['子图', 1, 'fixed', KEY, 'b']}]}]}});
 
@@ -51,7 +52,7 @@ test('C01：图包导出使用导出政策并附需重填字段', t => {
   assert.ok(!JSON.stringify(pkg).includes(KEY)); assert.equal(pkg.refill.length, 2);
 });
 test('C01：模板直接导入经 secureGraph；旧模板版本/关闭归档迁移为引用并记录，旧明文内容文件删除', t => {
-  const d = tmp(t); const db = Database.open(path.join(d, 'y.sqlite')); t.after(() => db.close());
+  const pre = []; const d = tmp(t, pre); const db = Database.open(path.join(d, 'y.sqlite')); pre.push(() => db.close());
   const cred = new CredentialStore(path.join(d, 'c.json'), safe());
   const p = createGraphStoragePolicy({credentials: cred, objectInfo: () => objectInfo});
   const repo = new TemplateRepository(db, path.join(d, 'templates'));
