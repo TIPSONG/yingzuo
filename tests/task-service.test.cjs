@@ -201,3 +201,12 @@ test('R11：参考图关系保存在应用数据中（不依赖 localStorage）�
   await svc.methods['tasks.run']('tab1', {}); await settle();
   assert.equal(submitted.length, 1);
 });
+
+test('R12：实际提交记录与意图快照分开保存', async t => {
+  const {svc, settle} = setup(t);
+  const task = await svc.methods['tasks.run']('tab1', {values: {seed: 7}}); await settle();
+  const g = await svc.methods['tasks.get'](task.id);
+  assert.equal(g.submission.attempts.length, 1);
+  assert.match(g.submission.attempts[0].promptSha256, /^[0-9a-f]{64}$/);
+  assert.equal(g.submission.attempts[0].requestId, g.requestId);
+});

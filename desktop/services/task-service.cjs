@@ -71,7 +71,12 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
   }
   const queue = new QueueService({
     tasks, client, gpuLock: locks.gpu, events, logger, clientId,
-    prepare: async (_task, snapshot, c) => uploadReferences(await resolveSecrets(snapshot.apiPrompt), snapshot.references, c, refs),
+    prepare: async (task, snapshot, c) => {
+      // R12：意图快照（不可变）与实际提交记录分开。上传在解析凭据之前完成，记录里只含占位符
+      const uploaded = await uploadReferences(snapshot.apiPrompt, snapshot.references, c, refs);
+      recordSubmission(task, snapshot, uploaded);
+      return resolveSecrets(uploaded);
+    },
     // A01/A02：终态时把任务输出关联进作品库（失败只记日志，不影响任务状态）
     onTerminal: task => { if (!onTerminal || task.state !== 'succeeded') return; Promise.resolve().then(() => onTerminal(task)).catch(e => logger?.warn('作品关联失败', {id: task.id, error: e.message})); },
   });
@@ -106,6 +111,18 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
   const blocking = issues => issues.filter(i => i.level === 'error');
   function assertRunnable(issues) { const e = blocking(issues); if (e.length) throw new AppError(CODES.INVALID_ARGUMENT, `提交前检查未通过：${e[0].message}`, {details: {issues: e}}); }
   function snapshotFor(c, apiPrompt, extra = {}) { return {uiGraph: c.uiGraph, apiPrompt, tabId: c.tabId, title: c.title, references: extra.references ?? [], params: extra.params ?? {}, ...extra.meta}; }
+
+  /* ---------- R12：实际提交记录（每次尝试追加；上传后的文件名、最终 prompt 指纹、采用文本与输出前缀） ---------- */
+  const subDir = path.join(layout.root, 'task-submissions');
+  const subFile = id => path.join(subDir, `${String(id).replace(/[^\w-]/g, '')}.json`);
+  function recordSubmission(task, snapshot, prompt) {
+    fs.mkdirSync(subDir, {recursive: true});
+    const prev = readSubmission(task.id) ?? {taskId: task.id, attempts: []};
+    const uploads = (snapshot.references ?? []).map(r => ({nodeId: r.nodeId, input: r.input ?? 'image', refId: r.refId, uploaded: prompt[r.nodeId]?.inputs?.[r.input ?? 'image'] ?? null}));
+    prev.attempts.push({at: new Date().toISOString(), requestId: task.requestId, promptSha256: crypto.createHash('sha256').update(JSON.stringify(prompt)).digest('hex'), uploads, outputPrefix: snapshot.outputPrefix?.dir ?? null, adopted: snapshot.adopted ?? null, params: snapshot.params ?? {}});
+    const tmp = `${subFile(task.id)}.tmp`; fs.writeFileSync(tmp, JSON.stringify(prev, null, 2)); fs.renameSync(tmp, subFile(task.id));
+  }
+  function readSubmission(id) { try { return JSON.parse(fs.readFileSync(subFile(id), 'utf8')); } catch { return null; } }
 
   /* ---------- R11：参考图关系持久化到应用数据（按标签，记录版本），不再依赖浏览器 localStorage ---------- */
   const relFile = path.join(layout.root, 'reference-relations.json');
@@ -175,7 +192,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
-      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
+      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
@@ -222,7 +239,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       return {state: t.state, text: text || null, original: B.enhancerOriginal(s.apiPrompt, s.enhance.enhancer), error: text ? null : {message: '任务成功但没有读取到润色文本。'}};
     },
     'tasks.list': async (filter = {}) => ({tasks: tasks.list({states: filter.states, limit: Math.min(500, filter.limit ?? 100), groupId: filter.groupId}), queue: queue.state()}),
-    'tasks.get': async id => { const t = tasks.get(id); if (!t) throw new AppError(CODES.NOT_FOUND, '任务不存在。'); return {...t, events: tasks.events_(id), lineage: tasks.lineage(id)}; },
+    'tasks.get': async id => { const t = tasks.get(id); if (!t) throw new AppError(CODES.NOT_FOUND, '任务不存在。'); return {...t, events: tasks.events_(id), lineage: tasks.lineage(id), submission: readSubmission(id)}; },
     'tasks.cancel': id => queue.cancel(id),
     /** R12：状态未知的任务可能已在后端执行；重试必须显式确认可能重复出图。 */
     'tasks.retry': async (id, {confirmDuplicate = false} = {}) => {
