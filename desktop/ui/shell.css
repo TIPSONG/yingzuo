@@ -568,14 +568,26 @@ button.ghost { background: transparent; }
 
 /* 运行条 / 队列 */
 .run-bar {
+  grid-area: run;
   display: flex;
   gap: 8px;
   align-items: center;
-  margin-left: auto;
-  margin-right: 12px;
+  align-content: flex-start;
+  margin: 0;
   flex-wrap: wrap;
+  min-width: 0;
 }
-.run-bar .muted { font-size: 11px; }
+.run-bar .muted,
+.run-bar #run-hint {
+  font-size: 11px;
+  flex: 1 1 14rem;
+  min-width: 10rem;
+  line-height: 1.45;
+  white-space: normal;
+}
+.toolbar .run-bar > button {
+  flex: 0 0 auto;
+}
 .count {
   background: var(--accent);
   color: var(--ink);
@@ -1080,4 +1092,18 @@ button.theme-option.active {
   border-top: 3px solid transparent;
   border-image: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%) 1;
   padding-top: 14px;
+}
+
+/* 创作页工具条：NASA 皮肤同样不溢出 */
+[data-skin="nasa-punk"] .toolbar {
+  background: transparent;
+  border-bottom-color: #2e4a6a;
+  gap: 10px 12px;
+}
+[data-skin="nasa-punk"] .toolbar .run-bar > button {
+  max-height: none;
+}
+[data-skin="nasa-punk"] #status {
+  background: #122038;
+  border-top-color: #2e4a6a;
 }
