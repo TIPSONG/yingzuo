@@ -237,7 +237,10 @@
       "id": "PR11-R13",
       "level": "P1",
       "name": "环境备份与应用数据备份分开",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "1a66ac2",
+      "tests": "app-backup.test",
+      "note": "资源页“应用数据备份”；恢复在 entry.cjs 中、main.cjs 打开数据库前执行；收藏 manifest 在数据库中。真实空间需求预估未做（按实际复制）"
     },
     {
       "id": "PR11-R14",

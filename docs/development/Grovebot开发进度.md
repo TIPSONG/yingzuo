@@ -58,7 +58,7 @@
 | PR11-R10 | P1 | 自定义表单进入创作和运行 | 实现中 | 40fc5b1 | task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签 | “运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单 |
 | PR11-R11 | P1 | 参考图关系进工作区仓库 | 未开始 |  |  |  |
 | PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 实现中 | bf765ab | queue.test R12/D08；task-service.test R12 未知重试确认 | 已做：ready、独立 follower、恢复期间新建任务等待、unknown 重试需确认。未做：意图快照与实际提交快照（上传后文件引用、最终参数）分开存储 |
-| PR11-R13 | P1 | 环境备份与应用数据备份分开 | 未开始 |  |  |  |
+| PR11-R13 | P1 | 环境备份与应用数据备份分开 | 程序完成 | 1a66ac2 | app-backup.test | 资源页“应用数据备份”；恢复在 entry.cjs 中、main.cjs 打开数据库前执行；收藏 manifest 在数据库中。真实空间需求预估未做（按实际复制） |
 | PR11-R14 | P2 | 回收区与备份空间管理 | 程序完成 | ca3792f | maint-service.test R07/R14；review2 trash-store.test | 只管理本应用登记条目；永久清理需确认、逐项再核对；未完成恢复使用的条目受保护 |
 | PR11-R15 | P2 | 206 续传与来源身份 | 未开始 |  |  |  |
 | PR11-R16 | P2 | 分享 JPEG 完整解析和方向策略 | 未开始 |  |  |  |
