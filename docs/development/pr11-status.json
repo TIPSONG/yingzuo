@@ -300,10 +300,10 @@
       "id": "PR11-R19",
       "level": "P2",
       "name": "批量参数变化与原子规划",
-      "status": "实现中",
-      "commit": "eebced9",
+      "status": "程序完成",
+      "commit": "8e62ff0",
       "tests": "task-service.test R19；review2 batch-plan.test",
-      "note": "后端已接：planBatch 全量校验 + queue.enqueueGroup 单事务。正式 UI 的参数变化（variations）输入未做"
+      "note": "采样器/调度器变化只按文本校验，未对照 object_info 可选项"
     },
     {
       "id": "PR11-R20",
