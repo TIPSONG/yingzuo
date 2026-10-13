@@ -41,9 +41,18 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 并行分工：`feat/grovebot-assets`（A01–A08）与 `feat/grovebot-maint`（U01–U04、R01–R05）由其他 worker 负责，本分支**不实现、不改它们在进度表中的行**（它们用 `docs/development/进度-assets.md` / `进度-maint.md`）。
 
-1. E10 剩余（图片选择/下载、缩放快捷键）。
-2. 批次 4：O01–O08、R06–R08、T08；批次 5：U05–U08。
-3. 草稿 PR #11 已开，继续推送到同一分支；不要再开 PR、不要合并。
+1. E10 剩余（图片选择/下载、缩放快捷键统一）。
+2. 等 `feat/grovebot-maint` 合入 U01–U04（环境备份/事务）和 R01–R05 后：R07（插件事务）、R08（模型位置）、R06 的 CLI 执行、O08 插件部分、U06（执行更新）、U07（更新记录与保留）、U05 渠道/频率配置。这些现在标为“阻塞”或“实现中”，原因写在进度表。
+3. 批次 6（B01–B06）未开始。
+4. 草稿 PR #11 已开，继续推送到同一分支；不要再开 PR、不要合并。
+
+## 6c. 批次 4/5（本分支部分）
+
+- `desktop/services/online/`：`providers.cjs`（HF/Civitai，box 上实测过公共 API 搜索、详情与小文件下载）、`downloader.cjs`（.part + Range/If-Range 续传、sha256、原子改名、并发、取消、重启恢复；urlRef 不含令牌）、`online-service.cjs`（downloads.* 与 templates.importOnline）、`dependency-plan.cjs`（T08、O08 模型部分、R06 只读探测）。
+- `desktop/services/update-check.cjs`：maintenance.checkUpdates/checkAppRelease/downloadAppRelease/openAppUpdateFolder（只读检测 + 显式下载校验）。
+- UI：`desktop/ui/online.js`（在线资源页、下载列表、补齐依赖弹窗、从链接导入模板）、`desktop/ui/updates.js`（服务与日志页“版本与更新”）。
+- 命名约定：为避免和 maint 分支冲突，本分支没有使用 `resources.*`，诊断与补齐放在 `templates.*`，更新检测方法名为 `maintenance.check*`。合并时注意 `desktop/main.cjs`、`desktop/preload.cjs`（GROUPS）和 `docs/development/tasks.json` 的冲突。
+- `tools/check.cjs` 现在递归扫描 `desktop/services/` 子目录。
 
 ## 6. 任务链路速览（批次 2）
 
@@ -67,4 +76,6 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 批次 1：除 F08（等 Windows 构建）外程序完成；S07 已在批次 2 完成。
 - 批次 2：Q01–Q10、E07–E09 程序完成（ComfyUI 为替身，Gemma 节点输入名为推断，需 Codex 用真实工作流验收）；E10 实现中。
 - 批次 3（本分支部分）：T01–T07 程序完成。
-- 最近提交见 `git log`；`npm run check`：160 项，159 通过，1 跳过。
+- 批次 4：O01–O07、T08 程序完成；O08、R06 实现中（插件部分阻塞）；R07、R08 阻塞（依赖 maint 分支）。
+- 批次 5：Q10、U08 程序完成；U05 实现中；U06、U07 阻塞（依赖 U01–U04）。
+- 最近提交见 `git log`；`npm run check`：173 项，172 通过，1 跳过，0 失败。
