@@ -39,24 +39,13 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 ## 5. 下一步（按顺序）
 
-1. 批次 2：Q01 任务仓库（SQLite tasks/task_events + task-snapshots/ 内容寻址快照）→ Q02 Comfy HTTP/WS 客户端（`desktop/adapters/comfy-http.cjs`）→ Q03 调度器（GPU 锁、外部任务等待）→ Q04 提交与断连核对 → Q05 → Q06 运行按钮 → Q07 取消/重试 → Q08/Q09 Gemma → E07 五图表单 binding → E08 参考图 → E09 编译 → E10。完成 Q03 后把 `api.hooks.activeTasks/waitForIdle/cancelActive` 接上，S07 改为程序完成。
-2. 批次 3：A 模块（作品索引、sharp 缩略图、导出、收藏）、T01–T07、R01–R05、U01–U04（备份事务必须先于插件安装）。
-3. 后续批次见计划书第 7 节。
+1. 批次 2 剩余：把 `QueueService`（`desktop/services/queue-service.cjs`）接入 main/api：`Database.open(layout.database)`、`new TaskRepository(db, new SnapshotStore(layout.taskSnapshots))`、启动时 `recoverOnStartup()`、`tasks.*` 方法（enqueue/list/get/cancel/retry/recheck/pause/resume）加到 api.cjs 与 preload `GROUPS`；把 `activeTasks/waitForIdle/cancelActive/pauseSubmissions/resumeSubmissions` 接到 api.hooks，S07 即可标程序完成。ComfySocket 事件转给 `queue.handleSocketEvent`。
+2. Q06 统一运行入口（创作页“运行”按钮 → compile → enqueue）、Q08/Q09 Gemma、E07–E10、Q10 批量 UI。
+3. 批次 3–6（A/T/R/U → O/R06-08/T08 → Q10/U05-08 → B01-B06）。
+4. 最后一个草稿 PR 已开（见文末），继续推送到同一分支即可，不要再开 PR、不要合并。
 
-## 6. 坑与注意
+## 6. 检查点记录
 
-- `tests/desktop-main.test.cjs` 用 vm 运行 main.cjs，require 被替换：`./xxx` 会解析到真实 desktop 目录；main 里不要直接用 `process`（vm 上下文没有），新模块里可以。mock 的 `webContents.send` 把 `yingzuo:event` 和状态分开收集。
-- 新加的 preload 方法必须在 api.cjs 里有 `'group.name'` 实现，否则 `npm run check` 失败。
-- better-sqlite3 在 Electron 下需要 ABI 重建；开发版未重建时回退 node:sqlite（Electron 44 内置）。打包由 electron-builder `npmRebuild` 处理，Windows 构建走 `.github/workflows/windows-build.yml`。
-- 不要凭旧 PID 结束进程；停止服务只走 `ComfyProcessManager.stop()`（重新核对启动时间和可执行路径）。
-- 不要在 UI 放占位按钮：功能没实现就不放入口。
-
-## 7. 个人笔记 / 想法
-
-- 计划非常大（82 项）。我优先把“地基 + 真正能被调用的服务层 + 单元测试”做扎实，UI 只接真实接口；宁可状态标“实现中/阻塞”，也不标假完成。
-- 编辑器会话没有进一步细拆成多个模块，因为现有 22 个 vm 测试覆盖了它的串写保护行为，大拆风险高；后续若要拆，先补测试。
-- API 格式导入依赖 `app.loadApiJson` 在“已绑定文档”内执行后能重新绑定——这是根据前端源码推断的行为，Codex 实机验证最重要。
-
-## 检查点记录
-
-- 2026-10-13 16:14 (UTC+8)：批次 1 代码完成（S07 待队列接入、F08 待 Windows 构建结果），npm run check 通过。
+- 批次 1：除 F08（等 Windows 构建）、S07（等队列钩子）外程序完成，提交 b84553c。
+- 批次 2 部分：Q01–Q05、Q07 程序完成（tests/queue.test.cjs 13 项，ComfyUI 为内存替身）；Q10 恢复/FIFO 已实现；提交 5bbd62c。`npm run check`：144 项，143 通过，1 跳过，0 失败。
+- 未做：Q06、Q08、Q09、E07–E10 以及批次 3–6 全部。
