@@ -14,7 +14,7 @@ const GROUPS = {
   services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
   settings: ['get','update','pickPath','setCredential','removeCredential'],
   tasks: ['preview','run','previewBatch','runBatch','enhance','enhanceResult','list','get','cancel','retry','recheck','pause','resume','pickReference'],
-  templates: ['list','get','update','import','importBuiltins','open','saveFromTab','restore','export','formDraft','saveForm','checkMapping','rebind','diagnose','catalog','applyFix','undoFix','exportFixed','importOnline'],
+  templates: ['list','get','update','import','importBuiltins','open','saveFromTab','restore','export','formDraft','saveForm','checkMapping','rebind','diagnose','catalog','applyFix','undoFix','exportFixed','importOnline','dependencyPlan','findModelSources','applyDependencyPlan','detectManager'],
   downloads: ['search','detail','version','parseLink','plan','pickDir','add','list','pause','resume','cancel'],
   maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts'],
 };

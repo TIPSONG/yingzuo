@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 48 / 实现中 2 / 阻塞 0 / 未开始 32（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 49 / 实现中 4 / 阻塞 2 / 未开始 27（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -99,10 +99,10 @@
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| T08 | 依赖补齐计划 | 未开始 |  |  |  |  |  |
-| R06 | Manager 适配 | 未开始 |  |  |  |  |  |
-| R07 | 插件操作事务 | 未开始 |  |  |  |  |  |
-| R08 | 模型位置管理 | 未开始 |  |  |  |  |  |
+| T08 | 依赖补齐计划 | 程序完成 |  | desktop/services/online/dependency-plan.cjs | tests/dependency.test.cjs | 缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺节点给手动处理说明（插件安装待 R07） |  |
+| R06 | Manager 适配 | 实现中 |  |  |  | 只读探测 Manager 目录/版本/cm-cli 已实现；调用 CLI 执行操作依赖 R07 环境事务（maint 分支 U01–U04），未做 |  |
+| R07 | 插件操作事务 | 阻塞 |  |  |  | 依赖 U01–U04 环境备份/事务（feat/grovebot-maint 负责），未合入本分支前实现会重复造轮子或绕过备份 |  |
+| R08 | 模型位置管理 | 阻塞 |  |  |  | 依赖 R01–R05 资源清单与引用（feat/grovebot-maint）及文件事务；本分支不实现以免冲突 |  |
 | O01 | 来源接口 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 统一 search/detail/listFiles/resolveDownload/parseLink，内存 TTL 缓存、AbortSignal 取消、429/5xx 退避；联网失败只影响在线页 |  |
 | O02 | Hugging Face | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 仓库/固定 revision/具体文件/大小/sha256/许可/gated；Link 头分页；box 上实测搜索+详情+下载 README 成功 |  |
 | O03 | Civitai | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 模型/版本/文件/底模/触发词/授权错误/分页；box 上实测搜索成功；下载需用户凭据，需 Codex 验收 |  |
@@ -110,7 +110,7 @@
 | O05 | 通用下载器 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 流式 .part、Range/If-Range 续传、并发、取消、退避重试、大小与 sha256、原子改名；本机 HTTP 服务测试 |  |
 | O06 | 下载恢复 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 启动时中断任务置暂停并按 .part 大小续传；源变化从头下载；每次重新解析 URL，令牌不入库 |  |
 | O07 | 在线模板导入 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | HF/GitHub/https JSON 链接 → 校验 UI 格式 → 存模板（作者/许可/revision）+本地缓存；不安装不执行 |  |
-| O08 | 联合补齐 | 未开始 |  |  |  |  |  |
+| O08 | 联合补齐 | 实现中 |  |  |  | 模型部分已实现：确认后逐项加入下载并逐项报告，完成后需手动重新诊断；插件安装部分阻塞于 U01–U04/R07（maint 分支环境事务） |  |
 
 ### 批次 5
 

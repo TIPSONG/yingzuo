@@ -68,4 +68,24 @@ q('#tpl-online').addEventListener('click', async () => {
   const link = await modal(`<h3>从链接导入模板</h3><p class="muted">支持 Hugging Face 文件链接、GitHub 文件链接或其他 https JSON 地址。只下载 JSON，不安装插件、不下载模型。</p><input id="t-in" placeholder="https://…/workflow.json"><div class="actions"><button data-x="no">取消</button><button data-x="yes" class="primary">导入</button></div>`, (back, done) => back.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (b) done(b.dataset.x === 'yes' ? back.querySelector('#t-in').value : null); }));
   if (link) call(yz.templates.importOnline(link), d => `已导入：${d.template.name}（${d.template.license ? `许可 ${d.template.license}` : '许可未标注'}）。${d.notes[0]}`).catch(swallow);
 });
+/* ---------- T08/O08 补齐依赖（模型部分） ---------- */
+q('#deps').addEventListener('click', async () => {
+  const tab = typeof current === 'object' && current?.activeId; if (!tab) { toast('请先打开工作流。', true); return; }
+  let plan; try { plan = await call(yz.templates.dependencyPlan(tab)); } catch (e) { swallow(e); return; }
+  const chosen = new Map(); const found = new Map();
+  for (;;) {
+    const html = `<h3>补齐依赖</h3><p class="muted">Manager：${plan.manager.installed ? `已安装 ${esc(plan.manager.version ?? '')}` : esc(plan.manager.reason)}</p>
+      <h4>缺失模型（${plan.models.length}）</h4>${plan.models.map((m, i) => `<div class="row" style="display:block"><strong>${esc(m.name)}</strong> <small>${esc(m.role)} → models/${esc(m.folder ?? '?')} · 节点 ${m.nodes.map(esc).join(', ')}</small>${m.localCandidates.length ? `<br><small>本机已有可替换候选：${m.localCandidates.map(esc).join('、')}（可在“诊断”里应用）</small>` : ''}<br>${found.has(i) ? (found.get(i).length ? found.get(i).map((s, j) => `<label><input type="radio" name="src${i}" data-m="${i}" data-s="${j}" ${chosen.get(i) === j ? 'checked' : ''}> ${esc(s.repo)}@${esc(String(s.revision).slice(0, 8))} · ${size(s.size)}${s.sha256 ? ' · sha256' : ''}${s.gated ? ' · 需许可' : ''} · ${esc(s.license ?? '许可未标注')}</label><br>`).join('') : '<small class="err">没有找到同名文件的可靠来源，请手动下载。</small>') : `<button data-find="${i}">查找来源</button>`}</div>`).join('') || '<p class="muted">无。</p>'}
+      <h4>缺失节点/其他（${plan.nodes.length}）</h4>${plan.nodes.map(n => `<div class="row" style="display:block"><strong>${esc(n.nodeType)}</strong><br><small>${esc(n.reason)}</small></div>`).join('') || '<p class="muted">无。</p>'}
+      <div class="actions"><button data-x="close">关闭</button><button data-x="go" class="primary" ${chosen.size ? '' : 'disabled'}>下载所选（${chosen.size}）</button></div>`;
+    const act = await modal(html, (back, done) => { back.addEventListener('click', ev => { const b = ev.target.closest('button'); if (b?.dataset.find) done({find: Number(b.dataset.find)}); else if (b?.dataset.x) done({x: b.dataset.x}); }); back.addEventListener('change', ev => { const r = ev.target.closest('[data-m]'); if (r) { chosen.set(Number(r.dataset.m), Number(r.dataset.s)); done({}); } }); });
+    if (act.find !== undefined) { try { found.set(act.find, await call(yz.templates.findModelSources(plan.models[act.find].name))); } catch (e) { swallow(e); found.set(act.find, []); } continue; }
+    if (act.x === 'go') {
+      const items = [...chosen].map(([i, j]) => ({name: plan.models[i].name, role: plan.models[i].role, source: found.get(i)[j]}));
+      try { const r = await call(yz.templates.applyDependencyPlan(items)); await modal(`<h3>补齐结果</h3>${r.results.map(x => `<p>${x.ok ? '✓' : '✗'} ${esc(x.name)} ${x.ok ? '已加入下载' : esc(x.error)}</p>`).join('')}<p class="muted">${esc(r.note)}</p><div class="actions"><button data-x="ok" class="primary">好</button></div>`, (back, done) => back.addEventListener('click', ev => { if (ev.target.closest('[data-x]')) done(); })); } catch (e) { swallow(e); }
+      return;
+    }
+    if (act.x === 'close') return;
+  }
+});
 })();

@@ -594,11 +594,13 @@
   "id": "T08",
   "name": "依赖补齐计划",
   "batch": 4,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/online/dependency-plan.cjs"
+  ],
+  "checks": "tests/dependency.test.cjs",
+  "note": "缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺节点给手动处理说明（插件安装待 R07）"
  },
  {
   "id": "R01",
@@ -654,31 +656,31 @@
   "id": "R06",
   "name": "Manager 适配",
   "batch": 4,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "只读探测 Manager 目录/版本/cm-cli 已实现；调用 CLI 执行操作依赖 R07 环境事务（maint 分支 U01–U04），未做"
  },
  {
   "id": "R07",
   "name": "插件操作事务",
   "batch": 4,
-  "status": "未开始",
+  "status": "阻塞",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "依赖 U01–U04 环境备份/事务（feat/grovebot-maint 负责），未合入本分支前实现会重复造轮子或绕过备份"
  },
  {
   "id": "R08",
   "name": "模型位置管理",
   "batch": 4,
-  "status": "未开始",
+  "status": "阻塞",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "依赖 R01–R05 资源清单与引用（feat/grovebot-maint）及文件事务；本分支不实现以免冲突"
  },
  {
   "id": "O01",
@@ -768,11 +770,11 @@
   "id": "O08",
   "name": "联合补齐",
   "batch": 4,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "模型部分已实现：确认后逐项加入下载并逐项报告，完成后需手动重新诊断；插件安装部分阻塞于 U01–U04/R07（maint 分支环境事务）"
  },
  {
   "id": "U01",
