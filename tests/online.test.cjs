@@ -52,3 +52,33 @@ test('O04：按用途选目录、重名与空间检查、非法文件名', t => 
   assert.throws(() => planDownload({file: {path: 'CON'}, role: 'vae', models}), /保留名称/);
   assert.throws(() => planDownload({file: {path: 'x.bin'}, role: null, models}), /用途/);
 });
+
+test('O07/S10：在线模板源索引——解析官方格式（样本来自 Comfy-Org/workflow_templates）、搜索/分类/分页、缓存与离线回退、导入走同一流程', async t => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const {createOnlineService, parseIndex, BUILTIN_SOURCES} = require('../desktop/services/online/online-service.cjs');
+  const sample = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'comfy-workflow-templates-index.sample.json'), 'utf8'));
+  const items = parseIndex(sample, BUILTIN_SOURCES[0]);
+  assert.ok(items.length >= 2);
+  assert.match(items[0].workflowUrl, /^https:\/\/raw\.githubusercontent\.com\/Comfy-Org\/workflow_templates\/main\/templates\/[\w.-]+\.json$/);
+  assert.equal(parseIndex([{title: 'x', templates: [{name: '../evil'}]}], BUILTIN_SOURCES[0]).length, 0, '不合规名称跳过');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-ob-')); t.after(() => fs.rmSync(d, {recursive: true, force: true}));
+  let online = true, fetches = 0;
+  const ui = {last_node_id: 1, last_link_id: 0, nodes: [{id: 1, type: 'KSampler', inputs: [], outputs: [], widgets_values: []}], links: [], version: 0.4};
+  const fetchImpl = async url => { fetches++; if (!online) throw new Error('offline'); if (String(url).endsWith('index.json')) return new Response(JSON.stringify(sample)); if (String(url).endsWith('.json')) return new Response(JSON.stringify(ui)); return new Response('', {status: 404}); };
+  const created = [];
+  const svc = createOnlineService({db: {run() {}, all: () => [], get: () => null}, configRepo: {config: {}, derived: () => ({})}, layout: {root: d}, credentials: null, fetchImpl, events: {emit() {}}, logger: null, templateRepo: {create: x => { created.push(x); return {id: 't1', ...x}; }}, dialog: {}, getWindow: () => null});
+  const p1 = await svc.methods['templates.browseOnline']('comfy-official', {limit: 1});
+  assert.equal(p1.items.length, 1); assert.equal(p1.nextOffset, 1); assert.ok(p1.categories.length >= 1);
+  const q = await svc.methods['templates.browseOnline']('comfy-official', {query: items[1].title.split(' ')[0]});
+  assert.ok(q.items.some(i => i.name === items[1].name));
+  const before = fetches; await svc.methods['templates.browseOnline']('comfy-official', {}); assert.equal(fetches, before, '缓存命中');
+  online = false;
+  const st = await svc.methods['templates.browseOnline']('comfy-official', {refresh: true});
+  assert.ok(st.stale && st.total === items.length, '离线时显示缓存并标注');
+  online = true;
+  const r = await svc.methods['templates.importFromSource']('comfy-official', items[0].name);
+  assert.equal(created[0].source, `comfy-official:${items[0].name}`); assert.match(created[0].folder, /^在线\//);
+  assert.ok(r.notes.some(n => /诊断/.test(n)));
+  await assert.rejects(svc.methods['templates.importFromSource']('comfy-official', 'nope'), /没有该模板/);
+  await assert.rejects(svc.methods['templates.browseOnline']('x', {}), /未知模板源/);
+});

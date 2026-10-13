@@ -20,6 +20,37 @@ async function refresh() {
   } catch (e) { /* call 已提示 */ }
 }
 q('#tpl-list')?.addEventListener('click', e => { const b = e.target.closest('[data-thumbset]'); if (b) call(yz.templates.setThumbnail(b.dataset.thumbset), d => (d?.cancelled ? '已取消。' : '缩略图已更新。')).then(refresh, () => {}); });
+/* O07/S10：在线模板库浏览——搜索、分类、分页、缩略图、详情；导入后走同一诊断入口 */
+q('#tpl-browse')?.addEventListener('click', async () => {
+  let sources; try { sources = await call(yz.templates.onlineSources()); } catch { return; }
+  const st = {source: sources[0]?.id, query: '', category: '', offset: 0, refresh: false};
+  await modal('<h3>在线模板库</h3><div class="actions"><select id="ob-src"></select><input id="ob-q" placeholder="搜索标题、标签、模型"><select id="ob-cat"><option value="">全部分类</option></select><button id="ob-refresh" title="重新下载索引">刷新索引</button></div><p id="ob-info" class="muted"></p><div id="ob-list" class="list scroll"></div><div class="actions"><button id="ob-prev">上一页</button><button id="ob-next">下一页</button><button data-x="close" class="primary">关闭</button></div>', (back, done) => {
+    const $ = s2 => back.querySelector(s2);
+    $('#ob-src').innerHTML = sources.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    let page = null, seq = 0;
+    const load = async () => {
+      const my = ++seq; $('#ob-info').textContent = '正在读取模板源…';
+      let r; try { r = await call(yz.templates.browseOnline(st.source, {query: st.query, category: st.category || null, offset: st.offset, limit: 24, refresh: st.refresh})); } catch { $('#ob-info').textContent = '读取失败。'; return; }
+      st.refresh = false; if (my !== seq) return; page = r;
+      const cur = $('#ob-cat').value; $('#ob-cat').innerHTML = '<option value="">全部分类</option>' + r.categories.map(c => `<option ${c === cur ? 'selected' : ''}>${esc(c)}</option>`).join('');
+      $('#ob-info').textContent = `${r.source.name}：共 ${r.total} 个（${r.offset + 1}–${Math.min(r.total, r.offset + r.limit)}）· 索引时间 ${new Date(r.cachedAt).toLocaleString()}${r.stale ? ` · 网络不可用，显示缓存（${r.error}）` : ''}`;
+      $('#ob-list').innerHTML = r.items.map(it => `<div class="task"><img class="tpl-thumb" data-othumb="${esc(it.name)}" alt="" width="64" height="64"><div><div>${esc(it.title)}${it.openSource ? '' : ' <span class="badge">API/付费</span>'}</div><div class="meta">${esc(it.category)} · ${it.tags.map(esc).join(' · ')}${it.models.length ? ` · 模型：${it.models.map(esc).join('、')}` : ''}${it.minComfyUIVersion ? ` · 需 ComfyUI ≥ ${esc(it.minComfyUIVersion)}` : ''}</div><div class="meta">${esc(it.description)}</div></div><div class="actions"><button data-oimport="${esc(it.name)}" class="primary">导入</button></div></div>`).join('') || '<p class="muted">没有匹配的模板。</p>';
+      $('#ob-prev').disabled = r.offset === 0; $('#ob-next').disabled = r.nextOffset === null;
+      for (const img of back.querySelectorAll('[data-othumb]')) yz.templates.onlineThumbnail(st.source, img.dataset.othumb).then(x => { if (my === seq && x?.ok && x.data.dataUrl) img.src = x.data.dataUrl; }, () => {});
+    };
+    let t2; $('#ob-q').addEventListener('input', () => { clearTimeout(t2); t2 = setTimeout(() => { st.query = $('#ob-q').value; st.offset = 0; load(); }, 300); });
+    $('#ob-cat').addEventListener('change', () => { st.category = $('#ob-cat').value; st.offset = 0; load(); });
+    $('#ob-src').addEventListener('change', () => { st.source = $('#ob-src').value; st.offset = 0; load(); });
+    $('#ob-refresh').addEventListener('click', () => { st.refresh = true; load(); });
+    $('#ob-prev').addEventListener('click', () => { st.offset = Math.max(0, st.offset - 24); load(); });
+    $('#ob-next').addEventListener('click', () => { if (page?.nextOffset != null) { st.offset = page.nextOffset; load(); } });
+    back.addEventListener('click', async e => {
+      const imp = e.target.closest('[data-oimport]'); if (imp) { imp.disabled = true; try { const r = await call(yz.templates.importFromSource(st.source, imp.dataset.oimport), d => `已导入「${d.template.name}」。${d.notes.join(' ')}`); imp.textContent = '已导入'; refresh(); } catch { imp.disabled = false; } }
+      if (e.target.closest('[data-x]')) done(null);
+    });
+    load();
+  });
+});
 let timer; q('#tpl-search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(refresh, 200); });
 q('#tpl-folder').addEventListener('change', refresh); q('#tpl-fav').addEventListener('change', refresh);
 q('#nav').addEventListener('click', e => { if (e.target.closest('[data-page="templates"]')) refresh(); });

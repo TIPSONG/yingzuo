@@ -8,6 +8,24 @@ const {createProviders} = require('./providers.cjs');
 const {DownloadManager} = require('./downloader.cjs');
 const ImportPipeline = require('../../../shared/import-pipeline.cjs');
 
+// O07：官方 ComfyUI 模板库（github.com/Comfy-Org/workflow_templates）。索引 templates/index.json：
+// [{moduleName, category, title, type, templates: [{name, title, description, mediaSubtype, tags, models, minComfyUIVersion, openSource, username, tutorialUrl}]}]；
+// 工作流 templates/<name>.json，缩略图 templates/<name>-1.<mediaSubtype>。其他源须提供同格式索引（https）。
+const OFFICIAL_BASE = 'https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/';
+const BUILTIN_SOURCES = [{id: 'comfy-official', name: 'ComfyUI 官方模板库', homepage: 'https://github.com/Comfy-Org/workflow_templates', indexUrl: `${OFFICIAL_BASE}index.json`, base: OFFICIAL_BASE, author: 'ComfyUI'}];
+const INDEX_TTL = 6 * 3600 * 1000;
+const validSource = s => s && /^[\w-]{1,40}$/.test(s.id ?? '') && typeof s.name === 'string' && /^https:\/\//.test(s.indexUrl ?? '') && /^https:\/\/.+\/$/.test(s.base ?? '');
+const NAME_RE = /^[\w.-]{1,120}$/;
+function parseIndex(raw, src) {
+  if (!Array.isArray(raw)) throw new AppError(CODES.INVALID_ARGUMENT, '模板源索引格式不正确。');
+  const out = [];
+  for (const cat of raw) for (const t of Array.isArray(cat?.templates) ? cat.templates : []) {
+    if (!NAME_RE.test(String(t?.name ?? ''))) continue; // 名称决定下载路径：不合规的跳过，防止路径注入
+    const sub = /^(webp|png|jpe?g)$/.test(t.mediaSubtype ?? '') ? t.mediaSubtype : 'webp';
+    out.push({name: t.name, title: String(t.title ?? t.name).slice(0, 200), description: String(t.description ?? '').slice(0, 1000), category: String(cat.title ?? cat.category ?? '其他').slice(0, 80), group: String(cat.category ?? '').slice(0, 80), tags: (Array.isArray(t.tags) ? t.tags : []).map(String).slice(0, 12), models: (Array.isArray(t.models) ? t.models : []).map(String).slice(0, 12), minComfyUIVersion: t.minComfyUIVersion ?? null, openSource: t.openSource !== false, username: t.username ?? null, tutorialUrl: /^https:\/\//.test(t.tutorialUrl ?? '') ? t.tutorialUrl : null, date: t.date ?? null, workflowUrl: `${src.base}${t.name}.json`, thumbnailUrl: `${src.base}${t.name}-1.${sub}`});
+  }
+  return out;
+}
 const ROLE_FOLDER = {diffusion: 'diffusion_models', encoder: 'text_encoders', vae: 'vae', lora: 'loras', checkpoint: 'checkpoints', upscale: 'upscale_models', controlnet: 'controlnet'};
 
 /** O04：规划一个文件下载。返回目标、空间、冲突说明；不写任何文件。 */
@@ -80,18 +98,71 @@ function createOnlineService({db, configRepo, layout, credentials, fetchImpl, ev
       const [owner, , , rev] = u.pathname.split('/').filter(Boolean);
       meta = {source: `github:${u.pathname}`, license: null, author: owner, revision: rev};
     }
-    const res = await fetchImpl(fetchUrl, {signal: AbortSignal.timeout(30000), headers: hf ? providers.byId.huggingface.authHeaders() : {}});
+    return importFromUrl(fetchUrl, meta, {name: decodeURIComponent(path.basename(u.pathname)), headers: hf ? providers.byId.huggingface.authHeaders() : {}});
+  };
+  async function importFromUrl(fetchUrl, meta, {name, headers = {}, folder = '在线导入', tags = ['在线']} = {}) {
+    const res = await fetchImpl(fetchUrl, {signal: AbortSignal.timeout(30000), headers});
     if (!res.ok) throw new AppError(CODES.SERVICE_UNAVAILABLE, `下载模板失败：HTTP ${res.status}`);
     const len = Number(res.headers.get('content-length'));
     if (len > ImportPipeline.MAX_BYTES) throw new AppError(CODES.INVALID_ARGUMENT, '模板文件过大。');
     const text = await res.text();
-    let info; try { info = ImportPipeline.analyze(text, {name: decodeURIComponent(path.basename(u.pathname))}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
+    let info; try { info = ImportPipeline.analyze(text, {name}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
     if (info.format !== 'ui') throw new AppError(CODES.INVALID_ARGUMENT, '这是 API 格式工作流，没有界面信息；请下载后在创作页导入。');
     const cache = path.join(layout.root, 'downloads', 'online-templates'); fs.mkdirSync(cache, {recursive: true});
     fs.writeFileSync(path.join(cache, `${Date.now()}-${info.name.replace(/[^\w.-]+/g, '_')}.json`), text);
-    const t = templateRepo.create({name: info.name, graph: info.graph, folder: '在线导入', tags: ['在线'], source: meta.source, license: meta.license, author: meta.author, note: `在线导入${meta.revision ? ` @${String(meta.revision).slice(0, 12)}` : ''}`});
+    const t = templateRepo.create({name: meta.title ?? info.name, graph: info.graph, folder, tags, source: meta.source, license: meta.license, author: meta.author, note: `在线导入${meta.revision ? ` @${String(meta.revision).slice(0, 12)}` : ''}`});
     return {template: t, nodeTypes: info.nodeTypes, notes: ['未安装任何插件或模型；请用“诊断”检查缺失项。', ...info.notes]};
+  }
+
+  /* ---------- O07/S10：在线模板浏览（源索引 → 分页/搜索/缓存 → 详情 → 同一导入与诊断入口） ---------- */
+  const sources = () => [...BUILTIN_SOURCES, ...(configRepo.config.onlineTemplates?.sources ?? []).filter(validSource)];
+  const sourceOf = id => { const s = sources().find(x => x.id === id); if (!s) throw new AppError(CODES.INVALID_ARGUMENT, '未知模板源。'); return s; };
+  const cacheDir = () => { const d = path.join(layout.root, 'downloads', 'online-templates'); fs.mkdirSync(d, {recursive: true}); return d; };
+  const indexMem = new Map();
+  async function loadIndex(src, {refresh = false} = {}) {
+    const file = path.join(cacheDir(), `index-${src.id}.json`);
+    const mem = indexMem.get(src.id);
+    if (!refresh && mem && Date.now() - mem.at < INDEX_TTL) return mem;
+    if (!refresh && fs.existsSync(file) && Date.now() - fs.statSync(file).mtimeMs < INDEX_TTL) { try { const v = {at: fs.statSync(file).mtimeMs, items: parseIndex(JSON.parse(fs.readFileSync(file, 'utf8')), src), cached: true}; indexMem.set(src.id, v); return v; } catch { /* 缓存损坏则重新下载 */ } }
+    let raw;
+    try {
+      const res = await fetchImpl(src.indexUrl, {signal: AbortSignal.timeout(30000)});
+      if (!res.ok) throw new AppError(CODES.SERVICE_UNAVAILABLE, `读取模板源失败：HTTP ${res.status}`);
+      const text = await res.text(); if (text.length > 20 << 20) throw new AppError(CODES.INVALID_ARGUMENT, '模板索引过大。');
+      raw = JSON.parse(text); fs.writeFileSync(`${file}.tmp`, text); fs.renameSync(`${file}.tmp`, file);
+    } catch (e) {
+      if (fs.existsSync(file)) { const v = {at: fs.statSync(file).mtimeMs, items: parseIndex(JSON.parse(fs.readFileSync(file, 'utf8')), src), cached: true, stale: true, error: e.message}; indexMem.set(src.id, v); return v; }
+      throw e instanceof AppError ? e : new AppError(CODES.NETWORK, `读取模板源失败：${e.message}`);
+    }
+    const v = {at: Date.now(), items: parseIndex(raw, src), cached: false}; indexMem.set(src.id, v); return v;
+  }
+  methods['templates.onlineSources'] = async () => sources().map(({id, name, homepage}) => ({id, name, homepage}));
+  methods['templates.browseOnline'] = async (sourceId, {query = '', category = null, offset = 0, limit = 24, refresh = false} = {}) => {
+    const src = sourceOf(sourceId); const idx = await loadIndex(src, {refresh});
+    const terms = String(query).toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8);
+    const hit = it => terms.every(t => [it.title, it.name, it.description, ...(it.tags ?? []), ...(it.models ?? [])].join(' ').toLowerCase().includes(t));
+    const list = idx.items.filter(it => (!category || it.category === category) && hit(it));
+    limit = Math.max(1, Math.min(60, Number(limit) || 24)); offset = Math.max(0, Number(offset) || 0);
+    return {source: {id: src.id, name: src.name}, total: list.length, offset, limit, items: list.slice(offset, offset + limit), nextOffset: offset + limit < list.length ? offset + limit : null, categories: [...new Set(idx.items.map(i => i.category))], cachedAt: new Date(idx.at).toISOString(), stale: !!idx.stale, error: idx.error ?? null};
+  };
+  methods['templates.onlineThumbnail'] = async (sourceId, name) => {
+    const src = sourceOf(sourceId); const it = (await loadIndex(src)).items.find(i => i.name === name);
+    if (!it?.thumbnailUrl) return {dataUrl: null};
+    const ext = it.thumbnailUrl.split('.').pop().toLowerCase(); const mime = {webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg'}[ext]; if (!mime) return {dataUrl: null};
+    const file = path.join(cacheDir(), 'thumbs', `${src.id}-${name}.${ext}`);
+    if (!fs.existsSync(file)) {
+      const res = await fetchImpl(it.thumbnailUrl, {signal: AbortSignal.timeout(20000)}); if (!res.ok) return {dataUrl: null};
+      const buf = Buffer.from(await res.arrayBuffer()); if (buf.length > 3 << 20) return {dataUrl: null};
+      fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(`${file}.tmp`, buf); fs.renameSync(`${file}.tmp`, file);
+    }
+    return {dataUrl: `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`};
+  };
+  methods['templates.importFromSource'] = async (sourceId, name) => {
+    const src = sourceOf(sourceId); const it = (await loadIndex(src)).items.find(i => i.name === name);
+    if (!it) throw new AppError(CODES.NOT_FOUND, '模板源中没有该模板。');
+    const r = await importFromUrl(it.workflowUrl, {source: `${src.id}:${it.name}`, license: src.license ?? null, author: it.username ?? src.author ?? null, revision: src.revision ?? null, title: it.title}, {name: `${it.name}.json`, folder: `在线/${src.name}`, tags: ['在线', ...(it.tags ?? []).slice(0, 5)]});
+    return {...r, notes: [...r.notes, ...(it.minComfyUIVersion ? [`该模板要求 ComfyUI ≥ ${it.minComfyUIVersion}。`] : []), ...(it.openSource === false ? ['该模板使用付费/闭源 API 节点。'] : [])]};
   };
   return {providers, downloads, methods, start: () => { downloads.recoverOnStartup(); }};
 }
-module.exports = {createOnlineService, planDownload, ROLE_FOLDER};
+module.exports = {createOnlineService, planDownload, ROLE_FOLDER, parseIndex, BUILTIN_SOURCES};
