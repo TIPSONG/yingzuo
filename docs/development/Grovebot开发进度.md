@@ -62,7 +62,7 @@
 | PR11-R14 | P2 | 回收区与备份空间管理 | 程序完成 | ca3792f | maint-service.test R07/R14；review2 trash-store.test | 只管理本应用登记条目；永久清理需确认、逐项再核对；未完成恢复使用的条目受保护 |
 | PR11-R15 | P2 | 206 续传与来源身份 | 程序完成 | 50c8fa9 | review2 downloader-resume.test（7 项） | 由 feat/grovebot-review2 完成并已合并 |
 | PR11-R16 | P2 | 分享 JPEG 完整解析和方向策略 | 程序完成 | 50c8fa9 | review2 image-meta-jpeg.test（6 项） | 由 feat/grovebot-review2 完成并已合并；方向非 1 时拒绝无损剥离（不做像素旋转） |
-| PR11-R17 | P2 | 大文件工作移出主进程 | 实现中 | 3f86e50 | review2 worker-pool.test；maint-service.test 走 worker 哈希 | resources.hash 与模型移动校验已用 WorkerPool；资源扫描批量哈希、缩略图、备份复制仍在主进程 |
+| PR11-R17 | P2 | 大文件工作移出主进程 | 实现中 | 3b8d5cd | review2 worker-pool.test；maint-service/app-backup 测试走 worker | 已用 worker：resources.hash、模型移动校验、备份逐文件哈希。未用：缩略图/图片元数据（assets 仍在主进程）、备份文件复制本身 |
 | PR11-R18 | P1 | 敏感输入引用与快照脱敏 | 程序完成 | 5729991 | task-service.test R18 两项；review2 的 secret-fields.test | 合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理 |
 | PR11-R19 | P2 | 批量参数变化与原子规划 | 程序完成 | 8e62ff0 | task-service.test R19；review2 batch-plan.test | 采样器/调度器变化只按文本校验，未对照 object_info 可选项 |
 | PR11-R20 | P2 | 稳定输出身份与真实保存节点适配 | 程序完成 | eebced9 | task-service.test A03/R20；review2 output-plan.test | 无模板时用结构指纹；SaveImageAdvanced 仅在 object_info 确认 STRING 前缀字段时改写 |

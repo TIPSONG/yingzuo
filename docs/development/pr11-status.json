@@ -283,9 +283,9 @@
       "level": "P2",
       "name": "大文件工作移出主进程",
       "status": "实现中",
-      "commit": "3f86e50",
-      "tests": "review2 worker-pool.test；maint-service.test 走 worker 哈希",
-      "note": "resources.hash 与模型移动校验已用 WorkerPool；资源扫描批量哈希、缩略图、备份复制仍在主进程"
+      "commit": "3b8d5cd",
+      "tests": "review2 worker-pool.test；maint-service/app-backup 测试走 worker",
+      "note": "已用 worker：resources.hash、模型移动校验、备份逐文件哈希。未用：缩略图/图片元数据（assets 仍在主进程）、备份文件复制本身"
     },
     {
       "id": "PR11-R18",
