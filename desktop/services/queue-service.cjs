@@ -15,7 +15,7 @@ class QueueService {
    */
   constructor({tasks, client, gpuLock, events, logger, clientId, prepare = async (_t, s) => s.apiPrompt, onTerminal = () => {}, pollMs = 1500, externalWaitMs = 3000, sleep = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()}) {
     Object.assign(this, {tasks, client, gpuLock, events, logger, clientId, prepare, onTerminal, pollMs, externalWaitMs, sleep, now});
-    this.paused = false; this.running = null; this.tokens = new Map(); this.external = new Map(); this.pumping = false; this.stopped = false; this.idleWaiters = []; this.leases = new Map(); this.leaseSeq = 0; this.ready = Promise.resolve(); this.followers = new Map();
+    this.paused = false; this.running = null; this.tokens = new Map(); this.external = new Map(); this.pumping = false; this.stopped = false; this.idleWaiters = []; this.leases = new Map(); this.leaseSeq = 0; this.ready = Promise.resolve(); this.followers = new Map(); this.starting = 0;
   }
   /* ---------- 入队 ---------- */
   enqueue({kind = 'generate', workflowId, snapshot, inputRevision, groupId = null}) {
@@ -35,7 +35,7 @@ class QueueService {
   isIdle() { return !this.activeTasks().length && !this.tasks.nextQueued(); }
   /** 等待本应用任务全部结束；timeoutMs 到期抛 TIMEOUT（不当作空闲）。 */
   waitForIdle({timeoutMs} = {}) {
-    if (!this.activeTasks().length) return Promise.resolve();
+    if (!this.activeTasks().length && !this.starting) return Promise.resolve();
     return new Promise((resolve, reject) => {
       let timer = null;
       const done = () => { clearTimeout(timer); resolve(); };
@@ -60,6 +60,9 @@ class QueueService {
     this.events?.emit('queue.state', null, this.state()); this.kick();
   }
   state() { return {paused: this.paused, holds: [...this.leases.values()], runningTaskId: this.running, external: [...this.external.values()]}; }
+  /** S01：提交屏障——任何 await 之后都要重检；被阻止时任务保持 queued。 */
+  blocked(taskId) { return this.paused || this.leases.size > 0 || this.stopped || (taskId != null && this.tasks.get(taskId)?.state !== 'queued'); }
+  settleIdle() { if (!this.activeTasks().length && !this.starting) { const w = this.idleWaiters.splice(0); w.forEach(r => r()); } }
   kick() { if (!this.pumping && !this.stopped) this.pump().catch(e => this.logger?.error('queue pump failed', {error: e.message})); }
   stop() { this.stopped = true; }
   /* ---------- 主循环 ---------- */
@@ -75,25 +78,34 @@ class QueueService {
         // 外部任务（ComfyUI 原生运行或其他客户端）存在时等待，不插队、不接管。
         let client;
         try { client = this.client(); } catch (e) { this.logger?.warn('queue: no client', {error: e.message}); break; }
-        let q;
-        try { q = parseQueue(await client.queue()); }
-        catch (e) { this.events?.emit('queue.state', null, {...this.state(), waiting: 'service', error: e.message}); await this.sleep(this.externalWaitMs); continue; }
-        const foreign = [...q.running, ...q.pending].filter(i => !this.tasks.byPromptId(i.promptId) && !(i.requestId && this.findByRequest(i.requestId)));
-        this.external = new Map(foreign.map(i => [i.promptId, {promptId: i.promptId, running: q.running.some(r => r.promptId === i.promptId)}]));
-        if (foreign.length) { this.events?.emit('queue.state', null, {...this.state(), waiting: 'external'}); await this.sleep(this.externalWaitMs); continue; }
-        await this.runTask(next, client);
+        // S01：从查询后端队列起即计入 in-flight，waitForIdle 不会在此期间返回
+        this.starting++;
+        let held = true; const drop = () => { if (held) { held = false; this.starting--; } };
+        try {
+          let q;
+          try { q = parseQueue(await client.queue()); }
+          catch (e) { this.events?.emit('queue.state', null, {...this.state(), waiting: 'service', error: e.message}); await this.sleep(this.externalWaitMs); continue; }
+          if (this.blocked(next.id)) continue; // 等待期间取得了暂停租约 / 任务被取消
+          const foreign = [...q.running, ...q.pending].filter(i => !this.tasks.byPromptId(i.promptId) && !(i.requestId && this.findByRequest(i.requestId)));
+          this.external = new Map(foreign.map(i => [i.promptId, {promptId: i.promptId, running: q.running.some(r => r.promptId === i.promptId)}]));
+          if (foreign.length) { this.events?.emit('queue.state', null, {...this.state(), waiting: 'external'}); await this.sleep(this.externalWaitMs); continue; }
+          await this.runTask(next, client, drop);
+        } finally { drop(); }
       }
     } finally {
       this.pumping = false;
-      if (!this.activeTasks().length) { const w = this.idleWaiters.splice(0); w.forEach(r => r()); }
+      this.settleIdle();
     }
   }
   findByRequest(requestId) { return this.tasks.db.get('SELECT id FROM tasks WHERE request_id = ?', requestId) ? true : false; }
-  async runTask(task, client) {
+  async runTask(task, client, admitted = () => {}) {
     const token = new CancelToken(); this.tokens.set(task.id, token); this.running = task.id;
     const release = await this.gpuLock.acquire({owner: `task:${task.id}`});
     try {
+      // S01：取得 GPU 锁后最终重检；通过后同步进入 preparing（之间无 await），再交出 in-flight 计数
+      if (this.blocked(task.id)) return;
       task = this.tasks.transition(task.id, 'preparing', {reason: '开始准备'});
+      admitted();
       const snapshot = this.tasks.snapshotOf(task);
       let prompt;
       try { prompt = await this.prepare(task, snapshot, client, token); }
@@ -221,7 +233,7 @@ class QueueService {
     }
   }
   /* ---------- 取消与重试（Q07） ---------- */
-  async cancel(taskId) {
+  async cancel(taskId, opts = {}) {
     const task = this.tasks.get(taskId);
     if (!task) throw new AppError(CODES.NOT_FOUND, '任务不存在。');
     if (['draft', 'queued', 'paused'].includes(task.state)) return this.tasks.transition(taskId, 'cancelled', {reason: '未提交前取消'});
@@ -242,15 +254,14 @@ class QueueService {
       if ([...after.pending, ...after.running].some(i => i.promptId === task.comfyPromptId)) throw new AppError(CODES.CONFLICT, '后端没有移除该排队任务，请稍后重试。');
       return this.tasks.transition(taskId, 'cancelled', {reason: '从后端队列移除'});
     }
-    if (q.running.length && q.running[0].promptId === task.comfyPromptId) {
-      // 重新确认正在运行的正是目标后发送带 prompt_id 的中断；老版本服务会忽略 prompt_id 做全局中断，
-      // 但此刻运行的就是目标，风险仅限于极短的竞态窗口。
-      // 旧后端：发送前再核对一次，缩小竞态窗口；无法做到原子，状态里标注 legacy
-      const again = parseQueue(await client.queue());
-      if (again.running[0]?.promptId !== task.comfyPromptId) throw new AppError(CODES.CONFLICT, '目标任务已结束或已切换，未发送中断以免影响其他任务。');
-      await client.interrupt(task.comfyPromptId);
-      this.events?.emit('tasks.progress', taskId, {progress: {cancelRequested: true, mode: 'legacy-interrupt'}});
-      return this.tasks.get(taskId); // 终态以 history（execution_interrupted）为准
+    if (q.running.some(i => i.promptId === task.comfyPromptId)) {
+      // S03：旧后端没有原子的按任务取消。/interrupt 可能被解释为全局中断，查询与发送之间无法排除切换到其他任务，
+      // 所以默认不发送；只有用户明确选择“中断后端当前执行（可能影响其他任务）”时才发送全局中断。
+      if (!opts.globalInterrupt) throw new AppError(CODES.UNSUPPORTED, '当前 ComfyUI 不支持按任务取消运行中的任务。可等待其结束，或明确选择“中断后端当前执行”（会中断此刻正在执行的任何任务）。', {details: {needsGlobalInterrupt: true}});
+      await client.interrupt();
+      this.logger?.warn('用户确认的全局中断', {taskId});
+      this.events?.emit('tasks.progress', taskId, {progress: {cancelRequested: true, mode: 'global-interrupt'}});
+      return this.tasks.get(taskId); // 终态以 history 为准
     }
     throw new AppError(CODES.INVALID_STATE, '后端当前运行的不是这个任务，为避免误中断其他任务，已禁用取消。', {details: {running: q.running.map(i => i.promptId)}});
   }

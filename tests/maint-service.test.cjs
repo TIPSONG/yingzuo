@@ -34,7 +34,7 @@ function setup(opt = {}) {
   const calls = [];
   const comfy = {verifyOwned: opt.verifyOwned ?? (async () => false), stop: async () => calls.push('stop'), ensureRunning: async () => calls.push('start')};
   const paused = [];
-  const taskService = {hooks: {pauseSubmissions: () => { paused.push('p'); return () => paused.push('r'); }, waitForIdle: async () => {}, activeTasks: () => []}, tasks: {list: () => [{id: 't1', seq: 1}], snapshotOf: () => ({apiPrompt: {1: {class_type: 'LoraLoader', inputs: {lora_name: 'style.safetensors'}}}})}};
+  const taskService = {hooks: {pauseSubmissions: () => { paused.push('p'); return () => paused.push('r'); }, waitForIdle: async () => {}, activeTasks: () => opt.active ?? []}, tasks: {list: () => [{id: 't1', seq: 1}], snapshotOf: () => ({apiPrompt: {1: {class_type: 'LoraLoader', inputs: {lora_name: 'style.safetensors'}}}})}};
   const editor = {workspace: {tabs: [{id: 'd1', title: '草稿一', graph: {nodes: [{id: 1, type: 'NodeA', widgets_values: ['style.safetensors']}]}}]}};
   const events = {emit: () => {}};
   const locks = createLocks();
@@ -190,19 +190,57 @@ test('D06/PR11-R02：继续恢复与恢复备份走同一保护——外部服�
   await assert.rejects(svc.methods['maintenance.createBackup'](), e => e.code === 'INVALID_STATE');
 });
 
-test('R06：跨盘移动中断后启动核对——目标完整则删源，否则删临时副本保留源', async () => {
-  const {svc, base, layout} = setup();
-  const crypto = require('node:crypto');
-  const mk = (name, body) => { const p = path.join(base, name); fs.writeFileSync(p, body); return p; };
-  const moves = path.join(layout.root, 'model-moves'); fs.mkdirSync(moves, {recursive: true});
+function moveFixture(opt = {}) {
+  const ctx = setup(opt); const crypto = require('node:crypto');
+  const r1 = path.join(ctx.base, 'ComfyUI', 'models', 'checkpoints'); fs.mkdirSync(r1, {recursive: true});
+  const moves = path.join(ctx.layout.root, 'model-moves'); fs.mkdirSync(moves, {recursive: true});
   const h = b => crypto.createHash('sha256').update(b).digest('hex');
+  const mk = (name, body) => { const p = path.join(r1, name); fs.writeFileSync(p, body); return p; };
+  const journal = (name, j) => fs.writeFileSync(path.join(moves, `${name}.json`), JSON.stringify(j));
+  return {...ctx, r1, moves, h, mk, journal};
+}
+test('R06：跨盘移动中断后启动核对——目标完整则删源，否则删临时副本保留源', async () => {
+  const {svc, r1, moves, h, mk, journal} = moveFixture();
   const s1 = mk('s1.safetensors', 'AAA'), d1 = mk('d1.safetensors', 'AAA');
-  fs.writeFileSync(path.join(moves, 'a.json'), JSON.stringify({src: s1, dest: d1, tmp: d1 + '.yz-moving', sha256: h('AAA')}));
-  const s2 = mk('s2.safetensors', 'BBB'), t2 = mk('d2.safetensors.yz-moving', 'BB');
-  fs.writeFileSync(path.join(moves, 'b.json'), JSON.stringify({src: s2, dest: path.join(base, 'd2.safetensors'), tmp: t2, sha256: h('BBB')}));
+  journal('a', {src: s1, dest: d1, tmp: d1 + '.yz-moving', sha256: h('AAA')});
+  const s2 = mk('s2.safetensors', 'BBB'), d2 = path.join(r1, 'd2.safetensors'), t2 = mk('d2.safetensors.yz-moving', 'BB');
+  journal('b', {src: s2, dest: d2, tmp: t2, sha256: h('BBB')});
   const r = await svc.recoverModelMoves();
   assert.deepEqual(r.map(x => x.action).sort(), ['completed', 'rolled-back']);
   assert.ok(!fs.existsSync(s1) && fs.existsSync(d1));
   assert.ok(fs.existsSync(s2) && !fs.existsSync(t2));
   assert.deepEqual(fs.readdirSync(moves), []);
+});
+test('S04：源路径出现新内容（含同大小）——不删除、两份保留、标冲突且下次仍保留', async () => {
+  const {svc, moves, h, mk, journal} = moveFixture();
+  const src = mk('m.safetensors', 'NEW'), dest = mk('m2.safetensors', 'OLD'); // 同大小、内容不同
+  journal('a', {src, dest, tmp: dest + '.yz-moving', sha256: h('OLD')});
+  const r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'conflict');
+  assert.equal(fs.readFileSync(src, 'utf8'), 'NEW', 'sourcePreserved');
+  assert.equal(fs.readFileSync(dest, 'utf8'), 'OLD');
+  assert.equal((await svc.recoverModelMoves())[0].action, 'conflict'); assert.equal(fs.readdirSync(moves).length, 1);
+});
+test('S04：源缺失＋目标损坏保留现场；源缺失＋只有完整临时副本则补完；非法 journal 不动文件', async () => {
+  const {svc, base, moves, h, mk, journal} = moveFixture();
+  const d1 = mk('x.safetensors', 'BAD'), t1 = mk('x.safetensors.yz-moving', 'GOOD');
+  journal('a', {src: path.join(path.dirname(d1), 'gone.safetensors'), dest: d1, tmp: t1, sha256: h('GOOD')});
+  let r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'needs-attention'); assert.ok(fs.existsSync(t1) && fs.existsSync(d1)); fs.rmSync(path.join(moves, 'a.json'));
+  const d2 = path.join(path.dirname(d1), 'y.safetensors'), t2 = mk('y.safetensors.yz-moving', 'ONLY');
+  journal('b', {src: path.join(path.dirname(d1), 'gone2.safetensors'), dest: d2, tmp: t2, sha256: h('ONLY')});
+  r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'completed-from-temp'); assert.equal(fs.readFileSync(d2, 'utf8'), 'ONLY');
+  const outside = path.join(base, 'outside.txt'); fs.writeFileSync(outside, 'keep');
+  const d3 = mk('z.safetensors', 'keep');
+  journal('c', {src: outside, dest: d3, tmp: d3 + '.yz-moving', sha256: h('keep')});
+  r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'needs-attention'); assert.ok(fs.existsSync(outside));
+});
+test('S04：有任务运行时推迟核对，不动文件、journal 保留', async () => {
+  const {svc, h, mk, journal, moves} = moveFixture({active: [{id: 't'}]});
+  const s = mk('a.safetensors', 'A'), d = mk('b.safetensors', 'A');
+  journal('a', {src: s, dest: d, tmp: d + '.yz-moving', sha256: h('A')});
+  const r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'deferred'); assert.ok(fs.existsSync(s)); assert.equal(fs.readdirSync(moves).length, 1);
 });

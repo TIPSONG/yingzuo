@@ -191,7 +191,14 @@ function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeo
 q('#queue-list').addEventListener('click', async e => {
   const c = e.target.closest('[data-cancel]'), r = e.target.closest('[data-retry]'), k = e.target.closest('[data-recheck]');
   try {
-    if (c) await call(yz.tasks.cancel(c.dataset.cancel), '已请求取消。');
+    if (c) {
+      try { await call(yz.tasks.cancel(c.dataset.cancel), '已请求取消。'); }
+      catch (err) {
+        // S03：旧版 ComfyUI 无法只取消这个任务；全局中断必须由用户明确选择
+        if (!err.details?.needsGlobalInterrupt) throw err;
+        if (await confirmModal('中断后端当前执行？', '当前 ComfyUI 不支持只取消这个任务。继续将中断后端此刻正在执行的任何任务（包括原生画布或其他程序提交的任务）。')) await call(yz.tasks.cancel(c.dataset.cancel, {globalInterrupt: true}), '已发送全局中断。');
+      }
+    }
     if (r && r.dataset.unknown) { if (await confirmModal('可能重复出图', '这个任务提交后失去联系，ComfyUI 可能已经执行过。重试会再执行一次。')) await call(yz.tasks.retry(r.dataset.retry, {confirmDuplicate: true}), '已重新加入队列。'); }
     else if (r) await call(yz.tasks.retry(r.dataset.retry), '已按原参数重新加入队列。');
     if (k) await call(yz.tasks.recheck(k.dataset.recheck), d => `核对结果：${STATE[d.state] ?? d.state}`);

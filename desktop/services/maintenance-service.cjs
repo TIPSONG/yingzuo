@@ -116,23 +116,58 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
   const trash = new TrashStore({trashDir: layout.trash});
   /* ---------- R06：跨盘移动中断后的启动核对 ---------- */
   const movesDir = path.join(layout.root, 'model-moves');
-  /** 目标已完整（哈希一致）→ 删除仍在的源；否则删除临时副本、保留源。任何情况都不删除唯一副本。 */
+  /**
+   * S04：启动核对。原则：任何唯一副本或后来变化的内容都不删除。
+   * - journal 路径必须位于已登记模型根内、tmp 必须是 dest 的固定临时名，否则只报告不动文件；
+   * - 删除源前重新计算源 hash，必须等于 journal 记录的被移动文件；源变了就两份保留、标冲突；
+   * - 唯一副本只有 tmp（源和目标都不在）且 hash 正确时，把 tmp 改名为目标；
+   * - 取得与维护相同的环境锁和暂停租约；有任务运行时推迟，journal 保留到下次。
+   */
+  function journalValid(j) {
+    const roots = Object.values(folderMap()).flat().map(r => path.resolve(r));
+    const inRoot = p => typeof p === 'string' && path.isAbsolute(p) && roots.some(r => { const rel = path.relative(r, path.resolve(p)); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); });
+    return j && typeof j.sha256 === 'string' && /^[0-9a-f]{64}$/.test(j.sha256) && inRoot(j.src) && inRoot(j.dest) && j.tmp === `${j.dest}.yz-moving`;
+  }
   async function recoverModelMoves() {
     if (!fs.existsSync(movesDir)) return [];
+    const files = fs.readdirSync(movesDir).filter(n => n.endsWith('.json'));
+    if (!files.length) return [];
+    const release = locks.environment.tryAcquire('model-move-recover');
+    if (!release) return files.map(f => ({file: f, action: 'deferred', reason: '环境锁被占用'}));
+    const lease = taskService?.hooks.pauseSubmissions('model-move-recover') ?? null;
     const out = [];
-    for (const f of fs.readdirSync(movesDir).filter(n => n.endsWith('.json'))) {
-      const file = path.join(movesDir, f);
-      try {
-        const j = JSON.parse(fs.readFileSync(file, 'utf8'));
-        fs.rmSync(j.tmp, {force: true});
-        const destOk = fs.existsSync(j.dest) && await hashFile(j.dest) === j.sha256;
-        if (destOk && fs.existsSync(j.src)) { fs.rmSync(j.src); out.push({dest: j.dest, action: 'completed'}); }
-        else if (!destOk && fs.existsSync(j.src)) out.push({src: j.src, action: 'rolled-back'});
-        else out.push({dest: j.dest, action: destOk ? 'already-done' : 'needs-attention'});
-        fs.rmSync(file, {force: true});
-      } catch (e) { logger?.warn('模型移动核对失败', {file, error: e.message}); out.push({file, action: 'needs-attention', error: e.message}); }
-    }
-    return out;
+    try {
+      if (taskService?.hooks.activeTasks().length) return files.map(f => ({file: f, action: 'deferred', reason: '有任务运行中，可能正在加载模型'}));
+      for (const f of files) {
+        const file = path.join(movesDir, f);
+        const keep = (action, extra = {}) => { out.push({file: f, action, ...extra}); };
+        const drop = (action, extra = {}) => { fs.rmSync(file, {force: true}); out.push({file: f, action, ...extra}); };
+        try {
+          const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+          if (j.conflict) { keep('conflict', {src: j.src, dest: j.dest, reason: j.conflict}); continue; }
+          if (!journalValid(j)) { keep('needs-attention', {reason: '移动记录的路径不在已登记模型目录内，未处理任何文件'}); continue; }
+          const has = p => fs.existsSync(p);
+          const ok = async p => has(p) && await hashFile(p) === j.sha256;
+          const destOk = await ok(j.dest), tmpOk = await ok(j.tmp);
+          const srcHas = has(j.src), srcSame = srcHas && await hashFile(j.src) === j.sha256;
+          if (srcHas && !srcSame) {
+            // 源路径出现了新内容：两份都保留
+            if (destOk && has(j.tmp)) fs.rmSync(j.tmp, {force: true});
+            const reason = '源路径的文件已变化（不是当初移动的文件），两份都已保留，请手动决定。';
+            fs.writeFileSync(file, JSON.stringify({...j, conflict: reason}));
+            keep('conflict', {src: j.src, dest: j.dest, reason}); continue;
+          }
+          if (srcSame && destOk) { if (has(j.tmp)) fs.rmSync(j.tmp, {force: true}); fs.rmSync(j.src); drop('completed', {dest: j.dest}); continue; }
+          if (srcSame && !has(j.dest)) { if (has(j.tmp)) fs.rmSync(j.tmp, {force: true}); drop('rolled-back', {src: j.src}); continue; }
+          if (srcSame) { keep('conflict', {src: j.src, dest: j.dest, reason: '目标路径有不同内容，两份都已保留。'}); continue; }
+          // 源不存在
+          if (destOk) { if (has(j.tmp)) fs.rmSync(j.tmp, {force: true}); drop('already-done', {dest: j.dest}); continue; }
+          if (!has(j.dest) && tmpOk) { fs.renameSync(j.tmp, j.dest); drop('completed-from-temp', {dest: j.dest}); continue; }
+          keep('needs-attention', {reason: '源已不存在且目标/临时文件不完整，已保留现场。', src: j.src, dest: j.dest});
+        } catch (e) { logger?.warn('模型移动核对失败', {file, error: e.message}); keep('needs-attention', {error: e.message}); }
+      }
+      return out;
+    } finally { lease?.(); release(); }
   }
   // R17：大文件 sha256 在 worker 中计算，不阻塞主进程
   const pool = new WorkerPool({size: 2});

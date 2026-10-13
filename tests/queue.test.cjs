@@ -39,7 +39,7 @@ class FakeComfy {
     return {prompt_id: id, number: this.n, node_errors: {}};
   }
   async deleteQueued(ids) { this.deleted.push(...ids); this.queuePending = this.queuePending.filter(x => !ids.includes(x.id)); }
-  async interrupt(id) { this.interrupts.push(id); const r = this.queueRunning.find(x => x.id === id); if (r) { this.queueRunning = this.queueRunning.filter(x => x !== r); this.historyMap[id] = done(r.extra, 'interrupted'); } }
+  async interrupt(id) { this.interrupts.push(id ?? 'global'); const r = id ? this.queueRunning.find(x => x.id === id) : this.queueRunning[0]; if (r) { this.queueRunning = this.queueRunning.filter(x => x !== r); this.historyMap[r.id] = done(r.extra, 'interrupted'); } }
 }
 function done(extra, kind) {
   const messages = kind === 'error' ? [['execution_error', {node_id: '5', node_type: 'KSampler', exception_message: 'CUDA OOM'}]] : kind === 'interrupted' ? [['execution_interrupted', {}]] : [['execution_success', {}]];
@@ -128,7 +128,9 @@ test('Q07：运行中精确取消；后端运行的不是目标时拒绝取消�
   // 运行中取消
   const b = q.enqueue({workflowId: 'w', snapshot: snap()});
   for (let i = 0; i < 50 && !['submitted','running'].includes(tasks.get(b.id).state); i++) await new Promise(r => setImmediate(r));
-  await q.cancel(b.id); assert.deepEqual(fake.interrupts, [b.requestId]);
+  await assert.rejects(q.cancel(b.id), e => e.code === 'UNSUPPORTED' && e.details?.needsGlobalInterrupt);
+  assert.deepEqual(fake.interrupts, [], 'S03：旧后端默认不发中断');
+  await q.cancel(b.id, {globalInterrupt: true}); assert.deepEqual(fake.interrupts, ['global']);
   await settle(q); assert.equal(tasks.get(b.id).state, 'cancelled', '终态来自 history 的 execution_interrupted');
   const other = tasks.create({workflowId: 'w', snapshot: snap(), clientId: 'c'}); tasks.transition(other.id, 'preparing'); tasks.transition(other.id, 'submitting'); tasks.transition(other.id, 'submitted', {patch: {comfyPromptId: 'p-x'}});
   fake.queueRunning = [{n: 1, id: 'p-y', extra: {}}];
@@ -179,14 +181,56 @@ test('D10：后端支持按任务取消时用 /api/jobs/{id}/cancel，不发全�
   assert.deepEqual(jobs, [a.requestId]); assert.deepEqual(fake.interrupts, []);
   await settle(q); assert.equal(tasks.get(a.id).state, 'cancelled');
 });
-test('D10：旧后端发送前再核对，目标已切换时不发中断', async t => {
+test('S03：旧后端最后一次查询后切换到外部任务——不发送任何中断', async t => {
   const {q, tasks, fake} = setup(t);
   const other = tasks.create({workflowId: 'w', snapshot: snap(), clientId: 'c'}); tasks.transition(other.id, 'preparing'); tasks.transition(other.id, 'submitting'); tasks.transition(other.id, 'submitted', {patch: {comfyPromptId: 'p-x'}});
-  let n = 0; const orig = fake.queue.bind(fake);
-  fake.queue = async () => { n++; if (n === 2) fake.queueRunning = [{n: 2, id: 'p-next', extra: {}}]; return orig(); };
+  const orig = fake.queue.bind(fake);
+  fake.queue = async () => { const r = await orig(); fake.queueRunning = [{n: 2, id: 'p-ext', extra: {}}]; return r; }; // 查询返回后后端立即切换
   fake.queueRunning = [{n: 1, id: 'p-x', extra: {}}];
-  await assert.rejects(q.cancel(other.id), e => e.code === 'CONFLICT');
+  await assert.rejects(q.cancel(other.id), e => e.code === 'UNSUPPORTED');
   assert.deepEqual(fake.interrupts, []);
+  assert.equal(fake.queueRunning[0].id, 'p-ext', '外部任务未被中断');
+});
+function deferred() { let resolve; const p = new Promise(r => { resolve = r; }); return {p, resolve}; }
+const flush = async (n = 20) => { for (let i = 0; i < n; i++) await new Promise(r => setImmediate(r)); };
+test('S01：后端 queue 请求等待期间取得维护租约——不开始任务，waitForIdle 正确', async t => {
+  const {q, tasks, fake} = setup(t);
+  const gate = deferred(); const orig = fake.queue.bind(fake); let held = true;
+  fake.queue = async () => { if (held) { held = false; await gate.p; } return orig(); };
+  const a = q.enqueue({workflowId: 'w', snapshot: snap()});
+  await flush();
+  const release = q.acquirePause('maintenance:fixture');
+  let idle = false; const w = q.waitForIdle().then(() => { idle = true; });
+  await flush(); assert.equal(idle, false, '查询中的任务计入 in-flight');
+  gate.resolve(); await w; await settle(q);
+  assert.equal(tasks.get(a.id).state, 'queued'); assert.equal(fake.submits.length, 0);
+  release(); await settle(q);
+  assert.equal(tasks.get(a.id).state, 'succeeded', '释放租约后正常提交');
+});
+test('S01：GPU 锁等待期间取得维护租约——不开始任务', async t => {
+  const {q, tasks, fake} = setup(t);
+  const hold = await q.gpuLock.acquire({owner: 'gemma'});
+  const a = q.enqueue({workflowId: 'w', snapshot: snap()});
+  await flush();
+  const release = q.acquirePause('maintenance:fixture');
+  let idle = false; const w = q.waitForIdle().then(() => { idle = true; });
+  await flush(); assert.equal(idle, false, '等待 GPU 锁的任务计入 in-flight');
+  hold(); await w; await settle(q);
+  assert.equal(tasks.get(a.id).state, 'queued'); assert.equal(fake.submits.length, 0);
+  release(); await settle(q); assert.equal(tasks.get(a.id).state, 'succeeded');
+});
+test('S01：ready 等待期间取得维护租约——不开始；释放租约不解除用户暂停', async t => {
+  const {q, tasks, fake} = setup(t);
+  const r = deferred(); q.ready = r.p;
+  const a = q.enqueue({workflowId: 'w', snapshot: snap()});
+  await flush();
+  const release = q.acquirePause('maintenance:fixture');
+  q.pause();
+  r.resolve(); await flush(); await settle(q);
+  assert.equal(fake.submits.length, 0); assert.equal(tasks.get(a.id).state, 'queued');
+  release(); await settle(q);
+  assert.equal(fake.submits.length, 0, '用户暂停仍有效');
+  q.resume(); await settle(q); assert.equal(tasks.get(a.id).state, 'succeeded');
 });
 test('R12/D08：重启后只有后端运行中的任务——不需新任务或继续即跟踪到终态；恢复期间新建任务等 ready 后提交', async t => {
   const {q, tasks, fake} = setup(t);
