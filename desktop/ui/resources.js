@@ -44,7 +44,8 @@ async function openDetail(id) {
     const plan = await call(yz.resources.quickUse(id, current.activeId, {workflowArchitecture: null}));
     if (!plan.available) return toast(plan.reason, true);
     if (!await confirmBox('一键使用', `<p>将修改以下节点后提交运行（不改动原工作流）：</p>${(plan.changes ?? []).map(c => `<p class="muted">${esc(JSON.stringify(c))}</p>`).join('')}`)) return;
-    await call(yz.resources.quickUse(id, current.activeId, {run: true}), '已加入任务队列。');
+    // RV08：用确认时固定的 tabId/revision 提交，确认期间切换标签或改图不会把计划用于另一份图
+    await call(yz.resources.quickUse(id, plan.tabId, {run: true, expectedRevision: plan.revision}), '已加入任务队列。');
   }
 }
 async function plugins() {

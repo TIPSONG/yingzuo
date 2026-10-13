@@ -395,3 +395,31 @@ test('RV04：真正已退出（端口拒绝连接、无存活登记进程）—�
   journal('a', {src: s, dest: d, tmp: d + '.yz-moving', sha256: h('A')});
   assert.equal((await svc.recoverModelMoves())[0].action, 'completed');
 });
+
+test('RV08：快捷使用不再传空 references（交由统一入口按标签当前参考图关系解析）；确认后固定 tabId/revision，期间改图拒绝', async () => {
+  const ctx = setup();
+  let revision = 4; const enq = [];
+  const g = () => ({1: {class_type: 'CheckpointLoaderSimple', inputs: {ckpt_name: 'a.safetensors'}}, 2: {class_type: 'KSampler', inputs: {model: ['1', 0]}}, 3: {class_type: 'LoadImage', inputs: {image: 'old-backend.png'}}});
+  ctx.taskService.compile = async (tabId, {expectedRevision = null} = {}) => {
+    if (expectedRevision !== null && expectedRevision !== revision) { const e = new Error('版本已变'); e.code = 'REVISION_MISMATCH'; throw e; }
+    return {tabId, revision, apiPrompt: g()};
+  };
+  ctx.taskService.submissions = {enqueueCompiled: (c, prompt, opts) => { enq.push({tabId: c.tabId, opts}); return {id: 'task'}; }};
+  const svc = ctx.reopen();
+  await svc.methods['resources.scan']();
+  const lora = (await svc.methods['resources.scan']()).items.find(i => i.name === 'style.safetensors');
+  await svc.methods['resources.setNote'](lora.id, {architecture: 'sdxl'});
+  const plan = await svc.methods['resources.quickUse'](lora.id, 'tabA', {});
+  assert.equal(plan.tabId, 'tabA'); assert.equal(plan.revision, 4);
+  await assert.rejects(svc.methods['resources.quickUse'](lora.id, 'tabA', {run: true}), /确认时的标签版本/);
+  revision = 5; // 确认期间图被修改
+  await assert.rejects(svc.methods['resources.quickUse'](lora.id, plan.tabId, {run: true, expectedRevision: plan.revision}), e => e.code === 'REVISION_MISMATCH');
+  assert.equal(enq.length, 0);
+  revision = 4;
+  if (plan.available) {
+    await svc.methods['resources.quickUse'](lora.id, plan.tabId, {run: true, expectedRevision: plan.revision});
+    assert.equal(enq.length, 1); assert.equal(enq[0].tabId, 'tabA');
+    assert.equal(Object.hasOwn(enq[0].opts, 'references'), false, '不传 references，由 refsForRun 按标签关系解析并做缺失检查');
+  }
+  assert.ok(plan.available, plan.reason);
+});

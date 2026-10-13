@@ -329,10 +329,13 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     'resources.quickUse': async (id, tabId, opts = {}) => {
       if (!taskService) throw new AppError(CODES.SERVICE_UNAVAILABLE, '任务服务不可用。');
       const it = findItem(id); const res = describeResource(it, notes.get(id));
-      const c = await taskService.compile(tabId);
-      const plan = planQuickUse(c.apiPrompt, res, opts);
+      // RV08：确认时固定 tabId/revision；运行必须带回确认过的 revision，期间图变化则拒绝（不串图）
+      if (opts.run && !Number.isInteger(opts.expectedRevision)) throw new AppError(CODES.INVALID_ARGUMENT, '缺少确认时的标签版本，请重新确认。');
+      const c = await taskService.compile(tabId, opts.run ? {expectedRevision: opts.expectedRevision} : {});
+      const plan = {...planQuickUse(c.apiPrompt, res, opts), tabId: c.tabId, revision: c.revision};
       if (!plan.available || !opts.run) return plan;
-      return {plan, task: taskService.submissions.enqueueCompiled(c, applyPlan(c.apiPrompt, plan), {params: {quickUse: it.name}, references: []})}; // S05：经统一提交入口（脱敏、身份、前缀）
+      // RV08：不传 references，由统一提交入口按该标签当前参考图关系解析（含缺失检查与上传）
+      return {plan, task: taskService.submissions.enqueueCompiled(c, applyPlan(c.apiPrompt, plan), {params: {quickUse: it.name}})}; // S05：经统一提交入口（脱敏、身份、前缀）
     },
     'resources.plugins': async () => ({plugins: await listPlugins({comfyRoot: comfyRoot(), objectInfo: await objectInfo()}), manager: detectManager(path.join(comfyRoot(), 'custom_nodes'))}),
     'resources.disablePlugin': async (name, reason) => runTransaction({title: `禁用插件 ${name}`, kind: 'plugin-disable', target: name, roots: [path.join(comfyRoot(), 'custom_nodes')], requiredBytes: 0, apply: async c => { c.log.push(disablePlugin({comfyRoot: comfyRoot(), name, reason}).message); }}),

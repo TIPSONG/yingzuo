@@ -53,3 +53,12 @@ test('RV14：queue.maxBatch 决定预览上限、规划与整组检查', async t
   assert.equal(r.tasks.length, 101);
   await settle(); assert.equal(submitted.length, 0);
 });
+test('RV08：统一入口未传 references 时使用标签当前参考图关系；关系中的图缺失则不入队', async t => {
+  const {svc, submitted, settle} = setup(t);
+  const c = await svc.compile('tab1');
+  svc.submissions.enqueueCompiled(c, c.apiPrompt, {params: {quickUse: 'x'}}); await settle();
+  assert.equal(submitted.length, 1);
+  await svc.methods['tasks.setRefs']('tab1', [{nodeId: '9', input: 'image', refId: 'a'.repeat(64) + '.png', name: 'A.png'}]);
+  assert.throws(() => svc.submissions.enqueueCompiled(c, c.apiPrompt, {params: {quickUse: 'x'}}), /参考图文件已丢失：A\.png/);
+  await settle(); assert.equal(submitted.length, 1);
+});
