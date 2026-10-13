@@ -280,7 +280,7 @@ const commands = {
       // Keep the latest copy on disk before removing its tab. Failed loads or
       // workspace writes restore membership and selection, leaving this backup.
       const archive=paths.closed;fs.mkdirSync(archive,{recursive:true});
-      fs.writeFileSync(path.join(archive,`${id}.json`),JSON.stringify(workspace.tabs[index].graph,null,2));
+      const closing=workspace.tabs[index];fs.writeFileSync(path.join(archive,`${id}.json`),JSON.stringify(closing.graph,null,2));fs.writeFileSync(path.join(archive,`${id}.meta.json`),JSON.stringify({title:closing.title,templateId:closing.templateId??null,templateVersionId:closing.templateVersionId??null,closedAt:new Date().toISOString()}));/* S08：归档记录标题与模板版本；参考关系按原标签编号保留在 reference-relations.json */
       workspace.tabs.splice(index,1);
       if(workspace.activeId===id)workspace.activeId=workspace.tabs[Math.min(index,workspace.tabs.length-1)]?.id||null;
     });
@@ -364,6 +364,8 @@ const commands = {
     if(existing)return activate(existing.id);
     return newTab(title,Store.validateGraph(graph),templateId??null,versionId);
   },
+  /** S08：从关闭归档或图包打开为新标签（不与已打开的同模板标签合并）。 */
+  reopenArchived: async (title,graph,templateId=null,versionId=null)=>newTab(title,Store.validateGraph(graph),templateId,versionId),
   /** S07：标签内容另存为模板新版本后，改为固定到该版本。 */
   setTemplateVersion: async (tabId,templateId,versionId)=>{const tab=workspace.tabs.find(t=>t.id===tabId);if(!tab)return null;tab.templateId=templateId;tab.templateVersionId=versionId;persist();notify({});return {state:state()};},
   /** T02：读取指定标签当前图（先从编辑器抓取最新快照）。 */

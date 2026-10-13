@@ -261,3 +261,29 @@ test('S07：表单按标签固定的模板版本读取；运行快照记录版�
   const task = await svc.methods['tasks.run']('tab1', {}); await settle();
   assert.equal(svc.tasks.snapshotOf(svc.tasks.get(task.id)).form.versionId, 'v-old');
 });
+test('S08：导出图包→导入为新标签并恢复参考关系；关闭归档重新打开带回模板版本与关系', async t => {
+  const {svc, editor, layout} = setup(t);
+  const src = path.join(layout.root, '参考.png'); fs.writeFileSync(src, Buffer.from('fictional-image'));
+  const ref = svc.refs.importFile(src);
+  await svc.methods['tasks.setRefs']('tab1', [{nodeId: '5', input: 'image', refId: ref.id, name: '参考.png'}]);
+  const opened = [];
+  editor.commands.tabGraph = async id => ({tabId: id, title: '原图', templateId: null, graph: {nodes: [{id: 5, type: 'LoadImage'}]}});
+  editor.commands.reopenArchived = async (title, graph, tpl, ver) => { opened.push({title, tpl, ver}); return {state: {activeId: `new${opened.length}`}}; };
+  const file = path.join(layout.root, 'pkg.yingzuo.json');
+  const ex = await svc.methods['tasks.exportPackage']('tab1', {filePath: file});
+  assert.equal(ex.references, 1);
+  const im = await svc.methods['tasks.importPackage']({filePath: file});
+  assert.equal(im.tabId, 'new1');
+  assert.deepEqual((await svc.methods['tasks.refs']('new1')).map(r => [r.refId, r.missing]), [[ref.id, false]]);
+  // 关闭归档
+  const dir = path.join(layout.root, 'closed-workflows'); fs.mkdirSync(dir, {recursive: true});
+  fs.writeFileSync(path.join(dir, 'tab1.json'), JSON.stringify({nodes: []}));
+  fs.writeFileSync(path.join(dir, 'tab1.meta.json'), JSON.stringify({title: '已关闭', templateId: 'tpl', templateVersionId: 'v3', closedAt: '2026-10-13T00:00:00Z'}));
+  layout.closed = dir;
+  const list = await svc.methods['tasks.closedList']();
+  assert.equal(list[0].references, 1);
+  const r = await svc.methods['tasks.reopenClosed']('tab1');
+  assert.deepEqual(opened[1], {title: '已关闭', tpl: 'tpl', ver: 'v3'});
+  assert.equal((await svc.methods['tasks.refs'](r.tabId)).length, 1);
+  await assert.rejects(svc.methods['tasks.reopenClosed']('../x'), /无效/);
+});

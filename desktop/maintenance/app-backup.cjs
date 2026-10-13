@@ -8,7 +8,7 @@ const {createBackup, readBackup, verifyBackup} = require('./backup.cjs');
 const {RestoreEngine} = require('./restore.cjs');
 const {AppError, CODES} = require('../core/errors.cjs');
 
-const DIRS = ['drafts', 'closed-workflows', 'templates', 'task-snapshots', 'references', 'favorites'];
+const DIRS = ['drafts', 'closed-workflows', 'templates', 'task-snapshots', 'task-submissions', 'references', 'favorites'];
 const FILES = [['workspace', 'workspace.json'], ['config', 'config.json'], ['reference-relations', 'reference-relations.json'], ['maintenance-holds', 'maintenance-holds.json']];
 const appBackupRoot = layout => path.join(layout.backups, 'app');
 const pendingFile = layout => path.join(layout.root, 'pending-app-restore.json');

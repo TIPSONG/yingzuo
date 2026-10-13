@@ -12,6 +12,7 @@ const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
 const SF = require('../../shared/secret-fields.cjs');
 const {mapFormTargets} = require('../../shared/form-targets.cjs');
+const GP = require('./graph-package.cjs');
 const {stableWorkflowId, planSavePrefix} = require('../../shared/output-plan.cjs');
 const {planBatch} = require('../../shared/batch-plan.cjs');
 const {prefixDir} = require('./output-prefix.cjs');
@@ -33,6 +34,13 @@ class ReferenceStore {
     const target = path.join(this.dir, rel);
     if (!fs.existsSync(target)) { fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target + '.tmp', buf); fs.renameSync(target + '.tmp', target); }
     return {id: `${hash}${ext}`, hash, ext, name: path.basename(file), size: st.size};
+  }
+  /** S08：从图包导入：内容编号即 sha256，写入前已由调用方校验。 */
+  importBuffer(buf, refId) {
+    if (!/^[0-9a-f]{64}\.(png|jpe?g|webp)$/.test(refId) || crypto.createHash('sha256').update(buf).digest('hex') !== refId.slice(0, 64)) throw new AppError(CODES.INTEGRITY, '参考图内容与编号不符。');
+    const target = path.join(this.dir, refId.slice(0, 2), refId);
+    if (!fs.existsSync(target)) { fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target + '.tmp', buf); fs.renameSync(target + '.tmp', target); }
+    return refId;
   }
   has(id) { try { this.pathOf(id); return true; } catch { return false; } }
   pathOf(id) {
@@ -270,6 +278,45 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     'tasks.refs': async tabId => relationsOf(tabId),
     'tasks.setRefs': async (tabId, items) => setRelations(tabId, items, editor.workspace?.tabs?.find(t => t.id === tabId)?.revision ?? null),
     'tasks.copyRefs': async (fromTabId, toTabId) => setRelations(toTabId, relationsOf(fromTabId).map(({missing, ...r}) => r)),
+    /* ---------- S08：图 + 参考素材包；关闭归档的重新打开 ---------- */
+    'tasks.exportPackage': async (tabId, {filePath = null} = {}) => {
+      const t = await editor.enqueue(() => editor.commands.tabGraph(tabId));
+      const form = t.templateId && formProvider ? formProvider(t.templateId, t.templateVersionId ?? null) : null;
+      const pkg = GP.buildPackage({title: t.title, graph: t.graph, template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: form?.fields ?? null} : null, relations: relationsOf(tabId), readRef: id => refs.pathOf(id)});
+      let target = filePath;
+      if (!target) { const r = await dialog.showSaveDialog(getWindow(), {title: '导出图与参考素材', defaultPath: `${t.title}.yingzuo.json`, filters: [{name: '映作图包', extensions: ['json']}]}); if (r.canceled || !r.filePath) return {cancelled: true}; target = r.filePath; }
+      const tmp = `${target}.tmp`; fs.writeFileSync(tmp, JSON.stringify(pkg)); fs.renameSync(tmp, target);
+      return {path: target, references: pkg.references.length, missing: pkg.references.filter(r => r.missing).map(r => r.name || r.refId)};
+    },
+    'tasks.importPackage': async ({filePath = null} = {}) => {
+      let file = filePath;
+      if (!file) { const r = await dialog.showOpenDialog(getWindow(), {title: '导入映作图包', properties: ['openFile'], filters: [{name: '映作图包', extensions: ['json']}]}); if (r.canceled || !r.filePaths?.length) return {cancelled: true}; file = r.filePaths[0]; }
+      const pkg = GP.parsePackage(fs.readFileSync(file, 'utf8')); // 全部校验通过才写入
+      for (const r of pkg.references) if (!r.missing) refs.importBuffer(r.buffer, r.refId);
+      const opened = await editor.enqueue(() => editor.commands.reopenArchived(pkg.title, pkg.graph, null, null));
+      const tabId = opened?.state?.activeId;
+      const present = pkg.references.filter(r => !r.missing);
+      if (tabId && present.length) setRelations(tabId, present.map(({buffer, missing, ...r}) => r));
+      return {tabId, references: present.length, missing: pkg.references.filter(r => r.missing).map(r => r.name || r.refId), template: pkg.template ? {templateId: pkg.template.templateId, versionId: pkg.template.versionId, note: '图包中的模板/表单只作记录；导入后为独立工作副本。'} : null};
+    },
+    'tasks.closedList': async () => {
+      const dir = layout.closed ?? path.join(layout.root, 'closed-workflows'); if (!fs.existsSync(dir)) return [];
+      return fs.readdirSync(dir).filter(n => /^[\w-]+\.json$/.test(n) && !n.endsWith('.meta.json')).map(n => {
+        const id = n.slice(0, -5); let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(dir, `${id}.meta.json`), 'utf8')); } catch { /* 旧归档无元数据 */ }
+        return {id, title: meta.title ?? id, closedAt: meta.closedAt ?? fs.statSync(path.join(dir, n)).mtime.toISOString(), templateId: meta.templateId ?? null, templateVersionId: meta.templateVersionId ?? null, references: relationsOf(id).length};
+      }).sort((a, b) => String(b.closedAt).localeCompare(String(a.closedAt))).slice(0, 200);
+    },
+    'tasks.reopenClosed': async id => {
+      if (!/^[\w-]{1,80}$/.test(id ?? '')) throw new AppError(CODES.INVALID_ARGUMENT, '归档编号无效。');
+      const dir = layout.closed ?? path.join(layout.root, 'closed-workflows');
+      const file = path.join(dir, `${id}.json`); if (!fs.existsSync(file)) throw new AppError(CODES.NOT_FOUND, '归档不存在。');
+      let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(dir, `${id}.meta.json`), 'utf8')); } catch { /* 旧归档 */ }
+      const opened = await editor.enqueue(() => editor.commands.reopenArchived(meta.title ?? '恢复的工作副本', JSON.parse(fs.readFileSync(file, 'utf8')), meta.templateId ?? null, meta.templateVersionId ?? null));
+      const tabId = opened?.state?.activeId;
+      const rel = relationsOf(id);
+      if (tabId && rel.length) setRelations(tabId, rel.map(({missing, ...r}) => r));
+      return {tabId, references: rel.length, missing: rel.filter(r => r.missing).map(r => r.name || r.refId)};
+    },
     'tasks.pickReference': async () => {
       const r = await dialog.showOpenDialog(getWindow(), {title: '选择参考图', properties: ['openFile'], filters: [{name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp']}]});
       if (r.canceled || !r.filePaths?.length) return {cancelled: true};

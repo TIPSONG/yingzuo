@@ -69,6 +69,16 @@ q('#run-task').addEventListener('click', () => runCurrent()); // S07：按钮与
 window.yingzuoDesktop?.onStatus?.(d => { if (d?.shortcut === 'run' && S.page === 'create') { if (canRun()) runCurrent(); else toast('请先连接 ComfyUI 并打开工作流。', true); } });
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && S.page === 'create' && canRun()) { e.preventDefault(); runCurrent(); } });
 
+/* ---------- S08：图包与关闭归档 ---------- */
+const missingNote = d => (d.missing?.length ? `；${d.missing.length} 张参考图缺失：${d.missing.join('、')}` : '');
+q('#pkg-export')?.addEventListener('click', () => { if (!current.activeId) return toast('请先打开工作流。', true); call(yz.tasks.exportPackage(current.activeId), d => (d.cancelled ? '已取消。' : `已导出（${d.references} 张参考图${missingNote(d)}）。`)).catch(swallow); });
+q('#pkg-import')?.addEventListener('click', () => call(yz.tasks.importPackage(), d => (d.cancelled ? '已取消。' : `已导入为新的工作副本（${d.references} 张参考图${missingNote(d)}）。`)).catch(swallow));
+q('#closed-list')?.addEventListener('click', async () => {
+  let list; try { list = await call(yz.tasks.closedList()); } catch (e) { swallow(e); return; }
+  const id = await modal(`<h3>最近关闭</h3><div class="list">${list.map(c => `<div class="row"><span>${esc(c.title)} <small class="muted">${esc(c.closedAt)}${c.references ? ` · ${c.references} 张参考图` : ''}</small></span><button data-open="${esc(c.id)}">重新打开</button></div>`).join('') || '<p class="muted">没有已关闭的标签。</p>'}</div><div class="actions"><button data-x="no">关闭</button></div>`, (back, done) => back.addEventListener('click', e => { const o = e.target.closest('[data-open]'), x = e.target.closest('[data-x]'); if (o) done(o.dataset.open); else if (x) done(null); }));
+  if (id) call(yz.tasks.reopenClosed(id), d => `已重新打开${missingNote(d)}。`).catch(swallow);
+});
+
 /* ---------- Q10 批量 ---------- */
 q('#run-batch').addEventListener('click', async () => {
   const tabId = current.activeId;
