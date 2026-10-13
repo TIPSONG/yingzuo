@@ -17,7 +17,7 @@ const dirs = [], dbs = [];
 test.after(() => { for (const d of dbs) { try { d.close(); } catch { /* 已关闭 */ } } for (const d of dirs) fs.rmSync(d, {recursive: true, force: true}); });
 const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-ms-')); dirs.push(d); return d; };
 
-function setup() {
+function setup(opt = {}) {
   const base = tmp(), root = path.join(base, 'ComfyUI');
   fs.mkdirSync(path.join(root, 'custom_nodes', 'node-a'), {recursive: true});
   fs.writeFileSync(path.join(root, 'custom_nodes', 'node-a', '__init__.py'), 'X=1\n');
@@ -32,12 +32,12 @@ function setup() {
   const config = {comfy: {root, url: 'http://127.0.0.1:1/', python: ''}, maintenance: {keepBackups: 2}};
   const configRepo = {config, derived: () => ({backups: path.join(base, 'backups')})};
   const calls = [];
-  const comfy = {verifyOwned: async () => false, stop: async () => calls.push('stop'), ensureRunning: async () => calls.push('start')};
+  const comfy = {verifyOwned: opt.verifyOwned ?? (async () => false), stop: async () => calls.push('stop'), ensureRunning: async () => calls.push('start')};
   const paused = [];
   const taskService = {hooks: {pauseSubmissions: () => { paused.push('p'); return () => paused.push('r'); }, waitForIdle: async () => {}, activeTasks: () => []}, tasks: {list: () => [{id: 't1', seq: 1}], snapshotOf: () => ({apiPrompt: {1: {class_type: 'LoraLoader', inputs: {lora_name: 'style.safetensors'}}}})}};
   const editor = {workspace: {tabs: [{id: 'd1', title: '草稿一', graph: {nodes: [{id: 1, type: 'NodeA', widgets_values: ['style.safetensors']}]}}]}};
   const events = {emit: () => {}};
-  const svc = createMaintenanceService({db, layout, configRepo, locks: createLocks(), events, comfy, taskService, editor, fetchImpl: async () => { throw new Error('offline'); }});
+  const svc = createMaintenanceService({db, layout, configRepo, locks: createLocks(), events, comfy, taskService, editor, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
   return {base, root, ext, svc, db, calls, paused, layout};
 }
 
@@ -151,4 +151,15 @@ test('U07 备份列表与保留：使用中/每个来源最近一份不清理', 
 test('nodeTypesOf 支持 UI 与 API 图', () => {
   assert.deepEqual(nodeTypesOf({nodes: [{type: 'A'}], definitions: {subgraphs: [{nodes: [{type: 'B'}]}]}}), ['A', 'B']);
   assert.deepEqual(nodeTypesOf({1: {class_type: 'C'}}), ['C']);
+});
+
+test('D06/PR11-R02：继续恢复与恢复备份走同一保护——外部服务运行时拒绝；失败后保持暂停并拒绝新维护', async () => {
+  const ext = setup({fetchImpl: async () => new Response('{}', {status: 200})});
+  await assert.rejects(ext.svc.methods['maintenance.resumeRestore']('no-such'), e => e.code === 'NOT_OWNED');
+  assert.deepEqual(ext.paused, [], '外部服务检查在暂停之前');
+  const {svc, paused} = setup();
+  await assert.rejects(svc.methods['maintenance.resumeRestore']('no-such'));
+  assert.deepEqual(paused, ['p'], '失败后租约未释放');
+  assert.equal((await svc.methods['maintenance.holds']()).length, 1);
+  await assert.rejects(svc.methods['maintenance.createBackup'](), e => e.code === 'INVALID_STATE');
 });

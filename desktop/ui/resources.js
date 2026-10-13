@@ -82,7 +82,9 @@ async function backups() {
 }
 async function pending() {
   const p = await call(yz.maintenance.pendingRestores());
-  q('#rs-pending').innerHTML = p.map(j => `<div class="row"><span class="err">未完成的恢复 ${esc(j.id)}（${esc(j.status)}）</span><button data-resume="${esc(j.id)}">继续恢复</button></div>`).join('');
+  const holds = await call(yz.maintenance.holds()).catch(() => []);
+  // D06：恢复失败后任务保持暂停、服务不自动启动，直到在这里完成恢复
+  q('#rs-pending').innerHTML = holds.map(h => `<div class="row"><span class="err">维护 ${esc(h.id)} 恢复失败：任务提交已暂停，ComfyUI 未自动启动${h.stopped?.length ? `（已停止：${h.stopped.map(esc).join('、')}）` : ''}。请继续下面未完成的恢复，或从备份恢复。</span></div>`).join('') + p.map(j => `<div class="row"><span class="err">未完成的恢复 ${esc(j.id)}（${esc(j.status)}）</span><button data-resume="${esc(j.id)}">继续恢复</button></div>`).join('');
 }
 q('#rs-maint').addEventListener('click', async e => {
   const b = e.target.closest('[data-b]'); if (!b) return;
@@ -105,3 +107,5 @@ q('#rs-update-comfy').addEventListener('click', async () => { const o = await as
 q('#rs-tx').addEventListener('click', async () => { try { const t = await call(yz.maintenance.transactions()); q('#rs-maint').innerHTML = t.map(x => `<div class="row"><span>${esc(x.createdAt)} · ${esc(x.target?.title ?? x.scope)} <small class="muted">${esc(x.phase)}${x.error ? ` · ${esc(x.error.message)}` : ''}</small></span></div>`).join('') || '<p class="muted">没有维护记录。</p>'; } catch (e) { swallow(e); } });
 q('#nav').addEventListener('click', e => { if (e.target.closest('[data-page="resources"]')) pending().catch(() => {}); });
 })();
+
+yz.events.subscribe(ev => { if (ev.type === 'maintenance.hold') { toast('维护恢复失败：任务已暂停、服务未启动。请到“资源与维护”完成恢复。', true); pending().catch(() => {}); } });
