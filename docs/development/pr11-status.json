@@ -226,7 +226,10 @@
       "id": "PR11-R14",
       "level": "P2",
       "name": "回收区与备份空间管理",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "ca3792f",
+      "tests": "maint-service.test R07/R14；review2 trash-store.test",
+      "note": "只管理本应用登记条目；永久清理需确认、逐项再核对；未完成恢复使用的条目受保护"
     },
     {
       "id": "PR11-R15",
