@@ -99,7 +99,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 76 / 实现中 1 / 阻塞 0 / 未开始 0（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 79 / 实现中 0 / 阻塞 0 / 未开始 0（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -122,7 +122,7 @@
 | S01 | 统一配置 | 程序完成 |  | desktop/repositories/config-repo.cjs | foundation.test.cjs |  |  |
 | S02 | 服务探测 | 程序完成 |  | desktop/services/service-probe.cjs | services.test.cjs（本机 HTTP 替身） | 真实 ComfyUI/LM Studio 需 Codex |  |
 | S03 | 按需启动 ComfyUI | 程序完成 |  | desktop/services/comfy-process.cjs<br>desktop/services/process-utils.cjs | services.test.cjs | Windows 进程身份查询用 PowerShell Get-CimInstance，未在 Windows 实跑 |  |
-| S04 | LM Studio 适配 | 有限支持 |  | desktop/services/lmstudio.cjs | services.test.cjs（CLI 替身） | lms ps --json 输出格式按文档假设；服务归属限本次会话+端口+就绪确认（PR11-R04） |  |
+| S04 | LM Studio 适配 | 有限支持 |  | desktop/services/lmstudio.cjs | services.test.cjs（CLI 替身） | lms ps --json 输出格式按文档假设，解析失败时明确报告而不猜测；服务归属限本次会话+端口+就绪确认——真实 LM Studio 契约交 Codex 核对 |  |
 | S05 | 停止与显存 | 程序完成 |  | desktop/services/comfy-process.cjs<br>desktop/services/api.cjs | services.test.cjs：PID 复用不误停 |  |  |
 | S06 | 托盘与单实例 | 程序完成 |  | desktop/main.cjs<br>assets/tray-16.png |  | 单实例锁先于数据迁移（entry.cjs，PR11-R21）；托盘需 Windows 实机 |  |
 | S07 | 正确退出 | 程序完成 |  | desktop/main.cjs<br>desktop/services/api.cjs | tests/task-service.test.cjs S07 | 退出：等待/取消后退出/返回；取消超时不当作成功（D09，quit-flow.cjs）；按任务取消接口优先（D10） |  |
@@ -132,7 +132,7 @@
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| E07 | 五图表单 | 有限支持 |  |  | tests/bindings.test.cjs | 按节点类型+连线推断；Qwen2.1/Gemma 按源码与官方模板夹具适配（PR11-R07），五个本机真实模板未用真实 object_info 编译核对 |  |
+| E07 | 五图表单 | 有限支持 |  |  | tests/bindings.test.cjs | 程序按节点类型+连线推断并对官方模板夹具核对；五个本机真实模板需用真实 object_info 核对——交 Codex Windows 验收 |  |
 | E08 | 参考图管线 | 程序完成 |  |  | tests/bindings.test.cjs E08 | 内容寻址素材；关系持久化到 reference-relations.json（PR11-R11），旧 localStorage 迁移，复制标签复制关系，素材丢失拒绝提交。导出未带素材 manifest |  |
 | E09 | 编译与定位 | 程序完成 |  |  | tests/bindings.test.cjs E09 | compileTab：后台标签切换→graphToPrompt→切回；本地检查 object_info |  |
 | E10 | 原生视图行为 | 程序完成 | 27e15c4 | desktop/services/editor-session.cjs<br>desktop/ui/tasks.js | desktop-main.test：快捷键映射 | 弹窗/离开创作页隐藏原生视图；原生视图内 Ctrl+Enter 走映作队列、Ctrl +/-/0 缩放；图片下载保存到 exports 并提示；图片选择用 Comfy 原生文件框；需 Windows 实测 |  |
@@ -158,9 +158,9 @@
 | A06 | 原图导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A07 | 分享副本导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A08 | 收藏板 | 程序完成 | 5c7e40a | desktop/ui/assets.js | favorites 单测（assets 分支） | 收藏板按 arrangeAlbum 等高行排列，取消收藏移到回收区；CSP 下位置用 CSSOM 设置 |  |
-| T01 | 模板仓库 | 有限支持 |  | desktop/repositories/template-repo.cjs<br>desktop/ui/templates.js | tests/templates.test.cjs | 模板仓库功能可用；缩略图只有仓库方法，界面未生成/显示 |  |
+| T01 | 模板仓库 | 程序完成 | 14ef487 | desktop/repositories/template-repo.cjs<br>desktop/ui/templates.js | tests/templates.test.cjs | 缩略图：任务首个成功输出在 worker 内由 sharp 生成 256px PNG，或手动选择；模板库显示（task-service.test T01） |  |
 | T02 | 保存与历史 | 程序完成 |  |  | tests/templates.test.cjs | 版本只追加、恢复生成新版本、另存、导出（含 .yingzuo-form.json）；原模板文件只读 |  |
-| T03 | 表单编辑器 | 实现中 |  | shared/form-schema.cjs | tests/templates.test.cjs | 表单编辑器可保存；正式运行（运行按钮弹窗）与批量后端按表单写入（D04）。左侧参数面板仍枚举全部 widget，润色流程未走表单 |  |
+| T03 | 表单编辑器 | 程序完成 | e6d2d80 | shared/form-schema.cjs | tests/templates.test.cjs | 表单编辑器保存；左侧正式参数面板按表单显示并写回画布；运行/快捷键/批量/润色共用同一工作副本；标签固定模板版本（S07） |  |
 | T04 | 映射失效处理 | 程序完成 |  |  | tests/templates.test.cjs | 删除/改类/缺字段/改连线判失效，候选仅同类型同字段，服务端再校验 |  |
 | T05 | 实时诊断清单 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 实时诊断：object_info/模型目录/LM Studio 合并，单独采集时间，离线缓存标注；插件版本号需 R01（maint 分支）提供，当前只列插件模块与节点数 |  |
 | T06 | 替代建议 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 沿用 compatibility.js 规则，按用途/格式/加载器/架构给候选；未知保持待核实 |  |
@@ -180,7 +180,7 @@
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | T08 | 依赖补齐计划 | 程序完成 |  | desktop/services/online/dependency-plan.cjs | tests/dependency.test.cjs | 缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺节点给手动处理说明（插件安装待 R07） |  |
-| R06 | Manager 适配 | 有限支持 | 27e15c4 | desktop/services/online/dependency-plan.cjs | dependency.test：Manager 探测 | Manager/cm-cli 只读探测；插件操作统一走受限 Git 事务 |  |
+| R06 | Manager 适配 | 有限支持 | 27e15c4 | desktop/services/online/dependency-plan.cjs | dependency.test：Manager 探测 | 范围明确：插件安装/更新/启用/禁用/移除统一走受限 Git 维护事务（原方案允许）；Manager/cm-cli 只做只读探测，不调用 Manager 安装 |  |
 | R07 | 插件操作事务 | 程序完成 | b9e2351 | desktop/maintenance/plugin-ops.cjs<br>desktop/services/maintenance-service.cjs | maint-service.test：https 限制、安装→移除到回收区 | 仅 https 无账号 Git 地址；staging 克隆固定 revision；可选 pip（Python 环境纳入备份）；移除前列出使用者并需确认，移到回收区 |  |
 | R08 | 模型位置管理 | 程序完成 | b9e2351 | desktop/services/maintenance-service.cjs | maint-service.test：非登记目录拒绝、移动成功 | 只在同用途已登记目录间移动（相对名不变）；跨盘复制+sha256 校验后切换；有任务运行时拒绝；LM Studio 模型不在范围 |  |
 | O01 | 来源接口 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 统一 search/detail/listFiles/resolveDownload/parseLink，内存 TTL 缓存、AbortSignal 取消、429/5xx 退避；联网失败只影响在线页 |  |
@@ -189,7 +189,7 @@
 | O04 | 下载规划 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 按用途选 ComfyUI models 子目录或自选目录、空间（保留 1GB）、重名与 .part 提示、Windows 文件名校验 |  |
 | O05 | 通用下载器 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 流式 .part、Range/If-Range 续传、并发、取消、退避重试、大小与 sha256、原子改名；本机 HTTP 服务测试 |  |
 | O06 | 下载恢复 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 启动时中断任务置暂停并按 .part 大小续传；源变化从头下载；每次重新解析 URL，令牌不入库 |  |
-| O07 | 在线模板导入 | 有限支持 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 只支持按链接导入在线模板（HF/GitHub/https JSON）；没有在线模板浏览与源索引 |  |
+| O07 | 在线模板导入 | 程序完成 | 5028971 | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 链接导入 + 在线模板库浏览：官方 Comfy-Org/workflow_templates 索引（样本夹具来自该仓库）、可在设置 onlineTemplates.sources 增加同格式 https 源；搜索/分类/分页、6 小时缓存、离线显示缓存；导入后同一诊断入口（online.test O07/S10） |  |
 | O08 | 联合补齐 | 程序完成 | 27e15c4 | desktop/ui/online.js<br>desktop/services/maintenance-service.cjs | maint-service.test（安装路径） | 模型逐项下载+插件按用户填写的 Git 地址逐个经事务安装，逐项报告；装后重新生成计划；插件需重启 ComfyUI 后才被识别 |  |
 
 ### 批次 5

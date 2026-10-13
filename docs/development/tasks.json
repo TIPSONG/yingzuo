@@ -192,7 +192,7 @@
   "commit": "",
   "files": [],
   "checks": "tests/bindings.test.cjs",
-  "note": "按节点类型+连线推断；Qwen2.1/Gemma 按源码与官方模板夹具适配（PR11-R07），五个本机真实模板未用真实 object_info 编译核对"
+  "note": "程序按节点类型+连线推断并对官方模板夹具核对；五个本机真实模板需用真实 object_info 核对——交 Codex Windows 验收"
  },
  {
   "id": "E08",
@@ -274,7 +274,7 @@
    "desktop/services/lmstudio.cjs"
   ],
   "checks": "services.test.cjs（CLI 替身）",
-  "note": "lms ps --json 输出格式按文档假设；服务归属限本次会话+端口+就绪确认（PR11-R04）"
+  "note": "lms ps --json 输出格式按文档假设，解析失败时明确报告而不猜测；服务归属限本次会话+端口+就绪确认——真实 LM Studio 契约交 Codex 核对"
  },
  {
   "id": "S05",
@@ -520,14 +520,14 @@
   "id": "T01",
   "name": "模板仓库",
   "batch": 3,
-  "status": "有限支持",
-  "commit": "",
+  "status": "程序完成",
+  "commit": "14ef487",
   "files": [
    "desktop/repositories/template-repo.cjs",
    "desktop/ui/templates.js"
   ],
   "checks": "tests/templates.test.cjs",
-  "note": "模板仓库功能可用；缩略图只有仓库方法，界面未生成/显示"
+  "note": "缩略图：任务首个成功输出在 worker 内由 sharp 生成 256px PNG，或手动选择；模板库显示（task-service.test T01）"
  },
  {
   "id": "T02",
@@ -543,13 +543,13 @@
   "id": "T03",
   "name": "表单编辑器",
   "batch": 3,
-  "status": "实现中",
-  "commit": "",
+  "status": "程序完成",
+  "commit": "e6d2d80",
   "files": [
    "shared/form-schema.cjs"
   ],
   "checks": "tests/templates.test.cjs",
-  "note": "表单编辑器可保存；正式运行（运行按钮弹窗）与批量后端按表单写入（D04）。左侧参数面板仍枚举全部 widget，润色流程未走表单"
+  "note": "表单编辑器保存；左侧正式参数面板按表单显示并写回画布；运行/快捷键/批量/润色共用同一工作副本；标签固定模板版本（S07）"
  },
  {
   "id": "T04",
@@ -675,7 +675,7 @@
    "desktop/services/online/dependency-plan.cjs"
   ],
   "checks": "dependency.test：Manager 探测",
-  "note": "Manager/cm-cli 只读探测；插件操作统一走受限 Git 事务"
+  "note": "范围明确：插件安装/更新/启用/禁用/移除统一走受限 Git 维护事务（原方案允许）；Manager/cm-cli 只做只读探测，不调用 Manager 安装"
  },
  {
   "id": "R07",
@@ -778,13 +778,13 @@
   "id": "O07",
   "name": "在线模板导入",
   "batch": 4,
-  "status": "有限支持",
-  "commit": "",
+  "status": "程序完成",
+  "commit": "5028971",
   "files": [
    "desktop/services/online"
   ],
   "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
-  "note": "只支持按链接导入在线模板（HF/GitHub/https JSON）；没有在线模板浏览与源索引"
+  "note": "链接导入 + 在线模板库浏览：官方 Comfy-Org/workflow_templates 索引（样本夹具来自该仓库）、可在设置 onlineTemplates.sources 增加同格式 https 源；搜索/分类/分页、6 小时缓存、离线显示缓存；导入后同一诊断入口（online.test O07/S10）"
  },
  {
   "id": "O08",
