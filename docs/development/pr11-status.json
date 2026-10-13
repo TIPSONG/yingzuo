@@ -97,7 +97,10 @@
       "id": "D12",
       "level": "P1",
       "name": "模型移动未与任务/维护互斥",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "3f86e50",
+      "tests": "maint-service.test R08/D12",
+      "note": "已做：环境锁、暂停租约、持锁后再核对本应用任务与外部 ComfyUI、跨盘 journal、成功后才删源。未做：启动时按 journal 继续/清理中断的跨盘移动"
     },
     {
       "id": "D13",
@@ -166,7 +169,10 @@
       "id": "PR11-R06",
       "level": "P1",
       "name": "模型移动与环境操作共用锁",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "3f86e50",
+      "tests": "maint-service.test R08/D12",
+      "note": "已做：环境锁、暂停租约、持锁后再核对本应用任务与外部 ComfyUI、跨盘 journal、成功后才删源。未做：启动时按 journal 继续/清理中断的跨盘移动"
     },
     {
       "id": "PR11-R07",
@@ -247,7 +253,10 @@
       "id": "PR11-R17",
       "level": "P2",
       "name": "大文件工作移出主进程",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "3f86e50",
+      "tests": "review2 worker-pool.test；maint-service.test 走 worker 哈希",
+      "note": "resources.hash 与模型移动校验已用 WorkerPool；资源扫描批量哈希、缩略图、备份复制仍在主进程"
     },
     {
       "id": "PR11-R18",
