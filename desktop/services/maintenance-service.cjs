@@ -1,6 +1,7 @@
 'use strict';
 const {TrashStore} = require('../maintenance/trash-store.cjs');
 const {WorkerPool} = require('../core/worker-pool.cjs');
+const appBackup = require('../maintenance/app-backup.cjs');
 // 接入 maint 分支模块：maintenance.*（U01–U07）与 resources.*（R01–R08）。
 // 所有改动环境的操作都走 MaintenanceTransaction（环境锁 createLocks().environment、暂停队列并等待空闲、
 // 只停止本应用拥有的服务、备份、staging、apply、检查，失败自动恢复），结果写入 env_transactions 表（U07）。
@@ -141,6 +142,10 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       return guardedRestore(async () => { const j = await restore.prepare(dir); return restore.run(j.id); });
     },
     'maintenance.pendingRestores': async () => restore.pending(),
+    // ----- R13：应用数据备份（与环境备份分开；恢复在下次启动、打开数据库之前执行） -----
+    'maintenance.appBackup': async () => { const r = await appBackup.createAppBackup({layout}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
+    'maintenance.appBackups': async () => ({backups: appBackup.listAppBackups(layout), lastRestore: globalThis.__yzAppRestore ?? null}),
+    'maintenance.scheduleAppRestore': async dir => appBackup.scheduleAppRestore(layout, dir),
     'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id)),
     'maintenance.holds': async () => holds.map(h => ({id: h.id, stopped: h.stopped})),
     'maintenance.transactions': async () => listTransactions(),

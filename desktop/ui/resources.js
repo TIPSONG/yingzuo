@@ -127,3 +127,17 @@ q('#rs-maint').addEventListener('click', async e => {
     toast(`已清理 ${r.purged.length} 项${r.skipped.length ? `，跳过 ${r.skipped.length} 项` : ''}。`); trashView();
   } catch (er) { swallow(er); }
 });
+// R13：应用数据备份（草稿、模板、任务记录、参考图、收藏、配置；不含凭据与模型）
+async function appBackups() {
+  const r = await call(yz.maintenance.appBackups());
+  const last = r.lastRestore ? `<p class="${r.lastRestore.status === 'restored' ? 'muted' : 'err'}">上次启动时的应用数据恢复：${r.lastRestore.status === 'restored' ? '已完成' : `失败：${esc(r.lastRestore.error)}`}</p>` : '';
+  q('#rs-maint').innerHTML = `${last}<p class="muted">应用数据备份与 ComfyUI 环境备份分开。凭据由系统加密单独保存，不在备份中；模型属于外部资源。</p><div class="actions"><button data-ab="create" class="primary">立即备份应用数据</button></div>` + (r.backups.map(b => `<div class="row"><span>${esc(b.createdAt)} <small class="muted">${size(b.bytes)} · ${b.sources.map(esc).join('、')}</small></span><button data-ab="restore" data-d="${esc(b.dir)}">下次启动时恢复…</button></div>`).join('') || '<p class="muted">还没有应用数据备份。</p>');
+}
+q('#rs-appbk').addEventListener('click', () => appBackups().catch(swallow));
+q('#rs-maint').addEventListener('click', async e => {
+  const b = e.target.closest('[data-ab]'); if (!b) return;
+  try {
+    if (b.dataset.ab === 'create') { await call(yz.maintenance.appBackup(), '应用数据已备份。'); return appBackups(); }
+    if (await confirmBox('恢复应用数据', '<p>恢复会在退出并重新打开映作时、打开数据库之前执行。当前数据会保留为失败现场，不会删除。恢复后旧任务只核对状态，不会自动重新生成。</p>')) { const r = await call(yz.maintenance.scheduleAppRestore(b.dataset.d)); toast(r.note); }
+  } catch (er) { swallow(er); }
+});

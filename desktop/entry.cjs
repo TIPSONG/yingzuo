@@ -12,5 +12,16 @@ if (target) {
   // 与 main.cjs 一致的开发期 userData（锁按 userData 计算）
   if (!app.isPackaged) app.setPath('userData', path.join(path.resolve(__dirname, '..'), '.local', 'electron-profile'));
   if (!app.requestSingleInstanceLock()) app.quit();
-  else require('./main.cjs');
+  else {
+    // R13：已登记的应用数据恢复在打开数据库之前执行（没有登记时同步继续）
+    const fs = require('node:fs');
+    const {resolveDataRoot, ensureLayout} = require('./repositories/data-root.cjs');
+    let pending = null;
+    try {
+      const dr = resolveDataRoot({isPackaged: !!app.isPackaged, exePath: app.isPackaged ? process.execPath : null, userData: app.isPackaged ? app.getPath('userData') : null, devRoot: path.resolve(__dirname, '..')});
+      if (fs.existsSync(path.join(dr.root, 'pending-app-restore.json'))) pending = ensureLayout(dr.root);
+    } catch { /* 数据根问题由 main.cjs 正常报告 */ }
+    if (!pending) require('./main.cjs');
+    else require('./maintenance/app-backup.cjs').applyPendingAppRestore(pending).then(r => { globalThis.__yzAppRestore = r; }, e => { globalThis.__yzAppRestore = {status: 'failed', error: e.message}; }).finally(() => require('./main.cjs'));
+  }
 }

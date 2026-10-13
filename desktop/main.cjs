@@ -45,6 +45,7 @@ layout.closed = layout['closed-workflows'];
 const logger = new Logger(layout.logs);
 const log = message => logger.info(message);
 let migration = null;
+if (globalThis.__yzAppRestore) logger.info('应用数据恢复', globalThis.__yzAppRestore);
 if (dataRoot.mode === 'development') {
   try { migration = importLegacy({legacyDir: LEGACY_LOCAL, layout, writeWorkspace: Store.writeWorkspace, readLegacyWorkspace: Store.readWorkspace}); }
   catch (error) { migration = {status: 'failed', error: error.message}; logger.error('legacy import failed', {error: error.message}); }
