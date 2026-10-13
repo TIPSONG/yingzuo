@@ -40,7 +40,7 @@ function setup(t, extra = {}) {
   const svc = createTaskService({db, layout, configRepo, events: new EventBus(), locks: createLocks(), editor, fetchImpl, WebSocketImpl: null, onTerminal: extra.onTerminal});
   svc.queue.pollMs = 1; svc.queue.sleep = () => new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 300 && (svc.queue.pumping || svc.queue.running); i++) await new Promise(r => setTimeout(r, 1)); };
-  return {svc, submitted, settle};
+  return {svc, submitted, settle, editor};
 }
 
 test('Q06：运行当前标签——编译、检查、按绑定覆盖参数、入队、history 成功', async t => {
@@ -121,4 +121,21 @@ test('PR11-R01：系统暂停租约与用户暂停分开；waitForIdle 超时报
   assert.equal(submitted.length, 1);
   svc.queue.activeTasks = () => [{id: 'x'}];
   await assert.rejects(svc.hooks.waitForIdle({timeoutMs: 20}), e => e.code === 'TIMEOUT');
+});
+
+test('D04/PR11-R10：模板自定义表单进入正式运行——按表单映射写入、记录到快照、失效字段拒绝', async t => {
+  const {svc, submitted, settle, editor} = setup(t);
+  editor.commands.compileTab = async id => ({tabId: id, templateId: 'tpl1', title: 'T', revision: 3, uiGraph: {nodes: []}, apiPrompt: prompt()});
+  const fields = [{scopePath: [], nodeId: '7', nodeType: 'KSampler', fieldName: 'steps', widgetType: 'int', constraints: {min: 1, max: 50}, label: '步数', group: '采样', order: 1, defaultValue: 20},
+    {scopePath: [], nodeId: '9', nodeType: 'KSampler', fieldName: 'cfg', widgetType: 'float', constraints: {}, label: '已删节点', group: '采样', order: 0, defaultValue: 1}];
+  svc.setFormProvider(id => id === 'tpl1' ? {versionId: 'v2', fields} : null);
+  const f = await svc.methods['tasks.form']('tab1');
+  assert.deepEqual(f.fields.map(x => [x.label, x.status, x.value]), [['已删节点', 'missing-node', null], ['步数', 'ok', 20]]);
+  const task = await svc.methods['tasks.run']('tab1', {formValues: {0: 33}, expectedRevision: 3}); await settle();
+  assert.equal(submitted[0].prompt[7].inputs.steps, 33);
+  assert.equal(svc.tasks.snapshotOf(svc.tasks.get(task.id)).form.versionId, 'v2');
+  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 99}}), /超出范围/);
+  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {1: 2}}), /映射失效/);
+  svc.setFormProvider(() => null);
+  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 3}}), e => e.code === 'INVALID_STATE');
 });

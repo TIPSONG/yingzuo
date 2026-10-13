@@ -86,6 +86,7 @@ try {
   const db = appDb = Database.open(layout.database);
   taskService = createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window, onTerminal: task => api.methods['assets.linkTask'](task.id)});
   templateService = createTemplateService({db, layout, editor, taskService, dialog, getWindow: () => window, builtins: templates});
+  taskService.setFormProvider(id => { try { const v = templateService.repo.current(id); return v ? {versionId: v.versionId ?? null, fields: v.formSchema ?? null} : null; } catch { return null; } });
   onlineService = createOnlineService({db, configRepo, layout, credentials, fetchImpl: fetch, events, logger, templateRepo: templateService.repo, dialog, getWindow: () => window});
 } catch (error) { logger.error('任务数据库不可用，运行功能停用', {error: error.message}); }
 const diagnostics = createDiagnosticsService({editor, client: () => new ComfyHttpClient(configRepo.config.comfy.url, {fetchImpl: fetch}), fetchImpl: fetch, configRepo, layout, dialog, getWindow: () => window});

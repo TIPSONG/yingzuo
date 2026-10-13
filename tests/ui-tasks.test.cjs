@@ -9,7 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, '../desktop/ui/tasks.js'), '
 const tick = () => new Promise(r => setTimeout(r, 5));
 
 function el() { const ls = {}; return {disabled: false, hidden: false, textContent: '', innerHTML: '', addEventListener(n, f) { ls[n] = f; }, fire(n, e = {}) { return ls[n]?.(e); }}; }
-function setup({modalAnswers, enhanceResult = {state: 'succeeded', text: '润色后', original: '原文'}, runImpl} = {}) {
+function setup({modalAnswers, form = {fields: null}, enhanceResult = {state: 'succeeded', text: '润色后', original: '原文'}, runImpl} = {}) {
   const els = new Map(); const q = s => { if (!els.has(s)) els.set(s, el()); return els.get(s); };
   const calls = []; let subscriber = null; const tasksList = [];
   const ok = data => Promise.resolve({ok: true, data});
@@ -19,6 +19,7 @@ function setup({modalAnswers, enhanceResult = {state: 'succeeded', text: '润色
       enhance: (tabId, opts) => { calls.push(['enhance', tabId, opts]); return ok({id: 'e1'}); },
       enhanceResult: () => ok(enhanceResult),
       run: (tabId, opts) => { calls.push(['run', tabId, opts]); return runImpl ? runImpl(tabId, opts) : ok({id: 't1'}); },
+      form: tabId => { calls.push(['form', tabId]); return ok({tabId, revision: 7, ...form}); },
       runBatch: (tabId, spec) => { calls.push(['runBatch', tabId, spec]); return ok({tasks: []}); },
       list: () => ok({tasks: tasksList, queue: {}}),
     },
@@ -79,4 +80,16 @@ test('批量弹窗打开后切图：仍提交到发起标签', async () => {
   s.ctx.current.activeId = 'B'; release(); await tick();
   const b = s.calls.find(c => c[0] === 'runBatch');
   assert.equal(b[1], 'A'); assert.equal(b[2].expectedRevision, 5);
+});
+
+test('D04：有自定义表单时按表单运行（取发起标签与表单版本），无表单时直接运行', async () => {
+  const s = setup({modalAnswers: [{0: 12}], form: {fields: [{index: 0, label: '步数', group: '采样', widgetType: 'int', status: 'ok', value: 20}]}});
+  s.q('#run-task').fire('click'); await tick();
+  s.ctx.current.activeId = 'B'; await tick();
+  const run = s.calls.find(c => c[0] === 'run');
+  assert.deepEqual([run[1], run[2].expectedRevision, run[2].formValues], ['A', 7, {0: 12}]);
+  const s2 = setup({modalAnswers: []});
+  s2.q('#run-task').fire('click'); await tick();
+  const r2 = s2.calls.find(c => c[0] === 'run');
+  assert.equal(r2[1], 'A'); assert.equal(r2[2].formValues, undefined);
 });

@@ -354,7 +354,7 @@ const commands = {
       await capture();
       const result=await execute(Bridge.compileSource({expectedName:expectedName()}));
       if(!result?.ok)throw Object.assign(new Error(result?.error?.message??result?.message??'编译失败。'),{code:result?.error?.code??result?.code});
-      return {tabId:id,title:tab.title,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
+      return {tabId:id,title:tab.title,templateId:tab.templateId??null,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
     }finally{if(previous&&previous!==id&&workspace.tabs.some(t=>t.id===previous))await activate(previous).catch(()=>{});}
   },
   // T01：从模板仓库打开（模板 ID 与工作副本 ID 分离；已打开同一模板时切换过去）。

@@ -8,6 +8,7 @@ const {TaskRepository, SnapshotStore} = require('../repositories/task-repo.cjs')
 const {QueueService, expandBatch} = require('./queue-service.cjs');
 const {ComfyHttpClient, ComfySocket} = require('../adapters/comfy-http.cjs');
 const {checkPrompt} = require('../../shared/prompt-check.cjs');
+const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
 const {applyOutputPrefix} = require('./output-prefix.cjs');
 
@@ -99,18 +100,37 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
   function assertRunnable(issues) { const e = blocking(issues); if (e.length) throw new AppError(CODES.INVALID_ARGUMENT, `提交前检查未通过：${e[0].message}`, {details: {issues: e}}); }
   function snapshotFor(c, apiPrompt, extra = {}) { return {uiGraph: c.uiGraph, apiPrompt, tabId: c.tabId, title: c.title, references: extra.references ?? [], params: extra.params ?? {}, ...extra.meta}; }
 
+  /* ---------- D04/PR11-R10：模板自定义表单进入正式运行 ---------- */
+  let formProvider = null;
+  const formOf = c => (c.templateId && formProvider ? formProvider(c.templateId) : null);
+  function applyCustomForm(c, prompt, formValues) {
+    if (formValues === undefined || formValues === null) return {prompt, form: null};
+    const form = formOf(c);
+    if (!form?.fields?.length) throw new AppError(CODES.INVALID_STATE, '该标签没有已保存的自定义表单。');
+    try { return {prompt: F.applyForm(form.fields, prompt, formValues), form: {templateId: c.templateId, versionId: form.versionId ?? null, fields: form.fields, values: formValues}}; }
+    catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
+  }
+
   const methods = {
+    /** 正式创作表单：已保存的自定义表单（含映射状态）；没有时返回 null，界面回退到推断表单。 */
+    'tasks.form': async tabId => {
+      const c = await compile(tabId); const form = formOf(c);
+      if (!form?.fields?.length) return {tabId: c.tabId, revision: c.revision, templateId: c.templateId ?? null, fields: null};
+      const map = F.validateMapping(form.fields, c.apiPrompt);
+      return {tabId: c.tabId, revision: c.revision, templateId: c.templateId, versionId: form.versionId ?? null, fields: map.map((m, i) => ({index: i, ...m.binding, status: m.status, reason: m.reason, value: m.status === 'ok' ? c.apiPrompt[m.binding.nodeId].inputs[m.binding.fieldName] : null})).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))};
+    },
     'tasks.preview': async tabId => { const c = await compile(tabId); return {tabId: c.tabId, title: c.title, revision: c.revision, issues: c.issues, objectInfoAvailable: c.objectInfoAvailable, bindings: c.bindings, nodeCount: Object.keys(c.apiPrompt).length}; },
     /** Q06：运行当前（或指定）标签。values 为绑定参数覆盖，references 为 [{nodeId,input,refId}]。 */
     'tasks.run': async (tabId, options = {}) => {
       const c = await compile(tabId, {expectedRevision: options.expectedRevision});
       assertRunnable(c.issues);
-      let prompt = B.applyValues(c.apiPrompt, c.bindings, options.values);
+      const custom = applyCustomForm(c, c.apiPrompt, options.formValues);
+      let prompt = B.applyValues(custom.prompt, c.bindings, options.values);
       const enh = c.bindings.enhancer;
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
-      return queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})});
+      return queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
@@ -172,6 +192,6 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
   };
   async function start() { connectSocket(); try { await queue.recoverOnStartup(); } catch (e) { logger?.error('任务恢复失败', {error: e.message}); } }
   function stop() { queue.stop(); socket?.close(); }
-  return {tasks, queue, refs, methods, hooks, start, stop, compile, connectSocket};
+  return {tasks, queue, refs, methods, hooks, start, stop, compile, connectSocket, setFormProvider: f => { formProvider = f; }};
 }
 module.exports = {createTaskService, ReferenceStore, uploadReferences};

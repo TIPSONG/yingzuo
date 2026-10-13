@@ -58,7 +58,37 @@ async function runFor(origin, options = {}) {
   }
 }
 function runCurrent(options = {}) { return runFor({tabId: current.activeId, revision: null}, options); }
-q('#run-task').addEventListener('click', () => runCurrent());
+/** D04/PR11-R10：模板保存了自定义表单时，“运行”按表单（中文名、分组、顺序、显示字段）填写，按表单映射写入。 */
+async function runWithForm() {
+  const tabId = current.activeId;
+  let form; try { form = await call(yz.tasks.form(tabId)); } catch (e) { swallow(e); return null; }
+  if (!form?.fields) return runFor({tabId, revision: null});
+  const groups = [...new Set(form.fields.map(f => f.group ?? '参数'))];
+  const input = f => {
+    const a = `data-i="${f.index}" aria-label="${esc(f.label ?? f.fieldName)}"${f.status === 'ok' ? '' : ' disabled'}`;
+    const c = f.constraints ?? {};
+    if (f.widgetType === 'boolean') return `<input type="checkbox" ${a}${f.value ? ' checked' : ''}>`;
+    if (Array.isArray(c.options) && c.options.length) return `<select ${a}>${c.options.map(o => `<option${String(o) === String(f.value) ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    if (['int', 'float', 'seed'].includes(f.widgetType)) return `<input type="number" ${a}${c.min !== undefined ? ` min="${c.min}"` : ''}${c.max !== undefined ? ` max="${c.max}"` : ''} step="${c.step ?? (f.widgetType === 'float' ? 'any' : 1)}" value="${esc(f.value ?? '')}">`;
+    if (f.widgetType === 'text' || c.multiline) return `<textarea ${a}>${esc(f.value ?? '')}</textarea>`;
+    return `<input type="text" ${a} value="${esc(f.value ?? '')}">`;
+  };
+  const html = groups.map(g => `<fieldset><legend>${esc(g)}</legend>${form.fields.filter(f => (f.group ?? '参数') === g).map(f => `<label class="field"><span>${esc(f.label ?? f.fieldName)}</span>${input(f)}${f.status === 'ok' ? '' : `<span class="err">${esc(f.reason)}</span>`}</label>`).join('')}</fieldset>`).join('');
+  const values = await modal(`<h3>运行：自定义表单</h3>${html}<div class="actions"><button data-x="no">取消</button><button data-x="yes" class="primary">运行</button></div>`, (back, done) => back.addEventListener('click', e => {
+    const x = e.target.closest('[data-x]'); if (!x) return;
+    if (x.dataset.x !== 'yes') return done(null);
+    const out = {};
+    for (const el of back.querySelectorAll('[data-i]')) {
+      if (el.disabled) continue;
+      const f = form.fields.find(v => String(v.index) === el.dataset.i);
+      out[el.dataset.i] = f.widgetType === 'boolean' ? el.checked : ['int', 'seed'].includes(f.widgetType) ? Number.parseInt(el.value, 10) : f.widgetType === 'float' ? Number(el.value) : el.value;
+    }
+    done(out);
+  }));
+  if (!values) return null;
+  return runFor({tabId, revision: form.revision, title: tabTitle(tabId)}, {formValues: values});
+}
+q('#run-task').addEventListener('click', () => runWithForm());
 // E10：焦点在原生 ComfyUI 视图时，主进程转发 Ctrl+Enter
 window.yingzuoDesktop?.onStatus?.(d => { if (d?.shortcut === 'run' && S.page === 'create') { if (canRun()) runCurrent(); else toast('请先连接 ComfyUI 并打开工作流。', true); } });
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && S.page === 'create' && canRun()) { e.preventDefault(); runCurrent(); } });
