@@ -105,3 +105,20 @@ test('PR11-R09：必须给出发起标签；版本不一致或标签已关闭时
   assert.equal(submitted.length, 0);
   assert.ok(await svc.methods['tasks.run']('tab1', {expectedRevision: 3}));
 });
+
+test('PR11-R01：系统暂停租约与用户暂停分开；waitForIdle 超时报 TIMEOUT', async t => {
+  const {svc, submitted, settle} = setup(t);
+  await svc.methods['tasks.pause']();
+  const lease = svc.hooks.pauseSubmissions('maintenance');
+  await svc.methods['tasks.run']('tab1', {}); await settle();
+  lease(); await settle();
+  assert.equal(submitted.length, 0, '释放维护租约不得解除用户暂停');
+  const l2 = svc.hooks.pauseSubmissions('maintenance');
+  await svc.methods['tasks.resume'](); await settle();
+  assert.equal(submitted.length, 0, '用户继续时维护租约仍阻止提交');
+  assert.deepEqual(svc.queue.state().holds, ['maintenance']);
+  l2(); await settle();
+  assert.equal(submitted.length, 1);
+  svc.queue.activeTasks = () => [{id: 'x'}];
+  await assert.rejects(svc.hooks.waitForIdle({timeoutMs: 20}), e => e.code === 'TIMEOUT');
+});

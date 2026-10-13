@@ -15,7 +15,7 @@ class QueueService {
    */
   constructor({tasks, client, gpuLock, events, logger, clientId, prepare = async (_t, s) => s.apiPrompt, onTerminal = () => {}, pollMs = 1500, externalWaitMs = 3000, sleep = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()}) {
     Object.assign(this, {tasks, client, gpuLock, events, logger, clientId, prepare, onTerminal, pollMs, externalWaitMs, sleep, now});
-    this.paused = false; this.running = null; this.tokens = new Map(); this.external = new Map(); this.pumping = false; this.stopped = false; this.idleWaiters = [];
+    this.paused = false; this.running = null; this.tokens = new Map(); this.external = new Map(); this.pumping = false; this.stopped = false; this.idleWaiters = []; this.leases = new Map(); this.leaseSeq = 0;
   }
   /* ---------- 入队 ---------- */
   enqueue({kind = 'generate', workflowId, snapshot, inputRevision, groupId = null}) {
@@ -26,21 +26,40 @@ class QueueService {
   }
   activeTasks() { return this.tasks.list({states: ACTIVE, limit: 50}); }
   isIdle() { return !this.activeTasks().length && !this.tasks.nextQueued(); }
-  waitForIdle() { if (!this.activeTasks().length) return Promise.resolve(); return new Promise(r => this.idleWaiters.push(r)); }
+  /** 等待本应用任务全部结束；timeoutMs 到期抛 TIMEOUT（不当作空闲）。 */
+  waitForIdle({timeoutMs} = {}) {
+    if (!this.activeTasks().length) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      let timer = null;
+      const done = () => { clearTimeout(timer); resolve(); };
+      this.idleWaiters.push(done);
+      if (timeoutMs) timer = setTimeout(() => { this.idleWaiters = this.idleWaiters.filter(w => w !== done); reject(new AppError(CODES.TIMEOUT, `等待任务结束超时（${Math.round(timeoutMs / 1000)} 秒）。`)); }, timeoutMs);
+    });
+  }
+  /** PR11-R01：暂停租约。系统暂停（维护/退出）与用户暂停分开；释放租约不会把用户暂停的任务改回排队。 */
+  acquirePause(reason) {
+    const id = ++this.leaseSeq; this.leases.set(id, reason);
+    this.events?.emit('queue.state', null, this.state());
+    let released = false;
+    const release = () => { if (released) return; released = true; this.leases.delete(id); this.events?.emit('queue.state', null, this.state()); this.kick(); };
+    release.reason = reason;
+    return release;
+  }
+  releasePauses(reason) { for (const [id, r] of [...this.leases]) if (r === reason) this.leases.delete(id); this.events?.emit('queue.state', null, this.state()); this.kick(); }
   pause() { this.paused = true; this.events?.emit('queue.state', null, this.state()); }
   resume() {
     this.paused = false;
     for (const t of this.tasks.list({states: ['paused'], limit: 1000}).reverse()) this.tasks.transition(t.id, 'queued', {reason: '继续'});
     this.events?.emit('queue.state', null, this.state()); this.kick();
   }
-  state() { return {paused: this.paused, runningTaskId: this.running, external: [...this.external.values()]}; }
+  state() { return {paused: this.paused, holds: [...this.leases.values()], runningTaskId: this.running, external: [...this.external.values()]}; }
   kick() { if (!this.pumping && !this.stopped) this.pump().catch(e => this.logger?.error('queue pump failed', {error: e.message})); }
   stop() { this.stopped = true; }
   /* ---------- 主循环 ---------- */
   async pump() {
     this.pumping = true;
     try {
-      while (!this.paused && !this.stopped) {
+      while (!this.paused && !this.leases.size && !this.stopped) {
         if (!this.running && this.activeTasks().length) { await this.resumeActive(); continue; }
         const next = this.tasks.nextQueued();
         if (!next) break;

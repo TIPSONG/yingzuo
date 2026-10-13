@@ -164,10 +164,11 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
   };
   const hooks = {
     activeTasks: () => queue.activeTasks(),
-    waitForIdle: () => queue.waitForIdle(),
-    cancelActive: async () => { for (const t of queue.activeTasks()) { try { await queue.cancel(t.id); } catch (e) { logger?.warn('退出时取消失败', {id: t.id, error: e.message}); } } await Promise.race([queue.waitForIdle(), new Promise(r => setTimeout(r, 15000))]); },
-    pauseSubmissions: () => queue.pause(),
-    resumeSubmissions: () => queue.resume(),
+    waitForIdle: o => queue.waitForIdle(o),
+    cancelActive: async ({timeoutMs = 15000} = {}) => { for (const t of queue.activeTasks()) { try { await queue.cancel(t.id); } catch (e) { logger?.warn('退出时取消失败', {id: t.id, error: e.message}); } } await queue.waitForIdle({timeoutMs}); },
+    /** 返回释放函数（租约）；不改变用户暂停状态。 */
+    pauseSubmissions: (reason = 'quit') => queue.acquirePause(reason),
+    resumeSubmissions: (reason = 'quit') => queue.releasePauses(reason),
   };
   async function start() { connectSocket(); try { await queue.recoverOnStartup(); } catch (e) { logger?.error('任务恢复失败', {error: e.message}); } }
   function stop() { queue.stop(); socket?.close(); }

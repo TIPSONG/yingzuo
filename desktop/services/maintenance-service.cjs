@@ -49,7 +49,29 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     const running = await fetchImpl(new URL('system_stats', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => r.ok, () => false);
     return [{id: 'comfy', running, owned: running ? await comfy.verifyOwned() : false, roots: configRepo.config.comfy.root ? [configRepo.config.comfy.root] : undefined}];
   }
+  /* ---------- D05/D06/PR11-R01/R02：恢复失败后保持暂停；所有恢复走同一受保护路径 ---------- */
+  const holds = [];
+  function holdAfterFailure(h) { holds.push(h); logger?.error('维护恢复失败：保持任务暂停、不启动服务', {id: h.id}); events.emit('maintenance.hold', h.id, {stopped: h.stopped}); }
+  function releaseHolds() { for (const h of holds.splice(0)) if (typeof h.lease === 'function') h.lease(); }
+  async function guardedRestore(run) {
+    const release = locks.environment.tryAcquire('restore'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用。');
+    let lease = null, ok = false;
+    try {
+      if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 仍在运行，请先关闭后再恢复。');
+      lease = taskService?.hooks.pauseSubmissions('restore') ?? null;
+      await taskService?.hooks.waitForIdle({timeoutMs: 600000});
+      if (await comfy.verifyOwned()) await comfy.stop();
+      const r = await run();
+      ok = true; releaseHolds();
+      return r;
+    } finally {
+      // 恢复未完成：保留租约（任务继续暂停），等待用户再次恢复
+      if (ok || !lease) lease?.(); else holdAfterFailure({id: 'restore', lease, stopped: []});
+      release();
+    }
+  }
   async function runTransaction(plan) {
+    if (holds.length) throw new AppError(CODES.INVALID_STATE, '上一次维护恢复失败，环境处于不确定状态。请先在“维护”页完成恢复。');
     const id = `mt-${crypto.randomBytes(5).toString('hex')}`;
     record(id, {scope: plan.kind ?? 'maintenance', phase: 'plan', target: {title: plan.title, target: plan.target}});
     const journal = [];
@@ -57,7 +79,8 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       locks, services,
       stopService: async () => { await comfy.stop(); },
       startService: async () => { await comfy.ensureRunning(configRepo.config); },
-      queue: taskService ? {pauseSubmissions: () => taskService.hooks.pauseSubmissions(), resumeSubmissions: () => taskService.hooks.resumeSubmissions(), waitForIdle: () => taskService.hooks.waitForIdle()} : null,
+      queue: taskService ? {pauseSubmissions: r => taskService.hooks.pauseSubmissions(r), waitForIdle: o => taskService.hooks.waitForIdle(o)} : null,
+      onHold: h => holdAfterFailure(h),
       backup: async p => { const r = await createBackup({backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`}); return {dir: r.dir}; },
       restore: async dir => { const j = await restore.prepare(dir); return restore.run(j.id); },
       onEvent: e => { journal.push(e); record(id, {phase: ['plan', 'disk', 'services', 'lock', 'pause', 'stop'].includes(e.phase) ? 'plan' : e.phase === 'backup' ? 'backup' : e.phase === 'staging' ? 'staging' : e.phase === 'apply' ? 'apply' : e.phase === 'check' ? 'healthcheck' : e.phase === 'done' ? 'done' : e.phase === 'restore' ? 'restore' : e.phase === 'restore-check' ? (e.state === 'done' ? 'restored' : 'failed') : 'failed', journal}); events.emit('maintenance.progress', id, e); },
@@ -108,16 +131,11 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     'maintenance.verifyBackup': async dir => { const b = listBackups().find(x => x.dir === dir); if (!b) throw new AppError(CODES.NOT_FOUND, '备份不存在。'); return verifyBackup(dir); },
     'maintenance.restoreBackup': async dir => {
       const b = listBackups().find(x => x.dir === dir); if (!b) throw new AppError(CODES.NOT_FOUND, '备份不存在。');
-      const release = locks.environment.tryAcquire('restore'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用。');
-      try {
-        if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 仍在运行，请先关闭后再恢复。');
-        taskService?.hooks.pauseSubmissions(); await taskService?.hooks.waitForIdle();
-        if (await comfy.verifyOwned()) await comfy.stop();
-        const j = await restore.prepare(dir); return await restore.run(j.id);
-      } finally { taskService?.hooks.resumeSubmissions(); release(); }
+      return guardedRestore(async () => { const j = await restore.prepare(dir); return restore.run(j.id); });
     },
     'maintenance.pendingRestores': async () => restore.pending(),
-    'maintenance.resumeRestore': async id => { const release = locks.environment.tryAcquire('restore'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用。'); try { return await restore.resume(id); } finally { release(); } },
+    'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id)),
+    'maintenance.holds': async () => holds.map(h => ({id: h.id, stopped: h.stopped})),
     'maintenance.transactions': async () => listTransactions(),
     'maintenance.pruneBackups': async () => { const list = planPrune(configRepo.config.maintenance?.keepBackups ?? 5); const trash = path.join(layout.trash, 'backups'); fs.mkdirSync(trash, {recursive: true}); for (const b of list) fs.renameSync(b.dir, path.join(trash, path.basename(b.dir))); return {moved: list.map(b => b.dir), to: trash}; },
     // ----- U06：执行更新 -----

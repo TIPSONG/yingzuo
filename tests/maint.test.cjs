@@ -147,7 +147,7 @@ function txDeps(base, over = {}) {
     services: async () => [{id: 'comfy', owned: true, running: true}],
     stopService: async id => calls.push(['stop', id]),
     startService: async id => calls.push(['start', id]),
-    queue: {pauseSubmissions: () => calls.push(['pause']), resumeSubmissions: () => calls.push(['resume']), waitForIdle: async () => calls.push(['idle'])},
+    queue: {pauseSubmissions: () => { calls.push(['pause']); return () => calls.push(['resume']); }, waitForIdle: async () => calls.push(['idle'])},
     backup: async () => createBackup({backupRoot: path.join(base, 'bk'), sources: [{id: 'p', path: target}]}),
     restore: async dir => { const j = await eng.prepare(dir); return eng.run(j.id); },
     ...over,
@@ -185,4 +185,15 @@ test('U04 外部服务运行、锁被占用、磁盘不足时阻止且不做任�
   r = await new MaintenanceTransaction(deps).execute({...plan, requiredBytes: 1e9});
   assert.equal(r.error.code, 'DISK_SPACE');
   assert.equal(applied, false);
+});
+
+test('D05/PR11-R01：恢复失败时不启动服务、不释放暂停租约，交给 onHold', async () => {
+  const base = tmp(); let held = null;
+  const {deps, target, calls} = txDeps(base, {restore: async () => { throw new Error('磁盘只读'); }, onHold: h => { held = h; }});
+  const r = await new MaintenanceTransaction(deps).execute({title: 'x', roots: [target], apply: async () => { throw new Error('pip 失败'); }});
+  assert.equal(r.status, 'restore-failed');
+  assert.deepEqual(calls.map(c => c[0]), ['pause', 'idle', 'stop']);
+  assert.ok(held && typeof held.lease === 'function'); assert.deepEqual(held.stopped, ['comfy']);
+  assert.equal(deps.locks.environment.locked, false);
+  held.lease(); assert.deepEqual(calls.at(-1), ['resume']);
 });

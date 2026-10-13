@@ -34,7 +34,7 @@ function setup() {
   const calls = [];
   const comfy = {verifyOwned: async () => false, stop: async () => calls.push('stop'), ensureRunning: async () => calls.push('start')};
   const paused = [];
-  const taskService = {hooks: {pauseSubmissions: () => paused.push('p'), resumeSubmissions: () => paused.push('r'), waitForIdle: async () => {}, activeTasks: () => []}, tasks: {list: () => [{id: 't1', seq: 1}], snapshotOf: () => ({apiPrompt: {1: {class_type: 'LoraLoader', inputs: {lora_name: 'style.safetensors'}}}})}};
+  const taskService = {hooks: {pauseSubmissions: () => { paused.push('p'); return () => paused.push('r'); }, waitForIdle: async () => {}, activeTasks: () => []}, tasks: {list: () => [{id: 't1', seq: 1}], snapshotOf: () => ({apiPrompt: {1: {class_type: 'LoraLoader', inputs: {lora_name: 'style.safetensors'}}}})}};
   const editor = {workspace: {tabs: [{id: 'd1', title: '草稿一', graph: {nodes: [{id: 1, type: 'NodeA', widgets_values: ['style.safetensors']}]}}]}};
   const events = {emit: () => {}};
   const svc = createMaintenanceService({db, layout, configRepo, locks: createLocks(), events, comfy, taskService, editor, fetchImpl: async () => { throw new Error('offline'); }});
