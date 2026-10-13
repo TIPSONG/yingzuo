@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 50 / 实现中 5 / 阻塞 4 / 未开始 23（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 51 / 实现中 4 / 阻塞 4 / 未开始 23（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -32,7 +32,7 @@
 | F05 | 存储仓库 | 程序完成 |  | desktop/repositories/database.cjs<br>desktop/core/fs-atomic.cjs<br>desktop/workspace-store.cjs | foundation.test.cjs：两种 SQLite 驱动的迁移/事务/保存点/VACUUM INTO 备份/损坏只读 | better-sqlite3 优先；Electron 未重建时回退 node:sqlite。工作区改为 v2（drafts/ + graphHash + revision） |  |
 | F06 | 事件与锁 | 程序完成 |  | desktop/core/locks.cjs<br>desktop/core/events.cjs | foundation.test.cjs |  |  |
 | F07 | 凭据与日志 | 程序完成 |  | desktop/core/logger.cjs<br>desktop/core/credentials.cjs | foundation.test.cjs：脱敏、轮转、加密不可用拒绝明文 | Windows DPAPI 实际加密需 Codex 验收 |  |
-| F08 | 开发脚本 | 实现中 |  | package.json<br>tools/check.cjs<br>tools/build-win.cjs<br>.github/workflows/ | npm run check 通过 | check/test/build:win 已有；Windows 构建经 GitHub Actions windows-build.yml 实测，结果见 B03 |  |
+| F08 | 开发脚本 | 程序完成 |  | package.json<br>tools/check.cjs<br>tools/build-win.cjs<br>.github/workflows/ | GitHub Actions windows-build 运行 38370113540 成功（npm run check + build:win 产出安装包/便携版） | 安装包实际安装、启动、卸载需 Codex 在 Windows 验收；未签名 |  |
 | E01 | 版本适配层 | 程序完成 |  | desktop/adapters/comfy-editor-adapter.cjs<br>desktop/comfy-bridge-source.cjs | services.test.cjs、comfy-bridge-source.test.cjs | 能力探测给出具体限制；旧桥接测试全部保留 |  |
 | E02 | 正式页面融合 | 程序完成 |  | desktop/workbench.html<br>desktop/ui/shell.js<br>desktop/ui/shell.css | check 语法；无 DOM 自动测试 | 首页优先，节点/表单入口并列，A 测仅保留预览入口；需 Codex 实机看界面 |  |
 | E03 | 工作流标签 | 程序完成 |  | desktop/services/editor-session.cjs<br>desktop/workspace-store.cjs | desktop-main.test.cjs、workspace-store.test.cjs | 新增重命名、viewport 持久化、revision；模板标签复用 |  |

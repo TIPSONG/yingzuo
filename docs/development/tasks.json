@@ -96,7 +96,7 @@
   "id": "F08",
   "name": "开发脚本",
   "batch": 1,
-  "status": "实现中",
+  "status": "程序完成",
   "commit": "",
   "files": [
    "package.json",
@@ -104,8 +104,8 @@
    "tools/build-win.cjs",
    ".github/workflows/"
   ],
-  "checks": "npm run check 通过",
-  "note": "check/test/build:win 已有；Windows 构建经 GitHub Actions windows-build.yml 实测，结果见 B03"
+  "checks": "GitHub Actions windows-build 运行 38370113540 成功（npm run check + build:win 产出安装包/便携版）",
+  "note": "安装包实际安装、启动、卸载需 Codex 在 Windows 验收；未签名"
  },
  {
   "id": "E01",

@@ -73,7 +73,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 ## 7. 检查点记录
 
-- 批次 1：除 F08（等 Windows 构建）外程序完成；S07 已在批次 2 完成。
+- 批次 1：全部程序完成（F08：GitHub Actions Windows 构建在 cd4862b 首次全绿；之前 Windows 上的测试因 SQLite 文件句柄未关闭导致 EBUSY 失败，已修复）。
 - 批次 2：Q01–Q10、E07–E09 程序完成（ComfyUI 为替身，Gemma 节点输入名为推断，需 Codex 用真实工作流验收）；E10 实现中。
 - 批次 3（本分支部分）：T01–T07 程序完成。
 - 批次 4：O01–O07、T08 程序完成；O08、R06 实现中（插件部分阻塞）；R07、R08 阻塞（依赖 maint 分支）。
