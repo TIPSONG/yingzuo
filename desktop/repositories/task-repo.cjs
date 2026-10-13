@@ -37,6 +37,7 @@ class TaskRepository {
   constructor(db, snapshots, {now = () => new Date().toISOString(), events} = {}) { this.db = db; this.snapshots = snapshots; this.now = now; this.events = events; }
   /** 创建任务：先持久化快照，再插入记录（state 默认 queued）。 */
   create({kind = 'generate', workflowId, snapshot, inputRevision = 0, clientId, groupId = null, retryOf = null, state = 'queued'}) {
+    if (this.secure) snapshot = this.secure(snapshot); // RV03：任何来源（含重试旧快照）落盘前都经统一敏感字段政策
     const {ref, hash} = this.snapshots.put(snapshot);
     const id = crypto.randomUUID(), requestId = crypto.randomUUID(), at = this.now();
     this.db.transaction(() => {

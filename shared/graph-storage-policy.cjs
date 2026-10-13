@@ -75,16 +75,19 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
     return out;
   }
   /** 内部保存：返回磁盘副本（不改原对象）。 */
-  function secureForStorage(graph) {
-    if (!graph || typeof graph !== 'object') return graph;
+  function secureForStorage(graph) { return secureWithValues(graph).graph; }
+  /** RV03：同 secureForStorage，另返回 明文→凭据名 映射，供任务快照的其他字段（表单值、参数等）一并替换。 */
+  function secureWithValues(graph) {
+    const values = new Map();
+    if (!graph || typeof graph !== 'object') return {graph, values};
     const known = knownValues();
     const hits = findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: known}).filter(h => !SF.isPlaceholder(h.value));
-    if (!hits.length) return graph;
+    if (!hits.length) return {graph, values};
     if (!credentials?.available?.()) throw Object.assign(new Error('图中含敏感输入（如 API Key），但系统加密存储不可用；为避免明文写入磁盘，未保存。修改仍保留在当前窗口。'), {code: 'CREDENTIAL_UNAVAILABLE', fields: hits.map(({value, ...h}) => h)});
     const out = structuredClone(graph);
     const items = credentials.read().items ?? {};
-    for (const h of hits) { const name = secretName(h.value); if (!items[name]) { credentials.set(name, h.value); items[name] = true; } setAt(out, h, SF.PLACEHOLDER_PREFIX + name); }
-    return out;
+    for (const h of hits) { const name = secretName(h.value); if (!items[name]) { credentials.set(name, h.value); items[name] = true; } setAt(out, h, SF.PLACEHOLDER_PREFIX + name); values.set(h.value, name); }
+    return {graph: out, values};
   }
   /** 对外导出：移除真实值与本机凭据标识，返回 {graph, refill}。 */
   function stripForExport(graph) {
@@ -116,6 +119,6 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
   }
   /** 检查（迁移记录用）：返回仍含明文敏感值的位置，不含值本身。 */
   function scan(graph) { return findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: knownValues()}).filter(h => !SF.isPlaceholder(h.value)).map(({value, ...h}) => h); }
-  return {secureForStorage, stripForExport, resolveInMemory, scan, knownValues};
+  return {secureForStorage, secureWithValues, stripForExport, resolveInMemory, scan, knownValues};
 }
 module.exports = {createGraphStoragePolicy, findSecretWidgets, widgetNames, secretName, KEY_LIKE};

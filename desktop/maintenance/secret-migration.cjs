@@ -40,6 +40,29 @@ function migrateStoredGraphs({db, layout, repo, policy, credentials, persistDraf
       note('template-version', r.version_id, hits, canSecure);
     }
   }
+  // RV03：任务快照（内容寻址）。UI 图/表单值中残留的明文 → 写新快照文件，单事务更新所有引用它的任务的 ref/hash；
+  // 任务 id、lineage、事件不变；旧文件无其他引用时删除。不直接改旧文件（否则 hash 校验失效）。
+  if (db) {
+    let rows = []; try { rows = db.all('SELECT DISTINCT snapshot_ref, snapshot_hash FROM tasks'); } catch { rows = []; }
+    const snapDir = layout['task-snapshots'] ?? path.join(layout.root, 'task-snapshots');
+    const {SnapshotStore} = require('../repositories/task-repo.cjs');
+    const {secureSnapshot} = require('../services/snapshot-secrets.cjs');
+    const store = fs.existsSync(snapDir) ? new SnapshotStore(snapDir) : null;
+    for (const r of store ? rows : []) {
+      let snap; try { snap = store.get(r.snapshot_ref, r.snapshot_hash); } catch { continue; }
+      const hits = [...policy.scan(snap.uiGraph ?? {nodes: []})];
+      let secured = null;
+      try { secured = canSecure ? secureSnapshot(snap, {policy, credentials}) : null; } catch { secured = null; }
+      const changed = secured && JSON.stringify(secured) !== JSON.stringify(snap);
+      if (!hits.length && !changed) continue;
+      if (changed) {
+        const next = store.put(secured);
+        db.transaction(() => db.run('UPDATE tasks SET snapshot_ref = ?, snapshot_hash = ? WHERE snapshot_ref = ?', next.ref, next.hash, r.snapshot_ref));
+        if (!db.get('SELECT 1 AS x FROM tasks WHERE snapshot_ref = ?', r.snapshot_ref)) fs.rmSync(path.join(snapDir, ...r.snapshot_ref.split('/').slice(1)), {force: true});
+      }
+      note('task-snapshot', r.snapshot_ref, hits.length ? hits : [{type: 'snapshot', nodeId: '-', field: 'values'}], !!changed);
+    }
+  }
   try { const dir = layout.migrations ?? path.join(layout.root, 'migrations'); fs.mkdirSync(dir, {recursive: true}); fs.writeFileSync(path.join(dir, 'secret-scan.json'), JSON.stringify(report, null, 2)); } catch { /* 记录失败不影响 */ }
   return report;
 }

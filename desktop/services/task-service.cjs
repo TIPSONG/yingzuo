@@ -1,6 +1,7 @@
 'use strict';
 // Q06/Q08/Q09/Q10/E07/E08/E09：把编辑器编译、绑定、参考图、任务仓库和调度器组装成 tasks.* 接口。
 const fs = require('node:fs');
+const {secureSnapshot} = require('./snapshot-secrets.cjs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {AppError, CODES} = require('../core/errors.cjs');
@@ -70,7 +71,7 @@ async function uploadReferences(prompt, references, client, refStore) {
   return next;
 }
 
-function createTaskService({credentials = null, db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow, onTerminal = null, pool = null}) {
+function createTaskService({graphPolicy = null, credentials = null, db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow, onTerminal = null, pool = null}) {
   const filePool = () => pool ?? require('../core/worker-pool.cjs').sharedPool();
   let templateRepo = null;
   const tasks = new TaskRepository(db, new SnapshotStore(layout['task-snapshots']), {events});
@@ -170,20 +171,9 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
   }
 
   /* ---------- R18/D15：快照不存敏感输入明文；提交前在内存中还原 ---------- */
-  function redactSnapshot(snapshot) {
-    const r = SF.redactForStorage({prompt: snapshot.apiPrompt, objectInfo});
-    if (!r.refs.length) return snapshot;
-    if (!credentials?.available?.()) throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, '工作流含敏感输入（如 API Key），但系统加密存储不可用；为避免明文写入任务快照，未创建任务。');
-    const values = new Map(); let prompt = JSON.stringify(r.prompt);
-    for (const {credentialRef} of r.refs) {
-      const secret = r.secrets.get(credentialRef);
-      const name = `node-secret:${crypto.createHash('sha256').update(secret).digest('hex').slice(0, 16)}`;
-      credentials.set(name, secret); values.set(secret, name);
-      prompt = prompt.split(JSON.stringify(SF.PLACEHOLDER_PREFIX + credentialRef)).join(JSON.stringify(SF.PLACEHOLDER_PREFIX + name));
-    }
-    const {apiPrompt: _p, ...rest} = snapshot;
-    return {...SF.redactValues(rest, values), apiPrompt: JSON.parse(prompt), secretRefs: [...values.values()]};
-  }
+  // RV03：统一快照边界（API 图 + UI 图 + 其他字段），在仓库创建任务时执行，覆盖 enqueue/enqueueGroup/retry。
+  const redactSnapshot = snapshot => secureSnapshot(snapshot, {policy: graphPolicy, credentials, objectInfo});
+  tasks.secure = redactSnapshot;
   const resolveSecrets = prompt => SF.resolveSecrets(prompt, async name => credentials?.get(name) ?? null).catch(e => { throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, e.message, {details: {missing: e.missing}}); });
   const enqueue = spec => queue.enqueue({...spec, snapshot: redactSnapshot(spec.snapshot)});
   /** S05：唯一的生产提交入口。其他服务（快捷使用等）只能经此提交，统一套用工作流身份、输出前缀、参考图与敏感字段政策。 */
