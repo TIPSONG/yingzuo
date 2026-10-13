@@ -116,3 +116,9 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 82 项复核：E07/T01/O07/S04/R06 改为“有限支持”，T03 改为“实现中”，其余维持程序完成（均仍需 Windows 人工验收）。
 - 下一步建议：D04 左侧参数面板（workbench.js renderFields 改为优先用 tasks.form，注意子图节点 ID “父:子” 与画布 widget 的映射）；R11 导出 manifest；R17 assets 缩略图改走 WorkerPool。
 - 关键新模块：desktop/services/quit-flow.cjs、desktop/maintenance/app-backup.cjs、entry.cjs（单实例锁 + 应用数据恢复）、queue-service 暂停租约/followers/enqueueGroup。
+
+## 第五轮（PR11 第二轮审阅 S01–S10）进度 — 2026-10-13
+- 审阅原文：docs/development/PR11第二轮代码审阅与收尾计划.md（审阅 head 68f7598）；状态：`node tools/pr11.cjs render`（N01–N06、S01–S10 区块）。
+- 已完成：S01 提交屏障、S02 持久阻断、S03 旧后端取消边界、S04 模型移动恢复保护、S05 统一提交入口、S06 一致备份与恢复模式。
+- 待做：S07（D04 全入口表单 + 版本身份）、S08（素材 manifest 导出/导入、关闭归档）、S09（缩略图/元数据/复制 worker）、S10（O07 在线模板浏览、T01 缩略图、状态统一）。
+- 注意：上文“82 项全部程序完成”等为历史描述，以本节和进度表为准。
