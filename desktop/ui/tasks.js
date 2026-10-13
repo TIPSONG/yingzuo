@@ -12,14 +12,38 @@ const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'unknown']);
 function canRun() { return typeof current === 'object' && current && current.activeId && current.connected; }
 function syncRunBar() {
   const ok = canRun();
-  for (const id of ['#run-task', '#run-batch', '#run-enhance']) q(id).disabled = !ok;
+  for (const id of ['#run-task', '#run-batch', '#run-enhance', '#run-refs']) q(id).disabled = !ok;
   q('#run-hint').textContent = ok ? (queueState.waiting === 'external' ? '后端有其他任务，本应用任务会在其后提交' : queueState.paused ? '队列已暂停' : '') : '打开工作流并连接 ComfyUI 后可运行';
 }
 setInterval(syncRunBar, 1000);
 
+/* ---------- E08 参考图：按标签保存选择（内容寻址编号），每次运行前由主进程上传 ---------- */
+const refKey = tabId => `yingzuo.refs.${tabId}`;
+const loadRefs = tabId => { try { return JSON.parse(localStorage.getItem(refKey(tabId)) || '[]'); } catch { return []; } };
+const saveRefs = (tabId, refs) => localStorage.setItem(refKey(tabId), JSON.stringify(refs));
+q('#run-refs').addEventListener('click', async () => {
+  let preview;
+  try { preview = await call(yz.tasks.preview(current.activeId)); } catch (e) { swallow(e); return; }
+  const slots = (preview.bindings.references ?? []).filter(r => r && !r.readonly);
+  if (!slots.length) { toast('此工作流没有可替换的 LoadImage 参考图节点。'); return; }
+  const tabId = current.activeId;
+  let refs = loadRefs(tabId).filter(r => slots.some(s => s.nodeId === r.nodeId));
+  const enh = preview.bindings.enhancer;
+  const render = back => { back.querySelector('#r-list').innerHTML = slots.map((s, i) => { const r = refs.find(x => x.nodeId === s.nodeId); return `<div class="row"><span>图 ${i + 1} · 节点 #${esc(s.nodeId)}：${r ? esc(r.name) : `沿用工作流中的 ${esc(s.value)}`}</span><span><button data-pick="${esc(s.nodeId)}">选择…</button>${r ? `<button data-clear="${esc(s.nodeId)}">移除</button>` : ''}</span></div>`; }).join(''); };
+  await modal(`<h3>参考图</h3><p class="muted">图片复制到本机数据目录保存，运行时上传到 ComfyUI。${enh ? `Gemma 润色节点最多读取 ${enh.imageInputs.length > 2 ? 2 : '前 2'} 张，之后的参考图仍交给 Qwen。` : ''}</p><div id="r-list" class="list"></div><div class="actions"><button data-x="done" class="primary">完成</button></div>`, (back, done) => {
+    render(back);
+    back.addEventListener('click', async e => {
+      const pick = e.target.closest('[data-pick]'), clear = e.target.closest('[data-clear]'), x = e.target.closest('[data-x]');
+      if (pick) { try { const r = await call(yz.tasks.pickReference()); if (!r.cancelled) { refs = [...refs.filter(v => v.nodeId !== pick.dataset.pick), {nodeId: pick.dataset.pick, input: 'image', refId: r.id, name: r.name}]; saveRefs(tabId, refs); render(back); } } catch (err) { swallow(err); } }
+      if (clear) { refs = refs.filter(v => v.nodeId !== clear.dataset.clear); saveRefs(tabId, refs); render(back); }
+      if (x) done();
+    });
+  });
+});
 async function runCurrent(options = {}) {
   try {
-    const t = await call(yz.tasks.run(current.activeId, options), '已加入队列。');
+    const references = loadRefs(current.activeId).map(({nodeId, input, refId}) => ({nodeId, input, refId}));
+    const t = await call(yz.tasks.run(current.activeId, {references, ...options}), '已加入队列。');
     scheduleRefresh(); return t;
   } catch (e) { const issues = e.details?.issues; swallow(e); return null; }
 }
@@ -44,7 +68,7 @@ q('#run-batch').addEventListener('click', async () => {
     back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done(x.dataset.x === 'yes' ? read() : null); });
   });
   if (!spec) return;
-  try { const r = await call(yz.tasks.runBatch(current.activeId, spec), d => `已加入 ${d.tasks.length} 个任务。`); scheduleRefresh(); return r; } catch (e) { swallow(e); }
+  try { spec.references = loadRefs(current.activeId).map(({nodeId, input, refId}) => ({nodeId, input, refId})); const r = await call(yz.tasks.runBatch(current.activeId, spec), d => `已加入 ${d.tasks.length} 个任务。`); scheduleRefresh(); return r; } catch (e) { swallow(e); }
 });
 
 /* ---------- Q08 仅润色 ---------- */
@@ -60,7 +84,7 @@ q('#run-enhance').addEventListener('click', async () => {
     if (input === null) return;
     text = input;
     let task;
-    try { task = await call(yz.tasks.enhance(current.activeId, {text})); } catch (e) { swallow(e); return; }
+    try { task = await call(yz.tasks.enhance(current.activeId, {text, references: loadRefs(current.activeId).map(({nodeId, input, refId}) => ({nodeId, input, refId}))})); } catch (e) { swallow(e); return; }
     toast('润色任务已加入队列…'); scheduleRefresh();
     await waitTerminal(task.id);
     let result;

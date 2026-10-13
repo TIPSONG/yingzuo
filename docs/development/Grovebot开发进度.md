@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 34 / 实现中 1 / 阻塞 0 / 未开始 47（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 34 / 实现中 2 / 阻塞 0 / 未开始 46（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -53,9 +53,9 @@
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | E07 | 五图表单 | 程序完成 |  |  | tests/bindings.test.cjs | 按节点类型+连线推断（提示词/负面/seed/步数/cfg/尺寸/模型/参考图/Gemma），已连线只读；五个真实模板需 Codex 核对 |  |
-| E08 | 参考图管线 | 程序完成 |  |  | tests/bindings.test.cjs E08 | data/references 内容寻址，提交前上传并写回服务器返回名；重跑自动补传。表单内选择参考图入口仅后端 tasks.pickReference，表单 UI 未接 |  |
+| E08 | 参考图管线 | 程序完成 |  |  | tests/bindings.test.cjs E08 | data/references 内容寻址；运行栏“参考图…”按 LoadImage 节点选择/移除，按标签保存，运行前上传并写回服务器返回名，重启后重跑自动补传；需真实 ComfyUI 验收 |  |
 | E09 | 编译与定位 | 程序完成 |  |  | tests/bindings.test.cjs E09 | compileTab：后台标签切换→graphToPrompt→切回；本地检查 object_info |  |
-| E10 | 原生视图行为 | 未开始 |  |  |  |  |  |
+| E10 | 原生视图行为 | 实现中 |  |  |  | 已有：弹窗/离开创作页隐藏原生视图、Ctrl+Enter 运行、聚焦节点桥接(focus)；未做：图片选择/下载、缩放快捷键统一 |  |
 | Q01 | 任务持久化 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q02 | Comfy HTTP/WS 客户端 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q03 | 单一串行调度器 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |

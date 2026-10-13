@@ -202,7 +202,7 @@
   "commit": "",
   "files": [],
   "checks": "tests/bindings.test.cjs E08",
-  "note": "data/references 内容寻址，提交前上传并写回服务器返回名；重跑自动补传。表单内选择参考图入口仅后端 tasks.pickReference，表单 UI 未接"
+  "note": "data/references 内容寻址；运行栏“参考图…”按 LoadImage 节点选择/移除，按标签保存，运行前上传并写回服务器返回名，重启后重跑自动补传；需真实 ComfyUI 验收"
  },
  {
   "id": "E09",
@@ -218,11 +218,11 @@
   "id": "E10",
   "name": "原生视图行为",
   "batch": 2,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "已有：弹窗/离开创作页隐藏原生视图、Ctrl+Enter 运行、聚焦节点桥接(focus)；未做：图片选择/下载、缩放快捷键统一"
  },
  {
   "id": "S01",

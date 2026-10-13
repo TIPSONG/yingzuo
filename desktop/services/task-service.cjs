@@ -113,7 +113,7 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       return {groupId, tasks: created};
     },
     /** Q08：仅润色。只提交润色节点及其上游，完成后在任务输出中读取文本，不执行绘图。 */
-    'tasks.enhance': async (tabId, {text} = {}) => {
+    'tasks.enhance': async (tabId, {text, references = []} = {}) => {
       const c = await compile(tabId);
       const enh = c.bindings.enhancer;
       if (!enh) throw new AppError(CODES.NOT_FOUND, '此工作流没有 Gemma 润色节点。');
@@ -124,7 +124,7 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       let sub;
       try { sub = B.extractEnhanceOnly(prompt, enh.nodeId, {objectInfo: info}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       assertRunnable([...checkPrompt(sub.prompt, {objectInfo: info}), ...B.checkEnhancerRun(sub.prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages})]);
-      return queue.enqueue({kind: 'enhance', workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
+      return queue.enqueue({kind: 'enhance', workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: references.filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
     },
     'tasks.enhanceResult': async id => {
       const t = tasks.get(id); if (!t || t.kind !== 'enhance') throw new AppError(CODES.NOT_FOUND, '不是润色任务。');
