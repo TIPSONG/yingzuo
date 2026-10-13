@@ -10,6 +10,19 @@
   <link rel="stylesheet" href="ui/shell.css">
 </head>
 <body>
+  <header id="titlebar" class="titlebar" aria-label="窗口标题栏">
+    <div class="titlebar-drag">
+      <img class="titlebar-mark" src="../assets/mark.svg" alt="">
+      <span class="titlebar-title">映作</span>
+      <span class="titlebar-sub">LOCAL IMAGE STUDIO</span>
+    </div>
+    <div class="titlebar-controls" role="group" aria-label="窗口控制">
+      <button type="button" id="win-min" class="titlebar-btn" aria-label="最小化" title="最小化"><span aria-hidden="true">─</span></button>
+      <button type="button" id="win-max" class="titlebar-btn" aria-label="最大化" title="最大化" data-state="restored"><span class="win-max-icon" aria-hidden="true">▢</span></button>
+      <button type="button" id="win-close" class="titlebar-btn titlebar-btn-close" aria-label="关闭" title="关闭"><span aria-hidden="true">×</span></button>
+    </div>
+  </header>
+  <div class="app-shell">
   <aside>
     <div class="brand"><img src="../assets/mark.svg" alt=""><span>映作<small>LOCAL IMAGE STUDIO</small></span></div>
     <nav id="nav" aria-label="主导航">
@@ -116,6 +129,7 @@
         <div class="list"><div class="row"><span>A 测浏览器草稿（需先在 A 测页面“导出草稿”）</span><button id="import-alpha">导入 A 测草稿…</button></div></div>
       </div>
     </section>
+  </div>
   </div>
   <div id="toast" role="alert" hidden></div>
   <script src="workbench.js"></script>

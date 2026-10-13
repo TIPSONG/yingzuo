@@ -13,6 +13,31 @@ async function call(promise, okMessage) {
   return r.data;
 }
 const swallow = e => { if (!e?.handled) toast(e.message, true); };
+
+/* ---------- 无边框窗口控制 ---------- */
+function syncMaxButton(maximized) {
+  const btn = q('#win-max'); if (!btn) return;
+  const on = !!maximized;
+  btn.dataset.state = on ? 'maximized' : 'restored';
+  btn.setAttribute('aria-label', on ? '还原' : '最大化');
+  btn.title = on ? '还原' : '最大化';
+  const icon = btn.querySelector('.win-max-icon');
+  if (icon) icon.textContent = on ? '❐' : '▢';
+}
+q('#win-min')?.addEventListener('click', () => { desk.windowMinimize?.().catch?.(swallow); });
+q('#win-max')?.addEventListener('click', async () => {
+  try {
+    const r = await desk.windowMaximize?.();
+    if (r && typeof r.maximized === 'boolean') syncMaxButton(r.maximized);
+    else if (r?.ok && typeof r.maximized === 'boolean') syncMaxButton(r.maximized);
+  } catch (e) { swallow(e); }
+});
+q('#win-close')?.addEventListener('click', () => { desk.windowClose?.().catch?.(swallow); });
+try {
+  desk.windowIsMaximized?.().then(r => { if (r?.ok) syncMaxButton(r.maximized); }).catch(() => {});
+  desk.onWindowState?.(state => syncMaxButton(state?.maximized));
+} catch { /* 预加载不可用时忽略（静态预览） */ }
+
 // 原生 ComfyUI 视图是窗口层级之上的视图：离开创作页或打开弹窗时必须隐藏（E10）。
 function syncOverlay() { desk.setOverlay(page !== 'create' || startOpen || modalOpen); if (typeof reportBounds === 'function') reportBounds(); }
 function showPage(next) {
@@ -167,7 +192,7 @@ q('#export-diag').addEventListener('click', () => call(yz.maintenance.exportDiag
 
 /* ---------- 设置（S01/S08） ---------- */
 const FIELDS = [
-  ['外观', [['ui.theme', '界面主题', 'theme', '深色为默认；「跟随系统」随操作系统外观变化']]],
+  ['外观', [['ui.theme', '界面主题', 'theme', '深色为默认；「跟随系统」随操作系统外观变化'], ['ui.skin', '界面皮肤', 'skin', '皮肤叠在明暗模式之上；NASA 朋克偏深色科技感']]],
   ['ComfyUI', [['comfy.root', '安装目录', 'path'], ['comfy.python', 'Python', 'file', '按需启动用；通常是 .venv\\Scripts\\python.exe'], ['comfy.url', '地址', 'text', '仅本机 http 地址'], ['comfy.extraArgs', '附加启动参数', 'list', '每项以空格分隔；--listen/--port 由地址决定'], ['comfy.startTimeoutSec', '启动超时（秒）', 'int'], ['comfy.workflowsDir', '工作流目录', 'path', '留空 = <安装目录>\\user\\default\\workflows'], ['comfy.outputDir', '输出目录', 'path', '留空 = <安装目录>\\output'], ['comfy.inputDir', '输入目录', 'path', '留空 = <安装目录>\\input']]],
   ['LM Studio / Gemma', [['lmstudio.url', 'API 地址', 'text'], ['lmstudio.cli', 'lms CLI', 'file'], ['gemma.patchFile', 'Gemma 本地补丁', 'file', '仅登记位置，更新插件时据此保留补丁']]],
   ['目录', [['paths.templates', '模板', 'path', '留空使用数据目录'], ['paths.favorites', '收藏', 'path'], ['paths.downloads', '下载', 'path'], ['paths.backups', '备份', 'path']]],
@@ -200,8 +225,17 @@ function onSystemTheme() {
   const pref = settings?.config?.ui?.theme;
   if (pref === 'system') document.documentElement.dataset.theme = resolvedTheme('system');
 }
+function applySkin(skin) {
+  const s = skin === 'nasa-punk' ? 'nasa-punk' : 'default';
+  if (s === 'default') delete document.documentElement.dataset.skin;
+  else document.documentElement.dataset.skin = s;
+}
+function applyAppearance(cfg) {
+  applyTheme(cfg?.ui?.theme);
+  applySkin(cfg?.ui?.skin);
+}
 async function loadSettings() {
-  try { settings = await call(yz.settings.get()); applyTheme(settings?.config?.ui?.theme); renderSettings(); } catch (e) { swallow(e); }
+  try { settings = await call(yz.settings.get()); applyAppearance(settings?.config); renderSettings(); } catch (e) { swallow(e); }
 }
 function renderSettings() {
   const c = settings.config;
@@ -213,6 +247,12 @@ function renderSettings() {
       const card = (id, cls, labelText) => `<button type="button" class="theme-option ${cls} ${cur === id ? 'active' : ''}" data-theme-set="${id}" aria-pressed="${cur === id}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>${labelText}</small></button>`;
       input = `<div class="theme-options" role="radiogroup" aria-label="${esc(label)}">${card('dark', '', '深色')}${card('light', 'theme-option-light', '浅色')}${card('system', 'theme-option-system', '跟随系统')}</div><input type="hidden" data-key="${key}" data-type="text" value="${cur}">`;
       return `<div class="setting setting-theme"><span>${esc(label)}</span>${input}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>`;
+    }
+    if (type === 'skin') {
+      const cur = v === 'nasa-punk' ? 'nasa-punk' : 'default';
+      const card = (id, cls, labelText) => `<button type="button" class="theme-option ${cls} ${cur === id ? 'active' : ''}" data-skin-set="${id}" aria-pressed="${cur === id}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>${labelText}</small></button>`;
+      input = `<div class="theme-options" role="radiogroup" aria-label="${esc(label)}">${card('default', 'skin-option-default', '默认')}${card('nasa-punk', 'skin-option-nasa', 'NASA朋克')}</div><input type="hidden" data-key="${key}" data-type="text" value="${cur}">`;
+      return `<div class="setting setting-theme setting-skin"><span>${esc(label)}</span>${input}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>`;
     }
     if (type === 'bool') input = `<input type="checkbox" data-key="${key}" data-type="bool" ${v ? 'checked' : ''}>`;
     else if (type === 'int') input = `<input type="number" data-key="${key}" data-type="int" value="${esc(v)}">`;
@@ -234,7 +274,7 @@ function collectPatch() {
   }
   return patch;
 }
-q('#settings-save').addEventListener('click', async () => { try { const r = await call(yz.settings.update(collectPatch()), '设置已保存。'); settings = {...settings, ...r}; applyTheme(settings?.config?.ui?.theme); renderSettings(); refreshStatus(); } catch (e) { swallow(e); } });
+q('#settings-save').addEventListener('click', async () => { try { const r = await call(yz.settings.update(collectPatch()), '设置已保存。'); settings = {...settings, ...r}; applyAppearance(settings?.config); renderSettings(); refreshStatus(); } catch (e) { swallow(e); } });
 q('#settings-reload').addEventListener('click', loadSettings);
 q('#settings-form').addEventListener('click', async e => {
   const themeBtn = e.target.closest('[data-theme-set]');
@@ -247,6 +287,19 @@ q('#settings-form').addEventListener('click', async e => {
     try {
       const msg = theme === 'light' ? '已切换为浅色主题。' : theme === 'system' ? '已跟随系统外观。' : '已切换为深色主题。';
       const r = await call(yz.settings.update({ui: {theme}}), msg);
+      settings = {...settings, ...r};
+      renderSettings();
+    } catch (err) { swallow(err); }
+    return;
+  }
+  const skinBtn = e.target.closest('[data-skin-set]');
+  if (skinBtn) {
+    const skin = skinBtn.dataset.skinSet === 'nasa-punk' ? 'nasa-punk' : 'default';
+    applySkin(skin);
+    const hidden = q('#settings-form [data-key="ui.skin"]');
+    if (hidden) hidden.value = skin;
+    try {
+      const r = await call(yz.settings.update({ui: {skin}}), skin === 'nasa-punk' ? '已套用 NASA 朋克皮肤。' : '已恢复默认皮肤。');
       settings = {...settings, ...r};
       renderSettings();
     } catch (err) { swallow(err); }

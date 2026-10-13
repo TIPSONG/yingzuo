@@ -161,7 +161,7 @@ else {
   app.on('second-instance',()=>showWindow());
   app.whenReady().then(async()=>{
     protocol.handle('yingzuo',serveResource);
-    window=new BrowserWindow({width:1500,height:980,minWidth:1050,minHeight:700,backgroundColor:'#131514',title:'映作',icon:path.join(ROOT,'assets','icon-256.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+    window=new BrowserWindow({width:1500,height:980,minWidth:1050,minHeight:700,backgroundColor:'#131514',title:'映作',icon:path.join(ROOT,'assets','icon-256.png'),autoHideMenuBar:true,frame:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
     editor.attachWindow(window);
     editor.setGraphPolicy(graphPolicy); /* C01：系统加密存储在 ready 之后可用 */
     if (appDb) { try { const rep = require('./maintenance/secret-migration.cjs').migrateStoredGraphs({db: appDb, layout, repo: templateService?.repo, policy: graphPolicy, credentials, persistDrafts: () => editor.persist()}); if (rep.migrated.length || rep.pending.length) logger.info('已保存图的敏感字段迁移/检查', {migrated: rep.migrated.length, pending: rep.pending.length}); } catch (e) { logger.warn('敏感字段迁移检查失败', {error: e.message}); } }
@@ -179,6 +179,19 @@ else {
     });
     ipcMain.on('yingzuo:p0-bounds',(event,value)=>{try{assertSender(event);editor.setBounds(value);}catch{}});
     ipcMain.on('yingzuo:overlay',(event,value)=>{try{assertSender(event);editor.setOverlay(value===true);}catch{}});
+    ipcMain.handle('yingzuo:window', async (event, message) => {
+      assertSender(event);
+      if (!window || window.isDestroyed()) return {ok: false};
+      const op = message?.op;
+      if (op === 'minimize') { window.minimize(); return {ok: true}; }
+      if (op === 'maximize') { if (window.isMaximized()) window.unmaximize(); else window.maximize(); return {ok: true, maximized: window.isMaximized()}; }
+      if (op === 'close') { window.close(); return {ok: true}; }
+      if (op === 'isMaximized') return {ok: true, maximized: window.isMaximized()};
+      throw new Error('未知窗口操作。');
+    });
+    const sendWindowState = () => { if (window && !window.isDestroyed()) window.webContents.send('yingzuo:window-state', {maximized: window.isMaximized()}); };
+    window.on('maximize', sendWindowState);
+    window.on('unmaximize', sendWindowState);
     events.subscribe(event => { if (window && !window.isDestroyed()) window.webContents.send('yingzuo:event', event); });
     window.on('resize',editor.layout);
     window.on('close',event=>{

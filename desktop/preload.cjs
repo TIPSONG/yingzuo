@@ -5,6 +5,15 @@ const methods = ['boot','connect','openTemplate','activateTab','duplicateTab','c
 const api = Object.fromEntries(methods.map(method => [method, (...args) => ipcRenderer.invoke('yingzuo:p0', {method,args})]));
 api.setBounds = bounds => ipcRenderer.send('yingzuo:p0-bounds', bounds);
 api.setOverlay = value => ipcRenderer.send('yingzuo:overlay', value === true);
+api.windowMinimize = () => ipcRenderer.invoke('yingzuo:window', {op: 'minimize'});
+api.windowMaximize = () => ipcRenderer.invoke('yingzuo:window', {op: 'maximize'});
+api.windowClose = () => ipcRenderer.invoke('yingzuo:window', {op: 'close'});
+api.windowIsMaximized = () => ipcRenderer.invoke('yingzuo:window', {op: 'isMaximized'});
+api.onWindowState = callback => {
+  const listener = (_event, data) => callback(data);
+  ipcRenderer.on('yingzuo:window-state', listener);
+  return () => ipcRenderer.removeListener('yingzuo:window-state', listener);
+};
 api.onStatus = callback => {
   const listener = (_event, data) => callback(data);
   ipcRenderer.on('yingzuo:p0-status', listener);

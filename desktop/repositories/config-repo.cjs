@@ -28,7 +28,7 @@ function defaults(platform = process.platform) {
     downloads: {concurrency: 2, retries: 3},
     queue: {maxBatch: 100},
     tray: {closeToTray: true, showNotifications: true},
-    ui: {startPage: 'home', theme: 'dark'},
+    ui: {startPage: 'home', theme: 'dark', skin: 'default'},
     updates: {channel: 'stable', checkFrequency: 'manual', appReleaseRepo: 'TIPSONG/yingzuo'},
     network: {onlineSources: true},
     output: {prefixMode: 'none'},
@@ -66,6 +66,7 @@ function validate(config, {exists = p => fs.existsSync(p)} = {}) {
   if (!['stable', 'beta'].includes(config.updates?.channel)) add('updates.channel', '渠道只能是 stable / beta。');
   if (!['manual', 'daily', 'weekly'].includes(config.updates?.checkFrequency)) add('updates.checkFrequency', '检查频率只能是 manual / daily / weekly。');
   if (!['dark', 'light', 'system'].includes(config.ui?.theme ?? 'dark')) add('ui.theme', '界面主题只能是 dark / light / system。');
+  if (!['default', 'nasa-punk'].includes(config.ui?.skin ?? 'default')) add('ui.skin', '界面皮肤只能是 default / nasa-punk。');
   return issues;
 }
 function deepMerge(base, patch) {

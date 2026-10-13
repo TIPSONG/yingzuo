@@ -108,13 +108,13 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 批次 1：全部程序完成（F08：GitHub Actions Windows 构建在 cd4862b 首次全绿；之前 Windows 上的测试因 SQLite 文件句柄未关闭导致 EBUSY 失败，已修复）。
 - 批次 2–5：见进度表。
 
-## 主题切换（2026-10-13）
-- 配置：`ui.theme` = `dark` | `light` | `system`（默认 `dark`），经 ConfigRepository 白名单与校验写入。
-- 界面：设置「外观」三卡——深色 / 浅色 / 跟随系统；点击立即生效并持久化。
-- `system`：`matchMedia('(prefers-color-scheme: dark)')` 解析，并监听 `change` 更新 `data-theme`。
-- CSS：变量 + `[data-theme]`；`.settings { align-items:start }`，主题卡紧凑行，外观卡片高度贴合内容（不再与同排高卡片拉齐留白）。
-- 截图：`/workspace/yingzuo-ui-shots/light-09-settings.png`、`light-01-home.png`
-- 测试：`npm run check` 339 / 338 通过 / 1 跳过；foundation 覆盖 light/system 持久化。
+## 主题 / 皮肤 / 无边框窗口（2026-10-13）
+- `ui.theme`：`dark` | `light` | `system`（跟随系统用 matchMedia）。
+- `ui.skin`：`default` | `nasa-punk`（叠在明暗之上；`data-skin`）。外观区两行：主题三卡 + 皮肤两卡（默认 / NASA朋克）。
+- NASA 朋克：暗色科技底 + 橙/琥珀/青强调、细网格、等宽提示文字。
+- 无边框：`BrowserWindow({frame:false})`；标题栏最小化 / 最大化·还原 / 关闭；`-webkit-app-region: drag`；preload `windowMinimize|Maximize|Close|IsMaximized` + `onWindowState`。
+- 截图：`/workspace/yingzuo-ui-shots/nasa-01-home.png`、`nasa-09-settings.png`（含三颗窗口按钮与皮肤卡）。
+- 测试：`npm run check` 339 / 338 通过 / 1 跳过。
 
 
 ## UI 视觉抛光（2026-10-13，无新功能）

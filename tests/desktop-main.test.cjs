@@ -66,6 +66,10 @@ async function fixture(t,initial=workspace(),options={}) {
     getContentSize(){return [1400,900];}
     loadURL(url){return this.webContents.loadURL(url);}
     show(){} focus(){} isMinimized(){return false;} restore(){}
+    minimize(){this.minimized=true;}
+    maximize(){this.maximized=true;this.emit('maximize');}
+    unmaximize(){this.maximized=false;this.emit('unmaximize');}
+    isMaximized(){return !!this.maximized;}
     destroy(){this.destroyed=true;}
     close(){const event={preventDefault(){this.prevented=true;}};this.emit('close',event);if(!event.prevented)this.destroy();}
   }
