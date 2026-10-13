@@ -274,8 +274,51 @@ function renderSettings() {
     const pick = type === 'path' || type === 'file' ? `<button type="button" data-pick="${key}">选择…</button>` : '<span></span>';
     return `<label class="setting"><span>${esc(label)}</span>${input}${pick}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</label>`;
   }).join('')}</fieldset>`).join('') + `<fieldset><legend>数据位置</legend>${Object.entries(settings.locations).map(([k, v]) => `<div class="setting"><span>${esc(k)}</span><span class="muted">${esc(v || '未配置')}</span>${v ? `<button type="button" data-open-loc="${k}">打开</button>` : '<span></span>'}</div>`).join('')}</fieldset>`;
+  restoreDraft();
+  renderCredentials();
+}
+/** RV13：凭据区单独渲染，不重建设置表单。 */
+function renderCredentials() {
   const cred = settings.credentials;
   q('#credentials').innerHTML = cred.available ? ['huggingface', 'civitai'].map(n => `<div class="row"><span>${n === 'huggingface' ? 'Hugging Face 令牌' : 'Civitai API Key'}：${cred.configured[n] ? '已保存（系统加密）' : '未设置'}</span><span><input type="password" data-cred="${n}" placeholder="粘贴后保存" class="w220"> <button data-cred-save="${n}">保存</button> ${cred.configured[n] ? `<button data-cred-remove="${n}">删除</button>` : ''}</span></div>`).join('') : '<div class="issue error">系统加密存储不可用，为避免明文保存，映作不会保存在线来源凭据。公开资源仍可下载。</div>';
+}
+/* RV13：设置草稿。记录用户已修改但未保存的字段；任何局部刷新（外观、路径选择、凭据）后都恢复草稿，只有“保存”成功才清空。 */
+const settingsDraft = new Map();
+const draftValue = el => (el.dataset.type === 'bool' ? el.checked : el.value);
+function restoreDraft() {
+  for (const el of qa('#settings-form [data-key]')) {
+    if (!settingsDraft.has(el.dataset.key) || el.type === 'hidden') continue;
+    const v = settingsDraft.get(el.dataset.key);
+    if (el.dataset.type === 'bool') el.checked = !!v; else el.value = v;
+    el.classList.add('dirty');
+  }
+}
+q('#settings-form').addEventListener('input', e => { const el = e.target.closest('[data-key]'); if (el && el.type !== 'hidden') { settingsDraft.set(el.dataset.key, draftValue(el)); el.classList.add('dirty'); } });
+q('#settings-form').addEventListener('change', e => { const el = e.target.closest('[data-key]'); if (el && el.type !== 'hidden') { settingsDraft.set(el.dataset.key, draftValue(el)); el.classList.add('dirty'); } });
+/** RV13：外观选择只更新选中卡，不重建表单。 */
+function syncAppearanceCards(cfg) {
+  const theme = cfg?.ui?.theme === 'light' || cfg?.ui?.theme === 'system' ? cfg.ui.theme : 'dark';
+  const skin = cfg?.ui?.skin === 'nasa-punk' ? 'nasa-punk' : 'default';
+  for (const b of qa('#settings-form [data-theme-set]')) { const on = b.dataset.themeSet === theme; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); }
+  for (const b of qa('#settings-form [data-skin-set]')) { const on = b.dataset.skinSet === skin; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); }
+  const th = q('#settings-form [data-key="ui.theme"]'); if (th) th.value = theme;
+  const sk = q('#settings-form [data-key="ui.skin"]'); if (sk) sk.value = skin;
+}
+let appearanceSeq = 0;
+/** RV13：外观即时保存；按最新一次操作收敛（迟到的旧响应被忽略）；失败时恢复到已保存的外观。 */
+async function saveAppearance(patch, msg) {
+  const seq = ++appearanceSeq;
+  const want = {...settings.config, ui: {...settings.config.ui, ...patch}};
+  applyAppearance(want); syncAppearanceCards(want);
+  try {
+    const r = await call(yz.settings.update({ui: patch}), msg);
+    if (seq !== appearanceSeq) return;
+    settings = {...settings, config: {...settings.config, ui: r.config?.ui ?? want.ui}, issues: r.issues ?? settings.issues};
+  } catch (err) {
+    swallow(err);
+    if (seq !== appearanceSeq) return;
+  }
+  applyAppearance(settings.config); syncAppearanceCards(settings.config);
 }
 function collectPatch() {
   const patch = {};
@@ -286,44 +329,27 @@ function collectPatch() {
   }
   return patch;
 }
-q('#settings-save').addEventListener('click', async () => { try { const r = await call(yz.settings.update(collectPatch()), '设置已保存。'); settings = {...settings, ...r}; applyAppearance(settings?.config); renderSettings(); refreshStatus(); } catch (e) { swallow(e); } });
-q('#settings-reload').addEventListener('click', loadSettings);
+q('#settings-save').addEventListener('click', async () => { try { const r = await call(yz.settings.update(collectPatch()), '设置已保存。'); settings = {...settings, ...r}; settingsDraft.clear(); applyAppearance(settings?.config); renderSettings(); refreshStatus(); } catch (e) { swallow(e); } });
+q('#settings-reload').addEventListener('click', () => { settingsDraft.clear(); loadSettings(); }); // RV13：显式重新加载才丢弃草稿
 q('#settings-form').addEventListener('click', async e => {
   const themeBtn = e.target.closest('[data-theme-set]');
   if (themeBtn) {
     const raw = themeBtn.dataset.themeSet;
     const theme = raw === 'light' || raw === 'system' ? raw : 'dark';
-    applyTheme(theme);
-    const hidden = q('#settings-form [data-key="ui.theme"]');
-    if (hidden) hidden.value = theme;
-    try {
-      const msg = theme === 'light' ? '已切换为浅色主题。' : theme === 'system' ? '已跟随系统外观。' : '已切换为深色主题。';
-      const r = await call(yz.settings.update({ui: {theme}}), msg);
-      settings = {...settings, ...r};
-      renderSettings();
-    } catch (err) { swallow(err); }
-    return;
+    return saveAppearance({theme}, theme === 'light' ? '已切换为浅色主题。' : theme === 'system' ? '已跟随系统外观。' : '已切换为深色主题。');
   }
   const skinBtn = e.target.closest('[data-skin-set]');
   if (skinBtn) {
     const skin = skinBtn.dataset.skinSet === 'nasa-punk' ? 'nasa-punk' : 'default';
-    applySkin(skin);
-    const hidden = q('#settings-form [data-key="ui.skin"]');
-    if (hidden) hidden.value = skin;
-    try {
-      const r = await call(yz.settings.update({ui: {skin}}), skin === 'nasa-punk' ? '已套用 NASA 朋克皮肤。' : '已恢复默认皮肤。');
-      settings = {...settings, ...r};
-      renderSettings();
-    } catch (err) { swallow(err); }
-    return;
+    return saveAppearance({skin}, skin === 'nasa-punk' ? '已套用 NASA 朋克皮肤。' : '已恢复默认皮肤。');
   }
-  const b = e.target.closest('[data-pick]'); if (!b) return; try { const r = await call(yz.settings.pickPath(b.dataset.pick)); if (!r.cancelled) { settings = {...settings, ...r}; renderSettings(); } } catch (err) { swallow(err); }
+  const b = e.target.closest('[data-pick]'); if (!b) return; try { const r = await call(yz.settings.pickPath(b.dataset.pick)); if (!r.cancelled) { settingsDraft.delete(b.dataset.pick); settings = {...settings, ...r}; renderSettings(); } /* RV13：其他字段的草稿由 renderSettings 内 restoreDraft 恢复 */ } catch (err) { swallow(err); }
 });
 q('#credentials').addEventListener('click', async e => {
   const s = e.target.closest('[data-cred-save]'), r = e.target.closest('[data-cred-remove]');
   try {
-    if (s) { const input = q(`[data-cred="${s.dataset.credSave}"]`); settings.credentials = await call(yz.settings.setCredential(s.dataset.credSave, input.value), '凭据已加密保存。'); input.value = ''; renderSettings(); }
-    if (r) { settings.credentials = await call(yz.settings.removeCredential(r.dataset.credRemove), '凭据已删除。'); renderSettings(); }
+    if (s) { const input = q(`[data-cred="${s.dataset.credSave}"]`); settings.credentials = await call(yz.settings.setCredential(s.dataset.credSave, input.value), '凭据已加密保存。'); input.value = ''; renderCredentials(); }
+    if (r) { settings.credentials = await call(yz.settings.removeCredential(r.dataset.credRemove), '凭据已删除。'); renderCredentials(); }
   } catch (err) { swallow(err); }
 });
 q('#import-alpha').addEventListener('click', () => call(yz.maintenance.importAlphaDrafts(), d => d.cancelled ? '已取消。' : `已导入 ${d.tabs} 个 A 测标签草稿${d.needReselect.length ? `；${d.needReselect.length} 个标签的参考图需要重新选择` : ''}。`).catch(swallow));
