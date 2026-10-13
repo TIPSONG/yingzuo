@@ -469,10 +469,10 @@
       "id": "S10",
       "level": "P2",
       "name": "完整收尾与事实一致的交接",
-      "status": "未开始",
-      "commit": "",
-      "tests": "",
-      "note": ""
+      "status": "程序完成",
+      "commit": "ff3604e",
+      "tests": "online.test O07/S10、task-service.test T01；npm run check",
+      "note": "T01 缩略图、O07 在线模板库、T03 完成；E07/S04 有限支持（外部契约交 Codex）、R06 范围说明；交接/待验收/README 统一为当前状态（旧“82 项全部完成”标为历史）"
     }
   ]
 }

@@ -93,7 +93,7 @@
 | S07 | P1 | 完成 D04 的所有入口与版本身份 | 程序完成 | 667ec2d | form-targets.test、task-service.test S07/D04、ui-tasks.test S07、workbench.test | 左侧正式参数面板按已保存表单（中文名/分组/顺序/约束）显示，修改经桥接写回同一 UI 根图；运行按钮=Ctrl+Enter，批量/润色从同一图编译；标签固定 templateVersionId，表单按该版本读取，存为模板后改固定到新版本；子图共享实例不单独编辑。独立副本不带模板绑定（不显示表单） |
 | S08 | P1 | 完成参考素材 manifest 与恢复闭包 | 程序完成 | bf2ef3a | graph-package.test×2、task-service.test S08、app-backup.test | 包=UI 图+模板/表单版本+槽位/内容ID/sha256/素材本体；导入先整体校验再写入、分配新标签；缺失素材如实列出；关闭归档写 meta（标题/模板版本），“最近关闭”可重开并带回关系；应用备份含 reference-relations.json、task-submissions 与 references |
 | S09 | P2 | 完成 Worker 接入与生命周期 | 程序完成 | 372d900 | worker-pool.test S09×2、Windows 打包自检 worker 步骤 | 扫描/监视元数据走 worker（只回传小结果、读取上限 200MB）；缩略图在 worker 中由 sharp 生成，限制像素与大小、同键去重、tmp→原子改名、源变化丢弃；模型移动与备份中≥16MB 文件流式复制在 worker；共享池并发 2，退出 closeShared。单文件任务输出关联仍同步读取（有上限）；收藏复制图片仍同步 |
-| S10 | P2 | 完整收尾与事实一致的交接 | 未开始 |  |  |  |
+| S10 | P2 | 完整收尾与事实一致的交接 | 程序完成 | ff3604e | online.test O07/S10、task-service.test T01；npm run check | T01 缩略图、O07 在线模板库、T03 完成；E07/S04 有限支持（外部契约交 Codex）、R06 范围说明；交接/待验收/README 统一为当前状态（旧“82 项全部完成”标为历史） |
 
 <!-- /PR11 -->
 

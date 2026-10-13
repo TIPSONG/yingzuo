@@ -39,7 +39,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 ## 5. 现状与下一步
 
-82 项全部为“程序完成”（未经人工验收）。并行分支 `feat/grovebot-maint`（PR #12）与 `feat/grovebot-assets`（PR #13）已用本地 `git merge` 合入本分支（a8eec65、a668600），两个 PR 保持打开未动；`进度-maint.md`、`进度-assets.md` 保留作历史，状态已并入主进度表。
+【历史，2026-10-13 第三轮时的描述；当前状态见文末“第五轮”与进度表】当时 82 项标为“程序完成”（未经人工验收）。并行分支 `feat/grovebot-maint`（PR #12）与 `feat/grovebot-assets`（PR #13）已用本地 `git merge` 合入本分支（a8eec65、a668600），两个 PR 保持打开未动；`进度-maint.md`、`进度-assets.md` 保留作历史，状态已并入主进度表。
 
 下一步建议（按价值）：
 1. 等 Codex 在 Windows 真机按 `待Codex验收.md` 验收，修复反馈。最可能出问题：Gemma 节点输入名推断（bindings.cjs）、原生视图快捷键与焦点、插件 pip 安装路径、恢复时文件被占用（Windows 下 ComfyUI 未完全退出时 rename 会 EBUSY/EPERM）。
@@ -117,8 +117,17 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 下一步建议：D04 左侧参数面板（workbench.js renderFields 改为优先用 tasks.form，注意子图节点 ID “父:子” 与画布 widget 的映射）；R11 导出 manifest；R17 assets 缩略图改走 WorkerPool。
 - 关键新模块：desktop/services/quit-flow.cjs、desktop/maintenance/app-backup.cjs、entry.cjs（单实例锁 + 应用数据恢复）、queue-service 暂停租约/followers/enqueueGroup。
 
-## 第五轮（PR11 第二轮审阅 S01–S10）进度 — 2026-10-13
-- 审阅原文：docs/development/PR11第二轮代码审阅与收尾计划.md（审阅 head 68f7598）；状态：`node tools/pr11.cjs render`（N01–N06、S01–S10 区块）。
-- 已完成：S01 提交屏障、S02 持久阻断、S03 旧后端取消边界、S04 模型移动恢复保护、S05 统一提交入口、S06 一致备份与恢复模式。
-- 待做：S07（D04 全入口表单 + 版本身份）、S08（素材 manifest 导出/导入、关闭归档）、S09（缩略图/元数据/复制 worker）、S10（O07 在线模板浏览、T01 缩略图、状态统一）。
-- 注意：上文“82 项全部程序完成”等为历史描述，以本节和进度表为准。
+## 第五轮（PR11 第二轮审阅 S01–S10）进度 — 2026-10-13（当前状态，以此为准）
+- 审阅原文：docs/development/PR11第二轮代码审阅与收尾计划.md（审阅 head 68f7598）；状态表：`node tools/pr11.cjs render`（Grovebot开发进度.md 中 N01–N06、S01–S10 区块）。
+- 82 项：79 程序完成、3 有限支持（E07、S04 真实外部契约交 Codex；R06 受限 Git 后端为原方案允许的范围）。T01（模板缩略图）、T03（表单）、O07（在线模板库浏览）本轮完成。
+- S01 提交屏障：`queue-service.cjs` 的 `starting` 计数 + `blocked()` 在 ready / 后端 queue / GPU 锁三个等待点后重检，取得 GPU 锁后同步进入 preparing。
+- S02 持久阻断：`maintenance-holds.json`；启动重建租约；`releaseHoldsFor(backupDir)` 只解除对应备份；无备份阻断需 `maintenance.clearHold(id,{confirm:true})`；`services()` 核对 owned 后端里的外部任务；main 包装 `services.startComfy` 受 gate 约束。
+- S03：旧后端运行中取消默认 UNSUPPORTED；全局中断需 `tasks.cancel(id,{globalInterrupt:true})`（界面确认框）。
+- S04：`recoverModelMoves` 删源前重算源 hash，冲突两份保留；只有完整 tmp 时补完；路径须在已登记模型根内；取环境锁与租约，有任务则推迟。
+- S05：`taskService.submissions`（enqueueCompiled/enqueue/enqueueGroup）唯一提交入口；快捷使用已改走；`secrets.redactGraph` 用于存为模板；模板导出清空占位；测试静态扫描禁止其他文件调用 queue.enqueue。限制：工作区草稿自动保存仍按 ComfyUI 原样保存图。
+- S06：`createBackup({databasesFirst, postCheck, excludePaths, protectedPaths, copyImpl})`；应用备份先 VACUUM INTO 再复制只增目录、包内核对引用闭包；`applyPendingAppRestore` 失败进入恢复模式（pending.action=null），用户选择 resume（同一 journal）或 rollback（`RestoreEngine.rollback`）后重启。
+- S07：左侧正式参数面板（workbench.js `loadFormPanel/renderFormPanel`）+ `shared/form-targets.cjs` 映射到 UI 根图；标签 `templateVersionId`；`formProvider(templateId, versionId)`；运行按钮=Ctrl+Enter。
+- S08：`desktop/services/graph-package.cjs`（.yingzuo.json 图包）；`tasks.exportPackage/importPackage/closedList/reopenClosed`；关闭归档写 `<id>.meta.json`。
+- S09：`sharedPool()`；worker 任务 imageMeta / thumbnail（sharp）/ copyFile；AssetIndex 异步扫描与缩略图去重；打包自检 `worker` 步骤。
+- S10：在线模板库（`templates.browseOnline` 等，官方 Comfy-Org/workflow_templates 索引，样本夹具 tests/fixtures/comfy-workflow-templates-index.sample.json）；模板缩略图（`templates.thumbnail/setThumbnail`，任务成功自动生成）。
+- 需要 Codex 在 Windows 上人工验收：见 待Codex验收.md “PR11 第二轮（S01–S10）”。
