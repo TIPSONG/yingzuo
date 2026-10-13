@@ -83,6 +83,7 @@ const editor = createEditorSession({
 // ---------- 任务（Q01–Q10） ----------
 let taskService = null, templateService = null, onlineService = null, appDb = null;
 const credentials = new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
+const graphPolicy = require('../shared/graph-storage-policy.cjs').createGraphStoragePolicy({credentials, objectInfo: () => taskService?.cachedObjectInfo?.() ?? null});
 try {
   const db = appDb = Database.open(layout.database);
   taskService = createTaskService({credentials, db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window, onTerminal: async task => { const linked = await Promise.resolve().then(() => api.methods['assets.linkTask'](task.id)).catch(e => { logger.warn('作品关联失败', {error: e.message}); return []; }); try { const snap = taskService.tasks.snapshotOf(task); const img = (linked ?? []).find(x => x.status === 'linked' && /\.(png|jpe?g|webp)$/i.test(x.path)); if (task.state === 'succeeded' && img) await templateService?.autoThumbnail(snap.templateId ?? snap.form?.templateId ?? null, img.path); } catch (e) { logger.warn('模板缩略图生成失败', {error: e.message}); } return linked; }}); /* T01：模板首个成功输出作为缩略图 */
@@ -94,7 +95,7 @@ const diagnostics = createDiagnosticsService({editor, client: () => new ComfyHtt
 const dependencies = onlineService ? createDependencyService({editor, diagnostics, online: onlineService, configRepo, layout}) : null;
 const updates = onlineService ? createUpdateService({app, configRepo, layout, fetchImpl: fetch, online: onlineService, electron, events, logger}) : null;
 const api = createApi({taskService, credentials, extraMethods: {...updates?.methods, ...templateService?.methods, ...diagnostics.methods, ...onlineService?.methods, ...dependencies?.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
-if (appDb) { const m = createMaintenanceService({db: appDb, layout, configRepo, locks, events, logger, comfy: api.comfy, taskService, templateRepo: templateService?.repo, editor, fetchImpl: fetch}); Object.assign(api.methods, m.methods); api.setStartGate(m.gate); /* S02/C03：恢复阻断期间不启动服务；在环境锁内检查 */ m.recoverModelMoves().then(r => { if (r.length) logger.info('模型移动启动核对', {results: r}); }, e => logger.warn('模型移动启动核对失败', {error: e.message})); }
+if (appDb) { const m = createMaintenanceService({db: appDb, credentials, layout, configRepo, locks, events, logger, comfy: api.comfy, taskService, templateRepo: templateService?.repo, editor, fetchImpl: fetch}); Object.assign(api.methods, m.methods); api.setStartGate(m.gate); /* S02/C03：恢复阻断期间不启动服务；在环境锁内检查 */ m.recoverModelMoves().then(r => { if (r.length) logger.info('模型移动启动核对', {results: r}); }, e => logger.warn('模型移动启动核对失败', {error: e.message})); }
 
 function assertSender(event) {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== WORKBENCH) throw new Error('拒绝未知页面请求。');
@@ -137,7 +138,7 @@ async function requestQuit() {
     if (decision === 'return') return false;
     editor.quitting = true;
     try {
-      await editor.enqueue(async()=>{if(editor.startupError){await editor.capture();if(editor.workspace.tabs.length)Store.writeWorkspace(path.join(layout.root,`recovered-workspace-${Date.now()}.json`),editor.workspace);}else await editor.saveCurrent();});
+      await editor.enqueue(async()=>{if(editor.startupError){await editor.capture();if(editor.workspace.tabs.length)Store.writeWorkspace(path.join(layout.root,`recovered-workspace-${Date.now()}.json`),editor.workspace,{secureGraph:editor.secureDisk});}else await editor.saveCurrent();});
     } catch (error) {
       editor.quitting = false;
       api.hooks.resumeSubmissions();
@@ -161,6 +162,8 @@ else {
     protocol.handle('yingzuo',serveResource);
     window=new BrowserWindow({width:1500,height:980,minWidth:1050,minHeight:700,backgroundColor:'#131514',title:'映作',icon:path.join(ROOT,'assets','icon-256.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
     editor.attachWindow(window);
+    editor.setGraphPolicy(graphPolicy); /* C01：系统加密存储在 ready 之后可用 */
+    if (appDb) { try { const rep = require('./maintenance/secret-migration.cjs').migrateStoredGraphs({db: appDb, layout, repo: templateService?.repo, policy: graphPolicy, credentials, persistDrafts: () => editor.persist()}); if (rep.migrated.length || rep.pending.length) logger.info('已保存图的敏感字段迁移/检查', {migrated: rep.migrated.length, pending: rep.pending.length}); } catch (e) { logger.warn('敏感字段迁移检查失败', {error: e.message}); } }
     taskService?.start();
     onlineService?.start(); updates?.startSchedule();
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));

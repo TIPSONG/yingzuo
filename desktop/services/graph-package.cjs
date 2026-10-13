@@ -14,7 +14,7 @@ const strip = v => (typeof v === 'string' ? (v.startsWith(SF.PLACEHOLDER_PREFIX)
 const cleanText = (v, n = 200) => String(v ?? '').replace(/[\u0000-\u001f]/g, '').slice(0, n);
 
 /** relations: [{nodeId,input,refId,name}]；readRef(refId) → 文件路径或抛错（素材丢失）。 */
-function buildPackage({title, graph, template = null, relations = [], readRef}) {
+function buildPackage({title, graph, template = null, relations = [], readRef, exportGraph = null}) {
   if (!graph || !Array.isArray(graph.nodes)) throw new AppError(CODES.INVALID_ARGUMENT, '没有可导出的图。');
   let total = 0;
   const references = relations.slice(0, MAX_REFS).map(r => {
@@ -24,7 +24,7 @@ function buildPackage({title, graph, template = null, relations = [], readRef}) 
     if (total > MAX_TOTAL) throw new AppError(CODES.INVALID_ARGUMENT, '参考素材合计超过 300 MB，不能打包。');
     return {...base, sha256: crypto.createHash('sha256').update(buf).digest('hex'), size: buf.length, data: buf.toString('base64')};
   });
-  return {kind: KIND, version: VERSION, exportedAt: new Date().toISOString(), title: cleanText(title), graph: strip(graph), template: template ? {templateId: template.templateId ?? null, versionId: template.versionId ?? null, formSchema: template.formSchema ?? null} : null, references};
+  return {kind: KIND, version: VERSION, exportedAt: new Date().toISOString(), title: cleanText(title), ...(() => { const ex = exportGraph ? exportGraph(graph) : {graph: strip(graph), refill: []}; return {graph: ex.graph, refill: ex.refill}; })(), template: template ? {templateId: template.templateId ?? null, versionId: template.versionId ?? null, formSchema: template.formSchema ?? null} : null, references};
 }
 /** 解析并完整校验；任一项不合格整体拒绝（不写任何文件）。 */
 function parsePackage(text) {

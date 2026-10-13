@@ -282,7 +282,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     'tasks.exportPackage': async (tabId, {filePath = null} = {}) => {
       const t = await editor.enqueue(() => editor.commands.tabGraph(tabId));
       const form = t.templateId && formProvider ? formProvider(t.templateId, t.templateVersionId ?? null) : null;
-      const pkg = GP.buildPackage({title: t.title, graph: t.graph, template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: form?.fields ?? null} : null, relations: relationsOf(tabId), readRef: id => refs.pathOf(id)});
+      const pkg = GP.buildPackage({title: t.title, graph: t.graph, template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: form?.fields ?? null} : null, relations: relationsOf(tabId), readRef: id => refs.pathOf(id), exportGraph: editor.exportCopy ?? null});
       let target = filePath;
       if (!target) { const r = await dialog.showSaveDialog(getWindow(), {title: '导出图与参考素材', defaultPath: `${t.title}.yingzuo.json`, filters: [{name: '映作图包', extensions: ['json']}]}); if (r.canceled || !r.filePath) return {cancelled: true}; target = r.filePath; }
       const tmp = `${target}.tmp`; fs.writeFileSync(tmp, JSON.stringify(pkg)); fs.renameSync(tmp, target);
@@ -337,6 +337,6 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     /** S05：模板/草稿等持久化 UI 图前调用——敏感值转入系统加密存储，图中只留占位。 */
     redactGraph: (graph, apiPrompt) => redactSnapshot({uiGraph: graph, apiPrompt}).uiGraph,
   };
-  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, setFormProvider: f => { formProvider = f; }};
+  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, cachedObjectInfo: () => objectInfo, setFormProvider: f => { formProvider = f; }};
 }
 module.exports = {createTaskService, ReferenceStore, uploadReferences};

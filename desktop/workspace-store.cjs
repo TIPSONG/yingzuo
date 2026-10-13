@@ -80,14 +80,14 @@ function writeAtomic(target, body) {
   fs.writeFileSync(temp, body, 'utf8');
   fs.renameSync(temp, target);
 }
-function writeWorkspace(file, data) {
+function writeWorkspace(file, data, {secureGraph = null} = {}) {
   // Validate before touching disk: a successful save must remain readable after
   // restart, and malformed data must never replace the previous valid draft.
   const valid = validateWorkspace(data);
   const dir = draftsDir(file);
   const tabs = valid.tabs.map(tab => {
     const {graph, workflowPath, documentId, ...meta} = tab;
-    const body = JSON.stringify(graph);
+    const body = JSON.stringify(secureGraph ? secureGraph(graph) : graph); // C01：磁盘副本经统一保存政策（敏感值→凭据引用）
     if (Buffer.byteLength(body) > MAX_GRAPH_BYTES) throw new Error('工作副本超过 8 MB，暂不保存。');
     const nativeIdentity = workflowPath || documentId ? {hostName:`yingzuo-${tab.id}`, workflowPath:workflowPath ?? null, documentId:documentId ?? null} : null;
     return {meta:{...meta, graphRef:`drafts/${tab.id}.json`, graphHash:graphHash(graph), nativeIdentity, ...(workflowPath ? {workflowPath} : {}), ...(documentId ? {documentId} : {})}, body};

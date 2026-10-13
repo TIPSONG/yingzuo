@@ -104,8 +104,9 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
       const t = await tabGraph(tabId);
       const r = await dialog.showSaveDialog(getWindow(), {title: '导出修复副本', defaultPath: `${t.title}-修复.json`, filters: [{name: 'ComfyUI 工作流', extensions: ['json']}]});
       if (r.canceled || !r.filePath) return {cancelled: true};
-      fs.writeFileSync(r.filePath, JSON.stringify(t.graph, null, 2));
-      return {path: r.filePath};
+      const ex = editor?.exportCopy ? editor.exportCopy(t.graph) : {graph: t.graph, refill: []};
+      fs.writeFileSync(r.filePath, JSON.stringify(ex.graph, null, 2));
+      return {path: r.filePath, refill: ex.refill};
     },
   };
   return {methods, collectCatalog: catalog};

@@ -62,7 +62,7 @@ class TemplateRepository {
     if (expectedCurrent !== undefined && expectedCurrent !== t.current_version) throw new AppError(CODES.CONFLICT, '模板已在别处更新，请刷新后再保存。');
     if (!graph || !Array.isArray(graph.nodes)) throw new AppError(CODES.INVALID_ARGUMENT, '版本必须包含 UI 图。');
     if (formSchema) { const errors = validateSchema(formSchema); if (errors.length) throw new AppError(CODES.INVALID_ARGUMENT, `表单 schema 无效：${errors[0]}`, {details: {errors}}); }
-    const g = this._blob('graphs', graph);
+    const g = this._blob('graphs', this.secureGraph ? this.secureGraph(graph) : graph); // C01：模板图经统一保存政策
     const f = formSchema ? this._blob('forms', formSchema) : null;
     const versionId = `tv_${crypto.randomUUID()}`, at = this.now();
     this.db.transaction(() => {

@@ -2,6 +2,7 @@
 const {TrashStore} = require('../maintenance/trash-store.cjs');
 const {sharedPool} = require('../core/worker-pool.cjs');
 const appBackup = require('../maintenance/app-backup.cjs');
+const {migrateStoredGraphs} = require('../maintenance/secret-migration.cjs');
 // 接入 maint 分支模块：maintenance.*（U01–U07）与 resources.*（R01–R08）。
 // 所有改动环境的操作都走 MaintenanceTransaction（环境锁 createLocks().environment、暂停队列并等待空闲、
 // 只停止本应用拥有的服务、备份、staging、apply、检查，失败自动恢复），结果写入 env_transactions 表（U07）。
@@ -29,7 +30,7 @@ function nodeTypesOf(graph) {
   return Object.values(graph ?? {}).map(n => n?.class_type);
 }
 
-function createMaintenanceService({db, layout, configRepo, locks, events, logger, comfy, taskService, templateRepo, editor, fetchImpl, onlineService, linkImpl = fs.linkSync, pool: injectedPool = null}) {
+function createMaintenanceService({db, layout, configRepo, locks, events, logger, comfy, taskService, templateRepo, editor, fetchImpl, onlineService, linkImpl = fs.linkSync, pool: injectedPool = null, credentials = null}) {
   const backupsDir = () => configRepo.derived(layout).backups;
   const restore = new RestoreEngine({journalDir: path.join(layout.root, 'restore-journal')});
   const notes = new ResourceNotes(path.join(layout.root, 'resource-notes.json'));
@@ -265,7 +266,15 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     // ----- R13：应用数据备份（与环境备份分开；恢复在下次启动、打开数据库之前执行） -----
     'maintenance.appRecovery': async () => appBackup.appRecoveryState(layout),
     'maintenance.chooseAppRecovery': async action => appBackup.chooseAppRecovery(layout, action),
-    'maintenance.appBackup': async () => { if (gate()) throw gate(); const r = await appBackup.createAppBackup({layout, hashImpl: hashFile, barrier: async f => { const lease = taskService?.hooks.pauseSubmissions('app-backup'); try { return editor?.enqueue ? await editor.enqueue(f) : await f(); } finally { lease?.(); } }}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
+    'maintenance.appBackup': async () => {
+      if (gate()) throw gate();
+      // C01：备份前对内部图执行同一保存政策；仍有明文且无法加密时阻止，不把已知原始密钥复制进新备份
+      const policy = editor?.graphPolicy?.();
+      if (policy) {
+        const rep = await (editor?.enqueue ? editor.enqueue(async () => migrateStoredGraphs({db, layout, repo: templateRepo, policy, credentials: credentials ?? null, persistDrafts: () => editor.persist()})) : migrateStoredGraphs({db, layout, repo: templateRepo, policy, credentials: credentials ?? null}));
+        if (rep.pending.length) throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, `有 ${rep.pending.length} 处已保存的图含敏感输入明文，且系统加密存储不可用；为避免写入备份，已停止。`, {details: {pending: rep.pending}});
+      }
+      const r = await appBackup.createAppBackup({layout, hashImpl: hashFile, barrier: async f => { const lease = taskService?.hooks.pauseSubmissions('app-backup'); try { return editor?.enqueue ? await editor.enqueue(f) : await f(); } finally { lease?.(); } }}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
     'maintenance.appBackups': async () => ({backups: appBackup.listAppBackups(layout), lastRestore: globalThis.__yzAppRestore ?? null}),
     'maintenance.scheduleAppRestore': async dir => appBackup.scheduleAppRestore(layout, dir),
     'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id), {backupDir: restore.pending().find(j => j.id === id)?.backupDir ?? null}),

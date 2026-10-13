@@ -11,6 +11,7 @@ const SF = require('../../shared/secret-fields.cjs');
 
 function createTemplateService({db, layout, editor, taskService, dialog, getWindow, builtins = () => [], pool = null}) {
   const repo = new TemplateRepository(db, layout.templates);
+  repo.secureGraph = g => (editor?.secureDisk ? editor.secureDisk(g) : g); // C01：所有创建/版本（含直接导入、内置、在线导入）
   const tabGraph = tabId => editor.enqueue(() => editor.commands.tabGraph(tabId));
   // S05：存为模板前把敏感输入（如 API Key）转入系统加密存储，图中只保留占位；导出时占位清空、不导出凭据
   const securedGraph = async tabId => { const t = await tabGraph(tabId); if (!taskService?.secrets) return t; const c = await compile(tabId); return {...t, graph: taskService.secrets.redactGraph(t.graph, c.apiPrompt)}; };
@@ -71,7 +72,8 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       const v = versionId ? repo.version(versionId) : repo.current(id);
       const r = await dialog.showSaveDialog(getWindow(), {title: '导出模板', defaultPath: `${repo.get(id).name}.json`, filters: [{name: 'ComfyUI 工作流', extensions: ['json']}]});
       if (r.canceled || !r.filePath) return {cancelled: true};
-      fs.writeFileSync(r.filePath, JSON.stringify(stripPlaceholders(v.graph), null, 2));
+      const ex = editor?.exportCopy ? editor.exportCopy(v.graph) : {graph: stripPlaceholders(v.graph), refill: []};
+      fs.writeFileSync(r.filePath, JSON.stringify(ex.graph, null, 2));
       if (v.formSchema) fs.writeFileSync(r.filePath.replace(/\.json$/i, '') + '.yingzuo-form.json', JSON.stringify({kind: 'yingzuo-form', version: 1, fields: v.formSchema}, null, 2));
       return {path: r.filePath};
     },

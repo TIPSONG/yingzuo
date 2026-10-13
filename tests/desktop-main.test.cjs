@@ -82,11 +82,11 @@ async function fixture(t,initial=workspace(),options={}) {
     showSaveDialog:async()=>state.saveResults.shift()||{canceled:true},
     showErrorBox:(title,message)=>state.errors.push({title,message}),
     showMessageBox:async()=>({response:2})
-  },shell:{openPath:async()=>''},safeStorage:{isEncryptionAvailable:()=>false},session:{fromPartition(name){if(!state.partitions.has(name)){const ses=new EventEmitter();Object.assign(ses,{protocol:protocol(),setPermissionRequestHandler(fn){this.permissionRequest=fn;},setPermissionCheckHandler(fn){this.permissionCheck=fn;}});state.partitions.set(name,ses);}return state.partitions.get(name);}}};
+  },shell:{openPath:async()=>''},safeStorage:options.safeStorage??{isEncryptionAvailable:()=>false},session:{fromPartition(name){if(!state.partitions.has(name)){const ses=new EventEmitter();Object.assign(ses,{protocol:protocol(),setPermissionRequestHandler(fn){this.permissionRequest=fn;},setPermissionCheckHandler(fn){this.permissionCheck=fn;}});state.partitions.set(name,ses);}return state.partitions.get(name);}}};
   const bridge={};
   for(const [name,op] of Object.entries({getCapabilitiesSource:'capabilities',loadGraphSource:'load',snapshotSource:'snapshot',applyParametersSource:'parameters'}))bridge[name]=(payload={})=>JSON.stringify({op,payload});
   bridge.setModeSource=(mode,expectedName)=>JSON.stringify({op:'mode',payload:{mode,expectedName}});
-  const store={...Store,writeWorkspace(target,data){state.writeCount++;if(state.writeHook)state.writeHook(target,data,state.writeCount);return Store.writeWorkspace(target,data);}};
+  const store={...Store,writeWorkspace(target,data,opts){state.writeCount++;if(state.writeHook)state.writeHook(target,data,state.writeCount);return Store.writeWorkspace(target,data,opts);}};
   const desktopDir=path.join(__dirname,'..','desktop');
   const realDb=require(path.join(desktopDir,'repositories','database.cjs'));
   const dbMock={...realDb,Database:{open:(...a)=>{const db=realDb.Database.open(...a);openedDbs.push(db);return db;}}};
@@ -283,4 +283,31 @@ test('B03：打包自检在临时目录运行并写出结果', async () => {
   const r = JSON.parse(fs.readFileSync(out, 'utf8'));
   for (const name of ['versions', 'sqlite', 'modules', 'workbench']) assert.equal(r.checks.find(c => c.name === name).ok, true, JSON.stringify(r.checks));
   fs.rmSync(path.dirname(out), {recursive: true, force: true});
+});
+
+/* ---------- C01：草稿、关闭归档、普通导出走统一敏感字段政策（虚构密钥） ---------- */
+const FAKE_KEY='sk-test-FICTIONALKEY0123456789';
+const fakeSafe=()=>({isEncryptionAvailable:()=>true,getSelectedStorageBackend:()=>'dpapi',encryptString:s=>Buffer.from(`enc:${s}`),decryptString:b=>b.toString().slice(4)});
+const keyGraph=prompt=>({version:0.4,nodes:[{id:1,type:'CLIPTextEncode',widgets_values:[prompt]},{id:2,type:'LMStudioPromptEnhancer',inputs:[{name:'lmstudio_api_key',type:'STRING',widget:{name:'lmstudio_api_key'}}],widgets_values:['帮我润色',FAKE_KEY]}],links:[],extra:{},definitions:{subgraphs:[{id:'sg1',nodes:[{id:9,type:'Custom',widgets_values:{api_key:FAKE_KEY,steps:20}}]}]}});
+test('C01：首次输入的密钥——自动保存/关闭归档只存凭据引用，内存与画布保留真实值，普通导出移除并列出需重填字段',async t=>{
+  const f=await fixture(t,workspace({id:'a',title:'a',mode:'graph',templateId:null,graph:keyGraph('提示词A')},{id:'b',title:'b',mode:'graph',templateId:null,graph:keyGraph('提示词B')}),{safeStorage:fakeSafe()});
+  const drafts=path.join(f.root,'.local','data','drafts');
+  for(const n of fs.readdirSync(drafts)){const text=fs.readFileSync(path.join(drafts,n),'utf8');assert.ok(!text.includes(FAKE_KEY),`草稿 ${n} 不含明文（启动迁移）`);assert.ok(text.includes('__yz_credential__:node-secret:'));assert.ok(text.includes('提示词'),'普通提示词保留');}
+  f.bounds({x:200,y:80,width:1200,height:800});
+  const c=await f.send('connect');assert.equal(c.ok,true);
+  assert.equal(c.snapshot.graph.nodes[1].widgets_values[1],FAKE_KEY,'载入时在内存还原');
+  assert.ok(!fs.readFileSync(path.join(f.root,'.local','data','credentials.json'),'utf8').includes(FAKE_KEY),'凭据文件只存密文');
+  const out=path.join(f.root,'export.json');f.saveResults.push({canceled:false,filePath:out});
+  const ex=await f.send('exportWorkflow');assert.equal(ex.ok,true);
+  const text=fs.readFileSync(out,'utf8');assert.ok(!text.includes(FAKE_KEY));assert.ok(!text.includes('__yz_credential__'),'不带本机凭据标识');assert.ok(text.includes('提示词A'));
+  assert.ok(ex.refill.length>=2,'列出需要重新填写的字段');
+  assert.equal((await f.send('closeTab','a')).ok,true);
+  const archived=fs.readFileSync(path.join(f.root,'.local','data','closed-workflows','a.json'),'utf8');assert.ok(!archived.includes(FAKE_KEY));assert.ok(archived.includes('__yz_credential__:node-secret:'));
+});
+test('C01：系统加密存储不可用——保存返回可操作错误，不明文落盘，旧草稿不被覆盖',async t=>{
+  const f=await fixture(t,workspace(tab('a','x')));
+  f.bounds({x:200,y:80,width:1200,height:800});assert.equal((await f.send('connect')).ok,true);
+  f.nativeGraph=keyGraph('新提示词');
+  const r=await f.send('save');assert.equal(r.ok,false);assert.match(r.error,/加密存储不可用/);
+  const drafts=path.join(f.root,'.local','data','drafts');for(const n of fs.readdirSync(drafts))assert.ok(!fs.readFileSync(path.join(drafts,n),'utf8').includes(FAKE_KEY));
 });

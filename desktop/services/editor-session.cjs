@@ -33,7 +33,14 @@ const expectedName = () => active() ? `yingzuo-${active().id}` : undefined;
 const currentSnapshot = () => connected && loadedId === workspace.activeId ? lastSnapshot : null;
 const state = () => ({tabs:workspace.tabs.map(({id,title,templateId,templateVersionId,mode,revision})=>({id,title,templateId,templateVersionId:templateVersionId??null,mode,revision})), activeId:workspace.activeId, connected, transportConnected:connected && (currentSnapshot()?.connected??capabilities?.connected??false), currentView, capabilities, recoveryPending, startupError, savedPath:paths.workspace, comfyUrl:currentComfyUrl()?.href ?? null});
 const notify = data => { if (window && !window.isDestroyed()) window.webContents.send('yingzuo:p0-status', {...state(),snapshot:currentSnapshot(),...data}); };
-function persist() { if (startupError) throw new Error('旧工作区读取失败，已保留原文件。请先检查后再保存新草稿。'); Store.writeWorkspace(paths.workspace,workspace);persistedWorkspace=JSON.stringify(workspace); }
+// C01：统一图保存政策。内部文件只存凭据引用；载入时在内存中还原；导出时移除。
+let graphPolicy=null;
+const fallbackPolicy=require('../../shared/graph-storage-policy.cjs').createGraphStoragePolicy({credentials:null});
+const secureDisk=g=>graphPolicy?graphPolicy.secureForStorage(g):g;
+const resolveMem=g=>graphPolicy?graphPolicy.resolveInMemory(g).graph:g;
+const exportCopy=g=>(graphPolicy??fallbackPolicy).stripForExport(g);
+function setGraphPolicy(p){graphPolicy=p;for(const t of workspace.tabs)t.graph=resolveMem(t.graph);persistedWorkspace=JSON.stringify(workspace);}
+function persist() { if (startupError) throw new Error('旧工作区读取失败，已保留原文件。请先检查后再保存新草稿。'); Store.writeWorkspace(paths.workspace,workspace,{secureGraph:secureDisk});persistedWorkspace=JSON.stringify(workspace); }
 function layout() {
   if (!window || !bounds) return;
   const rect = Store.validateBounds(bounds,window.getContentSize());
@@ -242,6 +249,7 @@ async function activate(id) {
   return result;
 }
 async function newTab(title,graph,templateId=null,templateVersionId=null) {
+  graph=resolveMem(graph);
   return changeWorkspace(()=>{workspace.activeId=Store.addTab(workspace,title,graph,templateId,templateVersionId).id;},true);
 }
 // E05：统一导入。UI 图直接成为新标签；API 图先保存原文件，再在新空白标签中用官方 loadApiJson 重建。
@@ -280,7 +288,7 @@ const commands = {
       // Keep the latest copy on disk before removing its tab. Failed loads or
       // workspace writes restore membership and selection, leaving this backup.
       const archive=paths.closed;fs.mkdirSync(archive,{recursive:true});
-      const closing=workspace.tabs[index];fs.writeFileSync(path.join(archive,`${id}.json`),JSON.stringify(closing.graph,null,2));fs.writeFileSync(path.join(archive,`${id}.meta.json`),JSON.stringify({title:closing.title,templateId:closing.templateId??null,templateVersionId:closing.templateVersionId??null,closedAt:new Date().toISOString()}));/* S08：归档记录标题与模板版本；参考关系按原标签编号保留在 reference-relations.json */
+      const closing=workspace.tabs[index];fs.writeFileSync(path.join(archive,`${id}.json`),JSON.stringify(secureDisk(closing.graph),null,2));fs.writeFileSync(path.join(archive,`${id}.meta.json`),JSON.stringify({title:closing.title,templateId:closing.templateId??null,templateVersionId:closing.templateVersionId??null,closedAt:new Date().toISOString()}));/* S08：归档记录标题与模板版本；参考关系按原标签编号保留在 reference-relations.json */
       workspace.tabs.splice(index,1);
       if(workspace.activeId===id)workspace.activeId=workspace.tabs[Math.min(index,workspace.tabs.length-1)]?.id||null;
     });
@@ -318,8 +326,8 @@ const commands = {
     const folder=paths.exports;fs.mkdirSync(folder,{recursive:true});
     const result=await dialog.showSaveDialog(window,{title:'导出工作流副本',defaultPath:path.join(folder,`${Store.safeName(tab.title)}.json`),filters:[{name:'ComfyUI 工作流',extensions:['json']}]});
     if(result.canceled||!result.filePath)return {cancelled:true};
-    fs.writeFileSync(result.filePath,JSON.stringify(tab.graph,null,2),'utf8');
-    return {state:state(),path:result.filePath,message:`工作流已保存：${result.filePath}`};
+    const ex=exportCopy(tab.graph);fs.writeFileSync(result.filePath,JSON.stringify(ex.graph,null,2),'utf8');
+    return {state:state(),path:result.filePath,refill:ex.refill,message:`工作流已保存：${result.filePath}${ex.refill.length?`（${ex.refill.length} 个敏感字段已移除，导入后需重新填写）`:''}`};
   },
   showPreview: async()=>{
     await capture();persist();currentView='preview';
@@ -387,6 +395,8 @@ return {
   commands,
   state, notify, enqueue, capture, saveCurrent, persist, layout, active, currentSnapshot, connect, disconnectEditor,
   attachWindow(w) { window = w; },
+  setGraphPolicy, exportCopy, secureDisk,
+  graphPolicy: () => graphPolicy,
   setBounds(value) { bounds = Store.validateBounds(value, window.getContentSize()); layout(); },
   get workspace() { return workspace; },
   get startupError() { return startupError; },
