@@ -81,7 +81,7 @@ function createApi(ctx) {
       return r;
     } finally { lease?.(); release(); }
   }
-  const pickable = new Set(['comfy.root', 'comfy.python', 'comfy.workflowsDir', 'comfy.outputDir', 'comfy.inputDir', 'lmstudio.cli', 'paths.templates', 'paths.favorites', 'paths.downloads', 'paths.backups', 'gemma.patchFile']);
+  const pickable = new Set(['comfy.root', 'comfy.python', 'comfy.workflowsDir', 'comfy.outputDir', 'comfy.inputDir', 'lmstudio.cli', 'paths.favorites', 'paths.downloads', 'paths.backups', 'gemma.patchFile']);
 
   const methods = {
     // ----- assets（A01–A08，见 assets-api.cjs）-----

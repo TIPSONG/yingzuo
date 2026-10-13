@@ -61,7 +61,8 @@ function validate(config, {exists = p => fs.existsSync(p)} = {}) {
   if (!Number.isInteger(config.maintenance?.keepBackups ?? 5) || (config.maintenance?.keepBackups ?? 5) < 1 || (config.maintenance?.keepBackups ?? 5) > 100) add('maintenance.keepBackups', '保留备份数应为 1–100。');
   if (!Number.isInteger(config.queue?.maxBatch) || config.queue.maxBatch < 1 || config.queue.maxBatch > 1000) add('queue.maxBatch', '批量上限应为 1–1000。');
   if (config.gemma?.contextLength !== 8192) add('gemma.contextLength', 'Gemma 上下文须保持 8192（与现有补丁一致）。', 'warning');
-  for (const key of ['templates', 'favorites', 'downloads', 'backups']) { const v = config.paths?.[key]; if (v && !path.isAbsolute(v) && !/^[a-zA-Z]:[\\/]/.test(v)) add(`paths.${key}`, '必须是绝对路径。'); }
+  if (config.paths?.templates) add('paths.templates', '暂不支持自定义模板目录：模板固定保存在数据目录的 templates 下，此项已忽略。', 'warning');
+  for (const key of ['favorites', 'downloads', 'backups']) { const v = config.paths?.[key]; if (v && !path.isAbsolute(v) && !/^[a-zA-Z]:[\\/]/.test(v)) add(`paths.${key}`, '必须是绝对路径。'); }
   if (!Array.isArray(config.paths?.extraOutputDirs)) add('paths.extraOutputDirs', '必须是目录列表。');
   if (!['stable', 'beta'].includes(config.updates?.channel)) add('updates.channel', '渠道只能是 stable / beta。');
   if (!['manual', 'daily', 'weekly'].includes(config.updates?.checkFrequency)) add('updates.checkFrequency', '检查频率只能是 manual / daily / weekly。');
@@ -147,7 +148,7 @@ class ConfigRepository {
       input: c.comfy.inputDir || join('input'),
       customNodes: join('custom_nodes'),
       models: join('models'),
-      templates: c.paths.templates || layout.templates,
+      templates: layout.templates, // RV09：模板仓库固定使用数据目录，paths.templates 不生效
       favorites: c.paths.favorites || layout.favorites,
       downloads: c.paths.downloads || layout.downloads,
       backups: c.paths.backups || layout.backups,

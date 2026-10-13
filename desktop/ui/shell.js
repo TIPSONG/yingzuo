@@ -203,7 +203,7 @@ const FIELDS = [
   ['外观', [['ui.theme', '界面主题', 'theme', '深色为默认；「跟随系统」随操作系统外观变化'], ['ui.skin', '界面皮肤', 'skin', '皮肤叠在明暗模式之上；NASA 朋克偏深色科技感']]],
   ['ComfyUI', [['comfy.root', '安装目录', 'path'], ['comfy.python', 'Python', 'file', '按需启动用；通常是 .venv\\Scripts\\python.exe'], ['comfy.url', '地址', 'text', '仅本机 http 地址'], ['comfy.extraArgs', '附加启动参数', 'list', '每项以空格分隔；--listen/--port 由地址决定'], ['comfy.startTimeoutSec', '启动超时（秒）', 'int'], ['comfy.workflowsDir', '工作流目录', 'path', '留空 = <安装目录>\\user\\default\\workflows'], ['comfy.outputDir', '输出目录', 'path', '留空 = <安装目录>\\output'], ['comfy.inputDir', '输入目录', 'path', '留空 = <安装目录>\\input']]],
   ['LM Studio / Gemma', [['lmstudio.url', 'API 地址', 'text'], ['lmstudio.cli', 'lms CLI', 'file'], ['gemma.patchFile', 'Gemma 本地补丁', 'file', '仅登记位置，更新插件时据此保留补丁']]],
-  ['目录', [['paths.templates', '模板', 'path', '留空使用数据目录'], ['paths.favorites', '收藏', 'path'], ['paths.downloads', '下载', 'path'], ['paths.backups', '备份', 'path']]],
+  ['目录', [['paths.templates', '模板', 'fixed', '模板固定保存在数据目录的 templates 下（仓库、缩略图、导入导出与备份都使用此位置）；暂不支持改到其他目录'], ['paths.favorites', '收藏', 'path'], ['paths.downloads', '下载', 'path'], ['paths.backups', '备份', 'path']]],
   ['行为', [['tray.closeToTray', '关闭窗口时缩到托盘', 'bool'], ['downloads.concurrency', '下载并发', 'int'], ['queue.maxBatch', '批量上限', 'int'], ['defaults.templateId', '默认模板', 'select:text,edit,gemma-text,gemma-edit,prompt'], ['updates.checkFrequency', '更新检查', 'select:manual,daily,weekly'], ['updates.channel', '更新渠道', 'select:stable,beta']]],
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a?.[k], o);
@@ -261,6 +261,10 @@ function renderSettings() {
       const card = (id, cls, labelText) => `<button type="button" class="theme-option ${cls} ${cur === id ? 'active' : ''}" data-skin-set="${id}" aria-pressed="${cur === id}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>${labelText}</small></button>`;
       input = `<div class="theme-options" role="radiogroup" aria-label="${esc(label)}">${card('default', 'skin-option-default', '默认')}${card('nasa-punk', 'skin-option-nasa', 'NASA朋克')}</div><input type="hidden" data-key="${key}" data-type="text" value="${cur}">`;
       return `<div class="setting setting-theme setting-skin"><span>${esc(label)}</span>${input}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>`;
+    }
+    if (type === 'fixed') { // RV09：模板目录固定，不提供输入框，避免保存一个实际不生效的目录
+      const loc = settings.locations?.templates ?? '';
+      return `<div class="setting"><span>${esc(label)}</span><span class="muted">${esc(loc || '数据目录\\templates')}</span>${loc ? '<button type="button" data-open-loc="templates">打开</button>' : '<span></span>'}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>`;
     }
     if (type === 'bool') input = `<input type="checkbox" data-key="${key}" data-type="bool" ${v ? 'checked' : ''}>`;
     else if (type === 'int') input = `<input type="number" data-key="${key}" data-type="int" value="${esc(v)}">`;
