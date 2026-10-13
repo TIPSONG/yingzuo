@@ -133,6 +133,18 @@ function bridgeRuntime(operation, payload, app) {
       return { ok: true, prompt: JSON.parse(JSON.stringify(result.output)), workflow: JSON.parse(JSON.stringify(result.workflow ?? root.serialize())) };
     }, error => fail('COMPILE_FAILED', String(error?.message ?? error)));
   }
+  if (operation === 'convertApi') {
+    // E05：在本标签已绑定的原生工作流里调用官方 loadApiJson，完成后重新绑定同一文档。
+    if (typeof app.loadApiJson !== 'function') return fail('CONVERT_UNAVAILABLE', '当前 ComfyUI 前端没有 loadApiJson，无法把 API 格式转换为可视图；原文件已保留。');
+    if (typeof payload.expectedName !== 'string' || !identityMatches() || !state.canvasBound) return changedWorkflow();
+    const binding = state.workflows.get(payload.expectedName);
+    state.loading = true;
+    return Promise.resolve().then(() => app.loadApiJson(payload.prompt, payload.fileName || 'api.json')).then(() => {
+      if (!matchesBinding(binding, store?.activeWorkflow)) return changedWorkflow();
+      state.canvasBound = true;
+      return snapshot();
+    }, error => fail('CONVERT_FAILED', String(error?.message ?? error))).finally(() => { state.loading = false; });
+  }
   if (operation === 'focus') {
     if (!identityMatches()) return changedWorkflow();
     const scope = Array.isArray(payload.scopePath) ? payload.scopePath.map(String) : [];
@@ -270,6 +282,7 @@ module.exports = {
   getCapabilitiesSource: () => source('capabilities'),
   loadGraphSource: ({ graph, name, workflowPath, documentId, viewport }) => source('load', { graph, name, workflowPath, documentId, viewport }),
   compileSource: ({ expectedName }) => source('compile', { expectedName }),
+  convertApiSource: ({ expectedName, prompt, fileName }) => source('convertApi', { expectedName, prompt, fileName }),
   focusNodeSource: ({ expectedName, scopePath, nodeId }) => source('focus', { expectedName, scopePath, nodeId }),
   snapshotSource: ({ expectedName } = {}) => source('snapshot', { expectedName }),
   applyParametersSource: ({ updates, expectedName }) => source('parameters', { updates, expectedName }),

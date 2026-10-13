@@ -119,7 +119,7 @@ function createApi(ctx) {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (data?.kind !== 'yingzuo-alpha-export' || data.version !== 1) throw new AppError(CODES.INVALID_ARGUMENT, '不是 A 测界面导出的草稿文件。');
       const tabs = Array.isArray(data.workspaceTabs) ? data.workspaceTabs.slice(0, 50) : [];
-      const needReselect = tabs.filter(t => Array.isArray(t.refsDropped) && t.refsDropped > 0).map(t => ({title: t.title, dropped: t.refsDropped}));
+      const needReselect = tabs.filter(t => Number.isInteger(t.refsDropped) && t.refsDropped > 0).map(t => ({title: t.title, dropped: t.refsDropped}));
       const target = path.join(layout.migrations, `alpha-drafts-${Date.now()}.json`);
       writeJsonAtomic(target, {importedAt: new Date().toISOString(), source: path.basename(file), drafts: data.drafts ?? {}, workspaceTabs: tabs, needReselect});
       return {stored: target, tabs: tabs.length, needReselect};

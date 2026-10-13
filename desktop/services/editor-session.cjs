@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {randomUUID} = require('node:crypto');
+const ImportPipeline = require('../../shared/import-pipeline.cjs');
 function createEditorSession(env) {
 const {electron:{WebContentsView, dialog, session}, Store, Bridge, paths, log, getWindow, serveResource, timers:{setTimeout, clearTimeout}, fetch, AbortSignal, templates, comfyUrlProvider, partition = 'persist:yingzuo-p0-comfy'} = env;
 let window = null;
@@ -226,6 +227,23 @@ async function activate(id) {
 async function newTab(title,graph,templateId=null) {
   return changeWorkspace(()=>{workspace.activeId=Store.addTab(workspace,title,graph,templateId).id;},true);
 }
+// E05：统一导入。UI 图直接成为新标签；API 图先保存原文件，再在新空白标签中用官方 loadApiJson 重建。
+async function importText(text,name){
+  const info=ImportPipeline.analyze(text,{name});
+  if(info.format==='ui')return {...await newTab(info.name,Store.validateGraph(info.graph)),importInfo:{format:'ui',nodeCount:info.nodeCount,notes:info.notes}};
+  const folder=path.join(paths.root,'imports');fs.mkdirSync(folder,{recursive:true});
+  const original=path.join(folder,`${Date.now()}-${Store.safeName(info.name)}.api.json`);
+  fs.writeFileSync(original,JSON.stringify(info.apiPrompt,null,2));
+  if(!connected)throw new Error(`这是 API 格式工作流，需要连接 ComfyUI 才能用官方转换重建可视图。原文件已保存：${original}`);
+  await newTab(`${info.name}（API 转换）`,{last_node_id:0,last_link_id:0,nodes:[],links:[],groups:[],config:{},extra:{},version:0.4});
+  const tab=active();
+  let converted;
+  try{converted=await execute(Bridge.convertApiSource({expectedName:expectedName(),prompt:info.apiPrompt,fileName:`${info.name}.json`}));}
+  catch(error){throw new Error(`API 转换失败：${error.message}。已保留空白标签和原文件 ${original}，没有伪造连线。`);}
+  keepSnapshot(converted,tab);persist();
+  const check=ImportPipeline.compareConversion(info.apiPrompt,converted.nodes);
+  return {state:state(),snapshot:currentSnapshot(),importInfo:{format:'api',original,nodeCount:info.nodeCount,complete:check.complete,missingTypes:check.missingTypes,notes:info.notes},message:check.complete?`已用官方转换重建 ${check.total} 个节点；原文件：${original}`:`已转换，但以下节点类型未能重建：${check.missingTypes.join('、')}。原文件：${original}`};
+}
 const commands = {
   boot: async()=>({state:state(),templates:templates().map(t=>({id:t.id,name:t.name,available:fs.existsSync(t.path)}))}),
   connect,
@@ -254,9 +272,9 @@ const commands = {
     const result=await dialog.showOpenDialog(window,{title:'导入 ComfyUI 工作流',properties:['openFile'],filters:[{name:'ComfyUI 工作流',extensions:['json']}]});
     if(result.canceled||!result.filePaths?.length)return {cancelled:true};
     const file=result.filePaths[0];if(fs.statSync(file).size>Store.MAX_GRAPH_BYTES)throw new Error('工作流文件过大。');
-    const graph=JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,''));
-    return newTab(path.basename(file,'.json'),Store.validateGraph(graph));
+    return importText(fs.readFileSync(file,'utf8'),path.basename(file));
   },
+  importText: async(text,name)=>importText(text,typeof name==='string'?name:'粘贴的工作流'),
   newBlank: async()=>newTab('空白节点画布',{last_node_id:0,last_link_id:0,nodes:[],links:[],groups:[],config:{},extra:{},version:0.4}),
   snapshot: async()=>({state:state(),snapshot:await capture()}),
   applyParameters: async (updates,tabId,expectedRevision)=>{

@@ -1,9 +1,9 @@
-name: P0 regression
+name: Regression
 
 on:
   pull_request:
   push:
-    branches: [main, feat/p0-desktop-integration]
+    branches: [main, feat/p0-desktop-integration, feat/grovebot-impl]
 
 permissions:
   contents: read
@@ -21,10 +21,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      # Tests use Node built-ins; installing Electron is unnecessary here.
-      # This job does not claim native dialog or real ComfyUI acceptance.
-      - run: npm test
+      # 安装依赖以便测试 better-sqlite3 / sharp（Node ABI）。Electron 二进制不需要。
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run check
       - run: python -m unittest discover -s tests -p test_p0_baseline.py -v

@@ -1,7 +1,7 @@
 'use strict';
 // 固定方法白名单。不暴露通用 exec/readFile/writeFile；每个方法都由主进程再次校验来源与参数。
 const {contextBridge, ipcRenderer} = require('electron');
-const methods = ['boot','connect','openTemplate','activateTab','duplicateTab','closeTab','renameTab','importWorkflow','newBlank','snapshot','applyParameters','setMode','save','exportWorkflow','showPreview','showEditor'];
+const methods = ['boot','connect','openTemplate','activateTab','duplicateTab','closeTab','renameTab','importWorkflow','importText','newBlank','snapshot','applyParameters','setMode','save','exportWorkflow','showPreview','showEditor'];
 const api = Object.fromEntries(methods.map(method => [method, (...args) => ipcRenderer.invoke('yingzuo:p0', {method,args})]));
 api.setBounds = bounds => ipcRenderer.send('yingzuo:p0-bounds', bounds);
 api.setOverlay = value => ipcRenderer.send('yingzuo:overlay', value === true);

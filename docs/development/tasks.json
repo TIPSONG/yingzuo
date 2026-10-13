@@ -3,141 +3,186 @@
   "id": "F01",
   "name": "现状登记",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/environment-record.cjs",
+   "tools/env-record.cjs"
+  ],
+  "checks": "npm run check；node tools/env-record.cjs 在 Linux 实跑",
+  "note": "诊断导出与命令行均可生成；不含凭据。12 文件基线仍由 tools/p0_baseline.py 维护，未改动"
  },
  {
   "id": "F02",
   "name": "主进程拆分",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/main.cjs",
+   "desktop/services/editor-session.cjs",
+   "desktop/services/api.cjs"
+  ],
+  "checks": "desktop-main.test.cjs 22 项（mock Electron）",
+  "note": "main.cjs 只做组装；原 P0 编辑器逻辑整体移入 editor-session（依赖注入，行为与测试保持）"
  },
  {
   "id": "F03",
   "name": "公共 schema",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "shared/schema.cjs",
+   "desktop/core/errors.cjs"
+  ],
+  "checks": "foundation.test.cjs",
+  "note": "8 类核心记录、任务状态机、IPC 信封与错误代码"
  },
  {
   "id": "F04",
   "name": "数据根与迁移",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/repositories/data-root.cjs",
+   "app.js"
+  ],
+  "checks": "foundation.test.cjs：导入、只导入一次、失败回滚",
+  "note": "安装版 userData/data、便携版 exe 旁 portable.flag→data/、开发 .local/data；A 测草稿走显式导出/导入，blob 参考图计数并提示重选"
  },
  {
   "id": "F05",
   "name": "存储仓库",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/repositories/database.cjs",
+   "desktop/core/fs-atomic.cjs",
+   "desktop/workspace-store.cjs"
+  ],
+  "checks": "foundation.test.cjs：两种 SQLite 驱动的迁移/事务/保存点/VACUUM INTO 备份/损坏只读",
+  "note": "better-sqlite3 优先；Electron 未重建时回退 node:sqlite。工作区改为 v2（drafts/ + graphHash + revision）"
  },
  {
   "id": "F06",
   "name": "事件与锁",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
+  "files": [
+   "desktop/core/locks.cjs",
+   "desktop/core/events.cjs"
+  ],
+  "checks": "foundation.test.cjs",
   "note": ""
  },
  {
   "id": "F07",
   "name": "凭据与日志",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/core/logger.cjs",
+   "desktop/core/credentials.cjs"
+  ],
+  "checks": "foundation.test.cjs：脱敏、轮转、加密不可用拒绝明文",
+  "note": "Windows DPAPI 实际加密需 Codex 验收"
  },
  {
   "id": "F08",
   "name": "开发脚本",
   "batch": 1,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "package.json",
+   "tools/check.cjs",
+   "tools/build-win.cjs",
+   ".github/workflows/"
+  ],
+  "checks": "npm run check 通过",
+  "note": "check/test/build:win 已有；Windows 构建经 GitHub Actions windows-build.yml 实测，结果见 B03"
  },
  {
   "id": "E01",
   "name": "版本适配层",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/adapters/comfy-editor-adapter.cjs",
+   "desktop/comfy-bridge-source.cjs"
+  ],
+  "checks": "services.test.cjs、comfy-bridge-source.test.cjs",
+  "note": "能力探测给出具体限制；旧桥接测试全部保留"
  },
  {
   "id": "E02",
   "name": "正式页面融合",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/workbench.html",
+   "desktop/ui/shell.js",
+   "desktop/ui/shell.css"
+  ],
+  "checks": "check 语法；无 DOM 自动测试",
+  "note": "首页优先，节点/表单入口并列，A 测仅保留预览入口；需 Codex 实机看界面"
  },
  {
   "id": "E03",
   "name": "工作流标签",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/editor-session.cjs",
+   "desktop/workspace-store.cjs"
+  ],
+  "checks": "desktop-main.test.cjs、workspace-store.test.cjs",
+  "note": "新增重命名、viewport 持久化、revision；模板标签复用"
  },
  {
   "id": "E04",
   "name": "新建起始页",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
+  "files": [
+   "desktop/ui/shell.js"
+  ],
   "checks": "",
-  "note": ""
+  "note": "起始页：拖入/选文件/粘贴/模板/空白；需 Codex 实机"
  },
  {
   "id": "E05",
   "name": "导入管线",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "shared/import-pipeline.cjs",
+   "desktop/services/editor-session.cjs"
+  ],
+  "checks": "pipeline 单测见 batch2 补充",
+  "note": "API 格式用前端官方 loadApiJson 转换并核对缺失节点类型，原文件另存"
  },
  {
   "id": "E06",
   "name": "根图与串写保护",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/editor-session.cjs"
+  ],
+  "checks": "desktop-main.test.cjs",
+  "note": "applyParameters 支持 expectedRevision 拒绝串写"
  },
  {
   "id": "E07",
@@ -183,81 +228,101 @@
   "id": "S01",
   "name": "统一配置",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
+  "files": [
+   "desktop/repositories/config-repo.cjs"
+  ],
+  "checks": "foundation.test.cjs",
   "note": ""
  },
  {
   "id": "S02",
   "name": "服务探测",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/service-probe.cjs"
+  ],
+  "checks": "services.test.cjs（本机 HTTP 替身）",
+  "note": "真实 ComfyUI/LM Studio 需 Codex"
  },
  {
   "id": "S03",
   "name": "按需启动 ComfyUI",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/comfy-process.cjs",
+   "desktop/services/process-utils.cjs"
+  ],
+  "checks": "services.test.cjs",
+  "note": "Windows 进程身份查询用 PowerShell Get-CimInstance，未在 Windows 实跑"
  },
  {
   "id": "S04",
   "name": "LM Studio 适配",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/lmstudio.cjs"
+  ],
+  "checks": "services.test.cjs（CLI 替身）",
+  "note": "lms ps --json 输出格式按文档假设，需 Codex 实机核对"
  },
  {
   "id": "S05",
   "name": "停止与显存",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
+  "files": [
+   "desktop/services/comfy-process.cjs",
+   "desktop/services/api.cjs"
+  ],
+  "checks": "services.test.cjs：PID 复用不误停",
   "note": ""
  },
  {
   "id": "S06",
   "name": "托盘与单实例",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
+  "files": [
+   "desktop/main.cjs",
+   "assets/tray-16.png"
+  ],
   "checks": "",
-  "note": ""
+  "note": "托盘菜单与单实例；Windows 托盘需实机"
  },
  {
   "id": "S07",
   "name": "正确退出",
   "batch": 1,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
-  "files": [],
+  "files": [
+   "desktop/main.cjs",
+   "desktop/services/api.cjs"
+  ],
   "checks": "",
-  "note": ""
+  "note": "退出流程已接 hooks；等待 Q03 队列接入后完成"
  },
  {
   "id": "S08",
   "name": "状态与设置页面接入",
   "batch": 1,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
+  "files": [
+   "desktop/ui/shell.js"
+  ],
   "checks": "",
-  "note": ""
+  "note": "首页服务卡、设置页、日志页接真实接口"
  },
  {
   "id": "Q01",

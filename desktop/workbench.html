@@ -3,32 +3,85 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'">
-  <title>映作 · 桌面接入验证 P0</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: yingzuo:; connect-src 'none'; object-src 'none'; frame-src 'none'">
+  <title>映作</title>
   <link rel="stylesheet" href="workbench.css">
+  <link rel="stylesheet" href="ui/shell.css">
 </head>
 <body>
   <aside>
     <div class="brand"><img src="../assets/mark.svg" alt=""><span>映作<small>LOCAL IMAGE STUDIO</small></span></div>
-    <div class="eyebrow">桌面接入验证 · P0</div>
-    <button id="editor-home">创作工作区</button>
-    <button id="preview">查看 A 测界面</button>
+    <nav id="nav" aria-label="主导航">
+      <button data-page="home" class="nav active">首页</button>
+      <button data-page="create" class="nav" id="editor-home">创作工作区</button>
+      <button data-page="services" class="nav">服务与日志</button>
+      <button data-page="settings" class="nav">设置</button>
+    </nav>
     <div class="divider"></div>
     <div class="eyebrow">现有工作流</div>
     <div id="templates"></div>
-    <div class="side-bottom"><strong id="connection">ComfyUI 未连接</strong><small id="endpoint">本机绘图环境</small><button id="connect">连接已有服务</button><p>本阶段验证真实画布与草稿。服务自动启停和托盘将在 P1 接入。</p></div>
+    <div class="side-bottom"><strong id="connection">ComfyUI 未连接</strong><small id="endpoint">本机绘图环境</small><button id="connect">连接已有服务</button><button id="preview" class="ghost">A 测界面预览</button></div>
   </aside>
-  <main>
-    <header><div><span class="eyebrow">WINDOWS DESKTOP / P0</span><h1>创作工作区</h1></div><div class="header-actions"><button id="import">导入 JSON</button><button id="blank">空白画布</button><button id="save">保存草稿</button><button id="export" class="primary">导出 JSON 副本</button></div></header>
-    <div class="tab-row"><div id="tabs" role="tablist" aria-label="桌面工作流标签"></div><button id="duplicate" title="新建当前工作流副本">复制标签</button></div>
-    <section class="toolbar"><div class="mode-buttons" aria-label="编辑模式"><button data-mode="graph">节点画布</button><button data-mode="parameters">参数表单</button><button data-mode="app">官方 App Mode</button></div><span id="graph-info">打开一个工作流开始验证</span></section>
-    <div id="status" role="status" aria-live="polite">工作副本保存在本机，不覆盖原模板。</div>
-    <section id="editor-portal" aria-label="工作流编辑区域">
-      <div id="empty"><span class="empty-mark">↗</span><h2>从真实工作流开始</h2><p>选择左侧模板，或导入 JSON。节点画布直接使用当前 ComfyUI，参数表单读取同一张图。</p><p>需要先启动现有 ComfyUI 服务。</p></div>
-      <div id="parameters" hidden><div class="form-note"><strong>与真实画布共享参数</strong><span>修改后自动同步并保存；已连线或暂不支持的控件保持在节点画布中编辑。</span><button id="refresh-fields">从画布刷新参数</button></div><div id="fields"></div></div>
+  <div id="pages">
+    <section id="page-home" class="page" aria-label="首页">
+      <header class="page-head"><div><span class="eyebrow">HOME</span><h1>从这里开始</h1></div><div class="header-actions"><button id="home-refresh">刷新服务状态</button></div></header>
+      <div class="page-body">
+        <div class="entry-row">
+          <button class="entry" data-entry="graph"><span class="entry-kicker">节点模式</span><strong>完整节点画布</strong><span>直接使用 ComfyUI 原生画布，所有节点与子图可编辑。</span></button>
+          <button class="entry" data-entry="parameters"><span class="entry-kicker">表单模式</span><strong>简洁参数表单</strong><span>读取同一张图的可编辑参数，修改即同步回画布。</span></button>
+          <button class="entry" data-entry="start"><span class="entry-kicker">新建</span><strong>导入或空白</strong><span>拖入／选择／粘贴 JSON，或从模板与空白画布开始。</span></button>
+        </div>
+        <h2 class="section-title">本机服务</h2>
+        <div id="service-cards" class="cards"><p class="muted">正在检测…</p></div>
+        <h2 class="section-title">最近的工作副本</h2>
+        <div id="recent-tabs" class="list"></div>
+        <h2 class="section-title">数据</h2>
+        <div id="data-info" class="list"></div>
+      </div>
     </section>
-    <footer><span id="save-state">独立工作副本 · 本机保存</span><span id="transport">尚未检测 WebSocket</span></footer>
-  </main>
+    <main id="page-create" class="page" hidden>
+      <header><div><span class="eyebrow">CREATE</span><h1>创作工作区</h1></div><div class="header-actions"><button id="import">导入 JSON</button><button id="blank">空白画布</button><button id="save">保存草稿</button><button id="export" class="primary">导出 JSON 副本</button></div></header>
+      <div class="tab-row"><div id="tabs" role="tablist" aria-label="桌面工作流标签"></div><button id="new-tab" title="新建标签（起始页）">＋</button><button id="rename" title="重命名当前标签">重命名</button><button id="duplicate" title="新建当前工作流副本">复制标签</button></div>
+      <section class="toolbar"><div class="mode-buttons" aria-label="编辑模式"><button data-mode="graph">节点画布</button><button data-mode="parameters">参数表单</button><button data-mode="app">官方 App Mode</button></div><span id="graph-info">打开一个工作流开始</span></section>
+      <div id="status" role="status" aria-live="polite">工作副本保存在本机，不覆盖原模板。</div>
+      <section id="editor-portal" aria-label="工作流编辑区域">
+        <div id="empty"><span class="empty-mark">↗</span><h2>从真实工作流开始</h2><p>选择左侧模板，或点击 ＋ 打开起始页。节点画布直接使用当前 ComfyUI，参数表单读取同一张图。</p><p>没有运行中的 ComfyUI 时，可在首页“本机服务”中按需启动。</p></div>
+        <div id="parameters" hidden><div class="form-note"><strong>与真实画布共享参数</strong><span>修改后自动同步并保存；已连线或暂不支持的控件保持在节点画布中编辑。</span><button id="refresh-fields">从画布刷新参数</button></div><div id="fields"></div></div>
+        <div id="start" class="start" hidden>
+          <div class="start-head"><h2>新建工作流</h2><button id="start-close" class="ghost">取消</button></div>
+          <div id="dropzone" class="dropzone" tabindex="0">把 ComfyUI 工作流 JSON 拖到这里<br><small>只解析数据，不会执行脚本、安装插件或下载模型</small></div>
+          <div class="start-grid">
+            <div><h3>选择文件</h3><button id="start-file">选择 JSON 文件…</button></div>
+            <div><h3>空白画布</h3><button id="start-blank">创建空白画布</button></div>
+            <div class="wide"><h3>粘贴 JSON</h3><textarea id="paste" rows="5" placeholder="粘贴 UI 格式或 API 格式工作流"></textarea><button id="paste-import">导入粘贴内容</button></div>
+            <div class="wide"><h3>从模板开始</h3><div id="start-templates" class="chips"></div></div>
+          </div>
+        </div>
+      </section>
+      <footer><span id="save-state">独立工作副本 · 本机保存</span><span id="transport">尚未检测 WebSocket</span></footer>
+    </main>
+    <section id="page-services" class="page" hidden aria-label="服务与日志">
+      <header class="page-head"><div><span class="eyebrow">SERVICES</span><h1>服务与日志</h1></div><div class="header-actions"><button id="logs-refresh">刷新日志</button><button id="open-logs">打开日志目录</button><button id="export-diag" class="primary">导出诊断信息</button></div></header>
+      <div class="page-body">
+        <div id="service-detail" class="cards"></div>
+        <h2 class="section-title">ComfyUI 输出（本应用启动时）</h2><pre id="comfy-log" class="log">—</pre>
+        <h2 class="section-title">映作日志（已脱敏）</h2><pre id="app-log" class="log">—</pre>
+      </div>
+    </section>
+    <section id="page-settings" class="page" hidden aria-label="设置">
+      <header class="page-head"><div><span class="eyebrow">SETTINGS</span><h1>设置</h1></div><div class="header-actions"><button id="settings-reload">重新读取</button><button id="settings-save" class="primary">保存设置</button></div></header>
+      <div class="page-body">
+        <div id="settings-issues"></div>
+        <form id="settings-form" class="settings" autocomplete="off"></form>
+        <h2 class="section-title">在线来源凭据</h2>
+        <div id="credentials" class="list"></div>
+        <h2 class="section-title">迁移</h2>
+        <div class="list"><div class="row"><span>A 测浏览器草稿（需先在 A 测页面“导出草稿”）</span><button id="import-alpha">导入 A 测草稿…</button></div></div>
+      </div>
+    </section>
+  </div>
+  <div id="toast" role="alert" hidden></div>
   <script src="workbench.js"></script>
+  <script src="ui/shell.js"></script>
 </body>
 </html>

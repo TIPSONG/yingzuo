@@ -19,34 +19,34 @@
 
 <!-- TABLE -->
 
-统计：程序完成 0 / 实现中 0 / 阻塞 0 / 未开始 82（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 20 / 实现中 2 / 阻塞 0 / 未开始 60（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| F01 | 现状登记 | 未开始 |  |  |  |  |  |
-| F02 | 主进程拆分 | 未开始 |  |  |  |  |  |
-| F03 | 公共 schema | 未开始 |  |  |  |  |  |
-| F04 | 数据根与迁移 | 未开始 |  |  |  |  |  |
-| F05 | 存储仓库 | 未开始 |  |  |  |  |  |
-| F06 | 事件与锁 | 未开始 |  |  |  |  |  |
-| F07 | 凭据与日志 | 未开始 |  |  |  |  |  |
-| F08 | 开发脚本 | 未开始 |  |  |  |  |  |
-| E01 | 版本适配层 | 未开始 |  |  |  |  |  |
-| E02 | 正式页面融合 | 未开始 |  |  |  |  |  |
-| E03 | 工作流标签 | 未开始 |  |  |  |  |  |
-| E04 | 新建起始页 | 未开始 |  |  |  |  |  |
-| E05 | 导入管线 | 未开始 |  |  |  |  |  |
-| E06 | 根图与串写保护 | 未开始 |  |  |  |  |  |
-| S01 | 统一配置 | 未开始 |  |  |  |  |  |
-| S02 | 服务探测 | 未开始 |  |  |  |  |  |
-| S03 | 按需启动 ComfyUI | 未开始 |  |  |  |  |  |
-| S04 | LM Studio 适配 | 未开始 |  |  |  |  |  |
-| S05 | 停止与显存 | 未开始 |  |  |  |  |  |
-| S06 | 托盘与单实例 | 未开始 |  |  |  |  |  |
-| S07 | 正确退出 | 未开始 |  |  |  |  |  |
-| S08 | 状态与设置页面接入 | 未开始 |  |  |  |  |  |
+| F01 | 现状登记 | 程序完成 |  | desktop/services/environment-record.cjs<br>tools/env-record.cjs | npm run check；node tools/env-record.cjs 在 Linux 实跑 | 诊断导出与命令行均可生成；不含凭据。12 文件基线仍由 tools/p0_baseline.py 维护，未改动 |  |
+| F02 | 主进程拆分 | 程序完成 |  | desktop/main.cjs<br>desktop/services/editor-session.cjs<br>desktop/services/api.cjs | desktop-main.test.cjs 22 项（mock Electron） | main.cjs 只做组装；原 P0 编辑器逻辑整体移入 editor-session（依赖注入，行为与测试保持） |  |
+| F03 | 公共 schema | 程序完成 |  | shared/schema.cjs<br>desktop/core/errors.cjs | foundation.test.cjs | 8 类核心记录、任务状态机、IPC 信封与错误代码 |  |
+| F04 | 数据根与迁移 | 程序完成 |  | desktop/repositories/data-root.cjs<br>app.js | foundation.test.cjs：导入、只导入一次、失败回滚 | 安装版 userData/data、便携版 exe 旁 portable.flag→data/、开发 .local/data；A 测草稿走显式导出/导入，blob 参考图计数并提示重选 |  |
+| F05 | 存储仓库 | 程序完成 |  | desktop/repositories/database.cjs<br>desktop/core/fs-atomic.cjs<br>desktop/workspace-store.cjs | foundation.test.cjs：两种 SQLite 驱动的迁移/事务/保存点/VACUUM INTO 备份/损坏只读 | better-sqlite3 优先；Electron 未重建时回退 node:sqlite。工作区改为 v2（drafts/ + graphHash + revision） |  |
+| F06 | 事件与锁 | 程序完成 |  | desktop/core/locks.cjs<br>desktop/core/events.cjs | foundation.test.cjs |  |  |
+| F07 | 凭据与日志 | 程序完成 |  | desktop/core/logger.cjs<br>desktop/core/credentials.cjs | foundation.test.cjs：脱敏、轮转、加密不可用拒绝明文 | Windows DPAPI 实际加密需 Codex 验收 |  |
+| F08 | 开发脚本 | 实现中 |  | package.json<br>tools/check.cjs<br>tools/build-win.cjs<br>.github/workflows/ | npm run check 通过 | check/test/build:win 已有；Windows 构建经 GitHub Actions windows-build.yml 实测，结果见 B03 |  |
+| E01 | 版本适配层 | 程序完成 |  | desktop/adapters/comfy-editor-adapter.cjs<br>desktop/comfy-bridge-source.cjs | services.test.cjs、comfy-bridge-source.test.cjs | 能力探测给出具体限制；旧桥接测试全部保留 |  |
+| E02 | 正式页面融合 | 程序完成 |  | desktop/workbench.html<br>desktop/ui/shell.js<br>desktop/ui/shell.css | check 语法；无 DOM 自动测试 | 首页优先，节点/表单入口并列，A 测仅保留预览入口；需 Codex 实机看界面 |  |
+| E03 | 工作流标签 | 程序完成 |  | desktop/services/editor-session.cjs<br>desktop/workspace-store.cjs | desktop-main.test.cjs、workspace-store.test.cjs | 新增重命名、viewport 持久化、revision；模板标签复用 |  |
+| E04 | 新建起始页 | 程序完成 |  | desktop/ui/shell.js |  | 起始页：拖入/选文件/粘贴/模板/空白；需 Codex 实机 |  |
+| E05 | 导入管线 | 程序完成 |  | shared/import-pipeline.cjs<br>desktop/services/editor-session.cjs | pipeline 单测见 batch2 补充 | API 格式用前端官方 loadApiJson 转换并核对缺失节点类型，原文件另存 |  |
+| E06 | 根图与串写保护 | 程序完成 |  | desktop/services/editor-session.cjs | desktop-main.test.cjs | applyParameters 支持 expectedRevision 拒绝串写 |  |
+| S01 | 统一配置 | 程序完成 |  | desktop/repositories/config-repo.cjs | foundation.test.cjs |  |  |
+| S02 | 服务探测 | 程序完成 |  | desktop/services/service-probe.cjs | services.test.cjs（本机 HTTP 替身） | 真实 ComfyUI/LM Studio 需 Codex |  |
+| S03 | 按需启动 ComfyUI | 程序完成 |  | desktop/services/comfy-process.cjs<br>desktop/services/process-utils.cjs | services.test.cjs | Windows 进程身份查询用 PowerShell Get-CimInstance，未在 Windows 实跑 |  |
+| S04 | LM Studio 适配 | 程序完成 |  | desktop/services/lmstudio.cjs | services.test.cjs（CLI 替身） | lms ps --json 输出格式按文档假设，需 Codex 实机核对 |  |
+| S05 | 停止与显存 | 程序完成 |  | desktop/services/comfy-process.cjs<br>desktop/services/api.cjs | services.test.cjs：PID 复用不误停 |  |  |
+| S06 | 托盘与单实例 | 程序完成 |  | desktop/main.cjs<br>assets/tray-16.png |  | 托盘菜单与单实例；Windows 托盘需实机 |  |
+| S07 | 正确退出 | 实现中 |  | desktop/main.cjs<br>desktop/services/api.cjs |  | 退出流程已接 hooks；等待 Q03 队列接入后完成 |  |
+| S08 | 状态与设置页面接入 | 程序完成 |  | desktop/ui/shell.js |  | 首页服务卡、设置页、日志页接真实接口 |  |
 
 ### 批次 2
 
