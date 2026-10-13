@@ -49,9 +49,10 @@
       "id": "D06",
       "level": "P1",
       "name": "继续恢复绕开运行保护",
-      "status": "实现中",
-      "commit": "ea187ce",
-      "note": "restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds"
+      "status": "程序完成",
+      "commit": "0fd23ab",
+      "note": "资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示",
+      "tests": "maint-service.test D06"
     },
     {
       "id": "D07",
@@ -69,15 +70,19 @@
       "id": "D09",
       "level": "P1",
       "name": "取消后退出 15 秒超时当作可退出",
-      "status": "实现中",
-      "commit": "ea187ce",
-      "note": "取消后 15 秒未结束改为提示：继续等待/仍然退出（不标记完成）/返回；缺 prepareQuit 自动测试。D10 定向中断探测未开始"
+      "status": "程序完成",
+      "commit": "0fd23ab",
+      "note": "退出流程抽到 desktop/services/quit-flow.cjs",
+      "tests": "quit-flow.test（4 项）"
     },
     {
       "id": "D10",
       "level": "P1",
       "name": "目标中断未探测，可能中断下一项",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "0fd23ab",
+      "tests": "queue.test D10 两项",
+      "note": "GET /api/jobs 探测；支持时用 /api/jobs/{id}/cancel（服务端原子）；旧后端发送前再核对，仍非原子"
     },
     {
       "id": "D11",
@@ -122,9 +127,10 @@
       "id": "PR11-R02",
       "level": "P1",
       "name": "首次/继续恢复走同一保护入口",
-      "status": "实现中",
-      "commit": "ea187ce",
-      "note": "restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds"
+      "status": "程序完成",
+      "commit": "0fd23ab",
+      "note": "资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示",
+      "tests": "maint-service.test D06"
     },
     {
       "id": "PR11-R03",
@@ -142,9 +148,10 @@
       "id": "PR11-R05",
       "level": "P1",
       "name": "取消、退出和精确中断",
-      "status": "实现中",
-      "commit": "7c097d7",
-      "note": "已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试"
+      "status": "程序完成",
+      "commit": "0fd23ab",
+      "note": "已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试",
+      "tests": "quit-flow.test、queue.test D10"
     },
     {
       "id": "PR11-R06",

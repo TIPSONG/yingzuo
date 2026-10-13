@@ -31,11 +31,11 @@
 | D03 | P1 | 异步流程重读当前标签，A 的结果用到 B | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
 | D04 | P1 | 自定义表单未进入正式创作 | 实现中 | 40fc5b1 | task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签 | “运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单 |
 | D05 | P1 | 维护失败仍启动服务、继续队列 | 程序完成 | ea187ce | maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时 | 队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放 |
-| D06 | P1 | 继续恢复绕开运行保护 | 实现中 | ea187ce |  | restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds |
+| D06 | P1 | 继续恢复绕开运行保护 | 程序完成 | 0fd23ab | maint-service.test D06 | 资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示 |
 | D07 | P1 | 补丁冲突仍记成功 | 未开始 |  |  |  |
 | D08 | P1 | 启动恢复没有持续跟踪存量任务 | 未开始 |  |  |  |
-| D09 | P1 | 取消后退出 15 秒超时当作可退出 | 实现中 | ea187ce |  | 取消后 15 秒未结束改为提示：继续等待/仍然退出（不标记完成）/返回；缺 prepareQuit 自动测试。D10 定向中断探测未开始 |
-| D10 | P1 | 目标中断未探测，可能中断下一项 | 未开始 |  |  |  |
+| D09 | P1 | 取消后退出 15 秒超时当作可退出 | 程序完成 | 0fd23ab | quit-flow.test（4 项） | 退出流程抽到 desktop/services/quit-flow.cjs |
+| D10 | P1 | 目标中断未探测，可能中断下一项 | 程序完成 | 0fd23ab | queue.test D10 两项 | GET /api/jobs 探测；支持时用 /api/jobs/{id}/cancel（服务端原子）；旧后端发送前再核对，仍非原子 |
 | D11 | P1 | 服务归属与停止确认不严格 | 未开始 |  |  |  |
 | D12 | P1 | 模型移动未与任务/维护互斥 | 未开始 |  |  |  |
 | D13 | P2 | 分享 JPEG 元数据未遍历完整容器 | 未开始 |  |  |  |
@@ -47,10 +47,10 @@
 | 编号 | 级别 | 名称 | 状态 | 提交 | 回归检查 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
 | PR11-R01 | P1 | 维护状态与暂停租约 | 程序完成 | ea187ce | maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时 | 队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放 |
-| PR11-R02 | P1 | 首次/继续恢复走同一保护入口 | 实现中 | ea187ce |  | restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds |
+| PR11-R02 | P1 | 首次/继续恢复走同一保护入口 | 程序完成 | 0fd23ab | maint-service.test D06 | 资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示 |
 | PR11-R03 | P1 | 补丁冲突不记为成功更新 | 未开始 |  |  |  |
 | PR11-R04 | P1 | 服务归属与停止闭环 | 未开始 |  |  |  |
-| PR11-R05 | P1 | 取消、退出和精确中断 | 实现中 | 7c097d7 |  | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
+| PR11-R05 | P1 | 取消、退出和精确中断 | 程序完成 | 0fd23ab | quit-flow.test、queue.test D10 | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
 | PR11-R06 | P1 | 模型移动与环境操作共用锁 | 未开始 |  |  |  |
 | PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 实现中 | fdbe85a | tests/fixtures/qwen21-gemma-api.json 脱敏夹具 | Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定 |
 | PR11-R08 | P1 | Gemma 原文连线与采用结果 | 程序完成 | fdbe85a | bindings-real.test | 读取图中 context_length/release_vram/disable_thinking/model/URL；上下文以节点值为准；重新润色改 cache_buster |
