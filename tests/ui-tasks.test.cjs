@@ -82,14 +82,10 @@ test('批量弹窗打开后切图：仍提交到发起标签', async () => {
   assert.equal(b[1], 'A'); assert.equal(b[2].expectedRevision, 5);
 });
 
-test('D04：有自定义表单时按表单运行（取发起标签与表单版本），无表单时直接运行', async () => {
-  const s = setup({modalAnswers: [{0: 12}], form: {fields: [{index: 0, label: '步数', group: '采样', widgetType: 'int', status: 'ok', value: 20}]}});
+test('S07：运行按钮与 Ctrl+Enter 同一入口——直接运行发起标签（表单参数已由左侧面板写入画布），不再弹出第二个表单', async () => {
+  const s = setup({modalAnswers: [], form: {fields: [{index: 0, label: '步数', group: '采样', widgetType: 'int', status: 'ok', value: 20}]}});
   s.q('#run-task').fire('click'); await tick();
-  s.ctx.current.activeId = 'B'; await tick();
   const run = s.calls.find(c => c[0] === 'run');
-  assert.deepEqual([run[1], run[2].expectedRevision, run[2].formValues], ['A', 7, {0: 12}]);
-  const s2 = setup({modalAnswers: []});
-  s2.q('#run-task').fire('click'); await tick();
-  const r2 = s2.calls.find(c => c[0] === 'run');
-  assert.equal(r2[1], 'A'); assert.equal(r2[2].formValues, undefined);
+  assert.equal(run[1], 'A'); assert.equal(run[2].formValues, undefined);
+  assert.ok(!s.calls.some(c => c[0] === 'form'), '不再在运行时读取表单弹窗');
 });

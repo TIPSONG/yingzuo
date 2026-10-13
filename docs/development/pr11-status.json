@@ -31,10 +31,10 @@
       "id": "D04",
       "level": "P1",
       "name": "自定义表单未进入正式创作",
-      "status": "实现中",
-      "commit": "3c3202e",
-      "tests": "task-service.test D04（单次与批量）、ui-tasks.test D04",
-      "note": "运行按钮按表单弹窗；后端单次/批量都可按表单写入并记入快照。未做：左侧参数面板改用表单、批量弹窗中填写表单、润色流程"
+      "status": "程序完成",
+      "commit": "S07",
+      "tests": "form-targets.test、task-service.test S07/D04、ui-tasks.test S07、workbench.test",
+      "note": "左侧正式参数面板按已保存表单（中文名/分组/顺序/约束）显示，修改经桥接写回同一 UI 根图；运行按钮=Ctrl+Enter，批量/润色从同一图编译；标签固定 templateVersionId，表单按该版本读取，存为模板后改固定到新版本；子图共享实例不单独编辑。独立副本不带模板绑定（不显示表单）"
     },
     {
       "id": "D05",
@@ -219,10 +219,10 @@
       "id": "PR11-R10",
       "level": "P1",
       "name": "自定义表单进入创作和运行",
-      "status": "实现中",
-      "commit": "3c3202e",
-      "tests": "task-service.test D04（单次与批量）、ui-tasks.test D04",
-      "note": "运行按钮按表单弹窗；后端单次/批量都可按表单写入并记入快照。未做：左侧参数面板改用表单、批量弹窗中填写表单、润色流程"
+      "status": "程序完成",
+      "commit": "S07",
+      "tests": "form-targets.test、task-service.test S07/D04、ui-tasks.test S07、workbench.test",
+      "note": "左侧正式参数面板按已保存表单（中文名/分组/顺序/约束）显示，修改经桥接写回同一 UI 根图；运行按钮=Ctrl+Enter，批量/润色从同一图编译；标签固定 templateVersionId，表单按该版本读取，存为模板后改固定到新版本；子图共享实例不单独编辑。独立副本不带模板绑定（不显示表单）"
     },
     {
       "id": "PR11-R11",
@@ -442,10 +442,10 @@
       "id": "S07",
       "level": "P1",
       "name": "完成 D04 的所有入口与版本身份",
-      "status": "未开始",
-      "commit": "",
-      "tests": "",
-      "note": ""
+      "status": "程序完成",
+      "commit": "S07",
+      "tests": "form-targets.test、task-service.test S07/D04、ui-tasks.test S07、workbench.test",
+      "note": "左侧正式参数面板按已保存表单（中文名/分组/顺序/约束）显示，修改经桥接写回同一 UI 根图；运行按钮=Ctrl+Enter，批量/润色从同一图编译；标签固定 templateVersionId，表单按该版本读取，存为模板后改固定到新版本；子图共享实例不单独编辑。独立副本不带模板绑定（不显示表单）"
     },
     {
       "id": "S08",

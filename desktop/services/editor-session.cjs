@@ -31,7 +31,7 @@ const enqueue = operation => { const task = commandTail.then(operation); command
 const active = () => workspace.tabs.find(tab => tab.id === workspace.activeId);
 const expectedName = () => active() ? `yingzuo-${active().id}` : undefined;
 const currentSnapshot = () => connected && loadedId === workspace.activeId ? lastSnapshot : null;
-const state = () => ({tabs:workspace.tabs.map(({id,title,templateId,mode,revision})=>({id,title,templateId,mode,revision})), activeId:workspace.activeId, connected, transportConnected:connected && (currentSnapshot()?.connected??capabilities?.connected??false), currentView, capabilities, recoveryPending, startupError, savedPath:paths.workspace, comfyUrl:currentComfyUrl()?.href ?? null});
+const state = () => ({tabs:workspace.tabs.map(({id,title,templateId,templateVersionId,mode,revision})=>({id,title,templateId,templateVersionId:templateVersionId??null,mode,revision})), activeId:workspace.activeId, connected, transportConnected:connected && (currentSnapshot()?.connected??capabilities?.connected??false), currentView, capabilities, recoveryPending, startupError, savedPath:paths.workspace, comfyUrl:currentComfyUrl()?.href ?? null});
 const notify = data => { if (window && !window.isDestroyed()) window.webContents.send('yingzuo:p0-status', {...state(),snapshot:currentSnapshot(),...data}); };
 function persist() { if (startupError) throw new Error('旧工作区读取失败，已保留原文件。请先检查后再保存新草稿。'); Store.writeWorkspace(paths.workspace,workspace);persistedWorkspace=JSON.stringify(workspace); }
 function layout() {
@@ -241,8 +241,8 @@ async function activate(id) {
   notify({message:`已切换：${target.title}`});
   return result;
 }
-async function newTab(title,graph,templateId=null) {
-  return changeWorkspace(()=>{workspace.activeId=Store.addTab(workspace,title,graph,templateId).id;},true);
+async function newTab(title,graph,templateId=null,templateVersionId=null) {
+  return changeWorkspace(()=>{workspace.activeId=Store.addTab(workspace,title,graph,templateId,templateVersionId).id;},true);
 }
 // E05：统一导入。UI 图直接成为新标签；API 图先保存原文件，再在新空白标签中用官方 loadApiJson 重建。
 async function importText(text,name){
@@ -354,17 +354,20 @@ const commands = {
       await capture();
       const result=await execute(Bridge.compileSource({expectedName:expectedName()}));
       if(!result?.ok)throw Object.assign(new Error(result?.error?.message??result?.message??'编译失败。'),{code:result?.error?.code??result?.code});
-      return {tabId:id,title:tab.title,templateId:tab.templateId??null,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
+      return {tabId:id,title:tab.title,templateId:tab.templateId??null,templateVersionId:tab.templateVersionId??null,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
     }finally{if(previous&&previous!==id&&workspace.tabs.some(t=>t.id===previous))await activate(previous).catch(()=>{});}
   },
   // T01：从模板仓库打开（模板 ID 与工作副本 ID 分离；已打开同一模板时切换过去）。
-  openGraph: async (title,graph,templateId)=>{
-    const existing=templateId?workspace.tabs.find(t=>t.templateId===templateId):null;
+  // S07：标签固定模板版本；打开同一模板的其他版本时另开标签，旧图不会配上新表单。
+  openGraph: async (title,graph,templateId,versionId=null)=>{
+    const existing=templateId?workspace.tabs.find(t=>t.templateId===templateId&&(!versionId||(t.templateVersionId??null)===versionId)):null;
     if(existing)return activate(existing.id);
-    return newTab(title,Store.validateGraph(graph),templateId??null);
+    return newTab(title,Store.validateGraph(graph),templateId??null,versionId);
   },
+  /** S07：标签内容另存为模板新版本后，改为固定到该版本。 */
+  setTemplateVersion: async (tabId,templateId,versionId)=>{const tab=workspace.tabs.find(t=>t.id===tabId);if(!tab)return null;tab.templateId=templateId;tab.templateVersionId=versionId;persist();notify({});return {state:state()};},
   /** T02：读取指定标签当前图（先从编辑器抓取最新快照）。 */
-  tabGraph: async tabId=>{await capture();const tab=workspace.tabs.find(t=>t.id===(tabId??workspace.activeId));if(!tab)throw new Error('请先打开工作流。');return {tabId:tab.id,title:tab.title,templateId:tab.templateId??null,graph:structuredClone(tab.graph)};},
+  tabGraph: async tabId=>{await capture();const tab=workspace.tabs.find(t=>t.id===(tabId??workspace.activeId));if(!tab)throw new Error('请先打开工作流。');return {tabId:tab.id,title:tab.title,templateId:tab.templateId??null,templateVersionId:tab.templateVersionId??null,graph:structuredClone(tab.graph)};},
   /** T07：用修复后的图替换标签内容（版本号校验；当前标签会重新载入编辑器）。 */
   replaceGraph: async (tabId,graph,expectedRevision)=>{
     await capture();

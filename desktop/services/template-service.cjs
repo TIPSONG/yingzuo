@@ -15,6 +15,8 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
   // S05：存为模板前把敏感输入（如 API Key）转入系统加密存储，图中只保留占位；导出时占位清空、不导出凭据
   const securedGraph = async tabId => { const t = await tabGraph(tabId); if (!taskService?.secrets) return t; const c = await compile(tabId); return {...t, graph: taskService.secrets.redactGraph(t.graph, c.apiPrompt)}; };
   const stripPlaceholders = v => (typeof v === 'string' ? (v.startsWith(SF.PLACEHOLDER_PREFIX) ? '' : v) : Array.isArray(v) ? v.map(stripPlaceholders) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, stripPlaceholders(x)])) : v);
+  const pin = async (tabId, templateId, version) => { const vid = version?.versionId ?? version?.version_id ?? null; if (vid && editor?.commands?.setTemplateVersion) await editor.enqueue(() => editor.commands.setTemplateVersion(tabId, templateId, vid)); };
+  const pinned = async (tabId, templateId, version) => { await pin(tabId, templateId, version); return version; };
   const compile = async tabId => { if (!taskService) throw new AppError(CODES.SERVICE_UNAVAILABLE, '任务服务不可用，无法编译工作流。'); return taskService.compile(tabId); };
   function importText(text, {name, folder, tags, source}) {
     let info;
@@ -51,14 +53,18 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
     'templates.open': async (id, versionId) => {
       const v = versionId ? repo.version(versionId) : repo.current(id);
       if (v.templateId !== id) throw new AppError(CODES.INVALID_ARGUMENT, '版本不属于该模板。');
-      return editor.enqueue(() => editor.commands.openGraph(repo.get(id).name, v.graph, id));
+      return editor.enqueue(() => editor.commands.openGraph(repo.get(id).name, v.graph, id, v.versionId));
     },
     /** T02：把当前标签存为模板新版本；标签不是从模板打开的则新建模板。 */
     'templates.saveFromTab': async (tabId, {name, note, asNew = false, formSchema} = {}) => {
       const t = await securedGraph(tabId);
-      if (t.templateId && repo.get(t.templateId) && !asNew) return {template: repo.get(t.templateId), version: repo.saveVersion(t.templateId, {graph: t.graph, formSchema: formSchema ?? repo.current(t.templateId).formSchema, note: note ?? '从工作副本保存'})};
-      const created = t.templateId && repo.get(t.templateId) ? repo.saveAs(t.templateId, {name: name ?? `${t.title} 副本`, graph: t.graph, formSchema}) : repo.create({name: name ?? t.title, graph: t.graph, formSchema, source: 'workspace'});
-      return {template: created, version: repo.versions(created.id)[0]};
+      // S07：表单沿用标签固定的版本（而不是模板最新版），保存后标签固定到新版本
+      const pinnedForm = () => { try { return t.templateVersionId ? repo.version(t.templateVersionId).formSchema : repo.current(t.templateId).formSchema; } catch { return null; } };
+      if (t.templateId && repo.get(t.templateId) && !asNew) { const version = repo.saveVersion(t.templateId, {graph: t.graph, formSchema: formSchema ?? pinnedForm(), note: note ?? '从工作副本保存'}); await pin(tabId, t.templateId, version); return {template: repo.get(t.templateId), version}; }
+      const created = t.templateId && repo.get(t.templateId) ? repo.saveAs(t.templateId, {name: name ?? `${t.title} 副本`, graph: t.graph, formSchema: formSchema ?? pinnedForm()}) : repo.create({name: name ?? t.title, graph: t.graph, formSchema, source: 'workspace'});
+      const version = repo.versions(created.id)[0];
+      await pin(tabId, created.id, version);
+      return {template: created, version};
     },
     'templates.restore': async (id, versionId) => repo.restore(id, versionId),
     'templates.export': async (id, versionId) => {
@@ -85,7 +91,7 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       const bad = F.validateMapping(fields, c.apiPrompt).filter(m => m.status !== 'ok');
       if (bad.length) throw new AppError(CODES.INVALID_ARGUMENT, `有 ${bad.length} 个字段映射失效：${bad[0].reason}`, {details: {bad}});
       const t = await securedGraph(tabId);
-      return repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: note ?? '更新表单'});
+      const version = repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: note ?? '更新表单'}); await pin(tabId, id, version); return version;
     },
     /** T04：映射校验与重新绑定（必须同类型同字段）。 */
     'templates.checkMapping': async (id, tabId) => { const c = await compile(tabId); const fields = repo.current(id).formSchema ?? []; return F.validateMapping(fields, c.apiPrompt); },
@@ -94,7 +100,7 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       if (!fields[index]) throw new AppError(CODES.NOT_FOUND, '字段不存在。');
       try { fields[index] = F.rebind(fields[index], c.apiPrompt, nodeId); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       const t = await securedGraph(tabId);
-      return repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: `重新绑定 ${fields[index].label ?? fields[index].fieldName} → 节点 ${nodeId}`});
+      return pinned(tabId, id, repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: `重新绑定 ${fields[index].label ?? fields[index].fieldName} → 节点 ${nodeId}`}));
     },
   };
   return {repo, methods};

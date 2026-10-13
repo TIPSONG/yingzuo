@@ -249,3 +249,15 @@ test('R12：实际提交记录与意图快照分开保存', async t => {
   assert.match(g.submission.attempts[0].promptSha256, /^[0-9a-f]{64}$/);
   assert.equal(g.submission.attempts[0].requestId, g.requestId);
 });
+test('S07：表单按标签固定的模板版本读取；运行快照记录版本；面板目标来自 UI 根图', async t => {
+  const {svc, settle, editor} = setup(t);
+  const ui = {nodes: [{id: 7, type: 'KSampler'}]};
+  editor.commands.compileTab = async id => ({tabId: id, templateId: 'tpl1', templateVersionId: 'v-old', title: 'T', revision: 3, uiGraph: ui, apiPrompt: prompt()});
+  const asked = [];
+  svc.setFormProvider((id, vid) => { asked.push([id, vid]); return {versionId: vid, pinned: true, fields: [{scopePath: [], nodeId: '7', nodeType: 'KSampler', fieldName: 'steps', widgetType: 'int', constraints: {}, label: '步数', group: '采样', order: 0, defaultValue: 20}]}; });
+  const f = await svc.methods['tasks.form']('tab1');
+  assert.deepEqual(asked[0], ['tpl1', 'v-old'], '不用模板最新版');
+  assert.deepEqual(f.fields[0].target, {graphId: null, nodeId: 7, widgetName: 'steps'});
+  const task = await svc.methods['tasks.run']('tab1', {}); await settle();
+  assert.equal(svc.tasks.snapshotOf(svc.tasks.get(task.id)).form.versionId, 'v-old');
+});

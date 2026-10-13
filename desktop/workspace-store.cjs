@@ -40,6 +40,7 @@ function normalizeTab(tab, ids) {
   out.revision = Number.isInteger(tab.revision) && tab.revision >= 0 ? tab.revision : 0;
   out.viewport = validViewport(tab.viewport);
   out.referenceIds = Array.isArray(tab.referenceIds) ? tab.referenceIds.filter(x => typeof x === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(x)).slice(0, 64) : [];
+  if (out.templateVersionId !== undefined && out.templateVersionId !== null && (typeof out.templateVersionId !== 'string' || out.templateVersionId.length > 120)) out.templateVersionId = null;
   if (out.formSchemaId !== undefined && out.formSchemaId !== null && typeof out.formSchemaId !== 'string') out.formSchemaId = null;
   return out;
 }
@@ -114,9 +115,9 @@ function writeWorkspace(file, data) {
     throw error;
   }
 }
-function addTab(workspace, title, graph, templateId = null) {
+function addTab(workspace, title, graph, templateId = null, templateVersionId = null) {
   if (workspace.tabs.length >= MAX_TABS) throw new Error('最多同时打开 20 个工作副本。');
-  const tab = {id:randomUUID(), title:safeName(title), graph:structuredClone(validateGraph(graph)), templateId, mode:'graph', revision:0, viewport:null, referenceIds:[]};
+  const tab = {id:randomUUID(), title:safeName(title), graph:structuredClone(validateGraph(graph)), templateId, templateVersionId: templateId ? templateVersionId : null, mode:'graph', revision:0, viewport:null, referenceIds:[]};
   workspace.tabs.push(tab);
   return tab;
 }

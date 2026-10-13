@@ -11,6 +11,7 @@ const {checkPrompt} = require('../../shared/prompt-check.cjs');
 const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
 const SF = require('../../shared/secret-fields.cjs');
+const {mapFormTargets} = require('../../shared/form-targets.cjs');
 const {stableWorkflowId, planSavePrefix} = require('../../shared/output-plan.cjs');
 const {planBatch} = require('../../shared/batch-plan.cjs');
 const {prefixDir} = require('./output-prefix.cjs');
@@ -174,7 +175,9 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
 
   /* ---------- D04/PR11-R10：模板自定义表单进入正式运行 ---------- */
   let formProvider = null;
-  const formOf = c => (c.templateId && formProvider ? formProvider(c.templateId) : null);
+  const formOf = c => (c.templateId && formProvider ? formProvider(c.templateId, c.templateVersionId ?? null) : null);
+  /** S07：任务快照记录使用的模板/表单版本（参数已经由面板写入图中）。 */
+  const formIdentity = c => { const f = formOf(c); return f?.fields?.length ? {templateId: c.templateId, form: {templateId: c.templateId, versionId: f.versionId ?? null, pinned: !!f.pinned}} : {}; };
   function applyCustomForm(c, prompt, formValues) {
     if (formValues === undefined || formValues === null) return {prompt, form: null};
     const form = formOf(c);
@@ -189,7 +192,12 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       const c = await compile(tabId); const form = formOf(c);
       if (!form?.fields?.length) return {tabId: c.tabId, revision: c.revision, templateId: c.templateId ?? null, fields: null};
       const map = F.validateMapping(form.fields, c.apiPrompt);
-      return {tabId: c.tabId, revision: c.revision, templateId: c.templateId, versionId: form.versionId ?? null, fields: map.map((m, i) => ({index: i, ...m.binding, status: m.status, reason: m.reason, value: m.status === 'ok' ? c.apiPrompt[m.binding.nodeId].inputs[m.binding.fieldName] : null})).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))};
+      // S07：同时给出 UI 根图中的编辑目标，正式参数面板直接写回同一工作副本
+      const targets = mapFormTargets(form.fields, c.uiGraph);
+      return {tabId: c.tabId, revision: c.revision, templateId: c.templateId, versionId: form.versionId ?? null, pinned: !!form.pinned, fields: map.map((m, i) => {
+        const t = targets[i];
+        return {index: i, ...m.binding, status: m.status, reason: m.reason, target: m.status === 'ok' && t.status === 'ok' ? t.target : null, panelStatus: t.status, panelReason: t.reason, value: m.status === 'ok' ? c.apiPrompt[m.binding.nodeId].inputs[m.binding.fieldName] : null};
+      }).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))};
     },
     'tasks.preview': async tabId => { const c = await compile(tabId); return {tabId: c.tabId, title: c.title, revision: c.revision, issues: c.issues, objectInfoAvailable: c.objectInfoAvailable, bindings: c.bindings, nodeCount: Object.keys(c.apiPrompt).length}; },
     /** Q06：运行当前（或指定）标签。values 为绑定参数覆盖，references 为 [{nodeId,input,refId}]。 */
@@ -202,7 +210,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
-      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
+      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : formIdentity(c))}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },

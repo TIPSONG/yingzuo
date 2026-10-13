@@ -31,7 +31,7 @@ function accept(result,fields=true){
  const previousId=current.activeId, previousConnection=current.connected, previousView=current.currentView;
  if(result.state)current={...current,...result.state};
  const changed=previousId!==current.activeId||previousConnection!==current.connected||previousView!==current.currentView;
- if(changed)contextVersion++;
+ if(changed){contextVersion++;formPanel=null;Promise.resolve().then(loadFormPanel);}
  const invalid=!current.connected||!current.tabs.some(tab=>tab.id===current.activeId);
  if(Object.hasOwn(result,'snapshot')){
   const next=invalid?null:result.snapshot;
@@ -51,8 +51,38 @@ async function run(operation,message,fields=true,isCurrent=()=>true){
  finally{busy=false;renderState();}
 }
 async function requireConnection(){if(!current.connected)accept(await api.connect());}
+// S07：模板保存了自定义表单时，左侧正式参数面板按表单显示（中文名、分组、顺序），修改经同一桥接写回 UI 根图。
+let formPanel=null,formSeq=0;
+async function loadFormPanel(){
+ const tabId=current.activeId,seq=++formSeq,tab=(current.tabs||[]).find(t=>t.id===tabId);
+ const had=!!formPanel;formPanel=null;
+ if(!tab?.templateId||!current.connected||!window.yingzuo?.tasks?.form){if(had)renderFields();return;}
+ try{const r=await window.yingzuo.tasks.form(tabId);if(seq!==formSeq||current.activeId!==tabId)return;formPanel=r?.ok&&r.data?.fields?r.data:null;}catch{formPanel=null;}
+ renderFields();
+}
+function widgetFor(target){
+ const node=(snapshot?.nodes||[]).find(n=>String(n.nodeId)===String(target.nodeId)&&(target.graphId==null?!(n.path||[]).length:String(n.graphId)===String(target.graphId)));
+ return node&&node.widgets.find(w=>w.name===target.widgetName);
+}
+function renderFormPanel(){
+ const groups=[...new Set(formPanel.fields.map(f=>f.group||'参数'))];
+ return groups.map(g=>`<section class="node-fields"><h3>${escapeHtml(g)}</h3>${formPanel.fields.filter(f=>(f.group||'参数')===g).map(f=>{
+  const label=f.label||f.fieldName,w=f.target&&widgetFor(f.target);
+  if(!w||!w.editable)return `<label class="field"><span>${escapeHtml(label)}</span><span class="err">${escapeHtml(f.reason||f.panelReason||(w?'该参数已连线或只读，请在画布中编辑。':'未在当前画布中找到该参数，请刷新。'))}</span></label>`;
+  const index=fieldRefs.push({nodeId:f.target.nodeId,graphId:f.target.graphId,widgetName:f.target.widgetName,type:typeof w.value,value:w.value})-1;
+  const attrs=`data-field="${index}" aria-label="${escapeHtml(label)}"`,c=f.constraints||{};
+  let input;
+  if(typeof w.value==='boolean')input=`<input type="checkbox" ${attrs} ${w.value?'checked':''}>`;
+  else if(Array.isArray(w.options?.values)&&w.options.values.length)input=`<select ${attrs}>${w.options.values.map(v=>`<option value="${escapeHtml(v)}" ${String(v)===String(w.value)?'selected':''}>${escapeHtml(v)}</option>`).join('')}</select>`;
+  else if(typeof w.value==='number')input=`<input type="number" step="${escapeHtml(c.step??w.options?.step??'any')}" ${c.min!==undefined?`min="${escapeHtml(c.min)}"`:''} ${c.max!==undefined?`max="${escapeHtml(c.max)}"`:''} ${attrs} value="${w.value}">`;
+  else if(f.widgetType==='text'||c.multiline||w.options?.multiline||String(w.value).length>100)input=`<textarea ${attrs}>${escapeHtml(w.value)}</textarea>`;
+  else input=`<input type="text" ${attrs} value="${escapeHtml(w.value)}">`;
+  return `<label class="field"><span>${escapeHtml(label)}</span>${input}${f.help?`<small class="muted">${escapeHtml(f.help)}</small>`:''}</label>`;
+ }).join('')}</section>`).join('')+`<p class="muted">按模板表单显示${formPanel.pinned?'（固定到该标签打开时的模板版本）':''}；修改直接写入画布，运行、快捷键、批量与润色使用同一份内容。</p>`;
+}
 function renderFields(){
  fieldRefs=[];
+ if(formPanel&&formPanel.tabId===current.activeId&&snapshot){$('#fields').innerHTML=renderFormPanel();return;}
  const nodes=(snapshot?.nodes||[]).filter(node=>node.widgets.some(widget=>widget.editable));
  $('#fields').innerHTML=nodes.map(node=>{
   const fields=node.widgets.filter(widget=>widget.editable).map(widget=>{
@@ -85,7 +115,7 @@ $('#blank').addEventListener('click',()=>run(async()=>{await requireConnection()
 $('#duplicate').addEventListener('click',()=>{const from=current.activeId;run(async()=>{const r=await api.duplicateTab();const to=r?.state?.activeId;if(from&&to&&to!==from)await window.yingzuo?.tasks?.copyRefs(from,to);return r;},'已创建独立副本（含参考图选择）。');});
 $('#preview').addEventListener('click',()=>run(()=>api.showPreview(),'当前是 A 测界面，点击“创作工作区”返回真实编辑器。',false));
 $('#editor-home').addEventListener('click',()=>run(()=>api.showEditor(),'已返回桌面创作工作区。'));
-$('#refresh-fields').addEventListener('click',()=>run(()=>api.snapshot(),'已从真实画布读取参数。'));
+$('#refresh-fields').addEventListener('click',()=>run(()=>api.snapshot(),'已从真实画布读取参数。').then(loadFormPanel));
 $('#fields').addEventListener('change',async event=>{
  const input=event.target.closest('[data-field]');if(!input)return;
  const ref=fieldRefs[Number(input.dataset.field)];if(!ref||busy)return;
