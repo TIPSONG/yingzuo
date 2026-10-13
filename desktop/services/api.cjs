@@ -18,7 +18,7 @@ const {prepareQuit: prepareQuitFlow} = require('./quit-flow.cjs');
 function createApi(ctx) {
   const {electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow, fetch: fetchImpl, root} = ctx;
   const credentials = ctx.credentials ?? new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
-  const comfy = new ComfyProcessManager({registryFile: path.join(layout.root, 'services.json'), logsDir: layout.logs, probe: url => probeComfy(url, {fetchImpl})});
+  const comfy = ctx.comfy ?? new ComfyProcessManager({registryFile: path.join(layout.root, 'services.json'), logsDir: layout.logs, probe: url => probeComfy(url, {fetchImpl})});
   const lmFor = () => new LmStudioAdapter({cliPath: configRepo.config.lmstudio.cli, registryFile: path.join(layout.root, 'lmstudio.json')});
   let lastStatus = null;
   let startGate = () => null;
@@ -55,6 +55,32 @@ function createApi(ctx) {
     if (error) throw new AppError(CODES.INTERNAL, `无法打开 ${target}：${error}`);
     return {opened: target};
   }
+  /* RV06：停止/释放显存与维护使用同一保护：环境锁 → 暂停提交 → 拒绝运行中任务并等待 starting 消退 →
+     锁内重新核实服务归属与后端队列（有其他来源任务或无法确认时拒绝）→ 执行 → 释放租约与锁。 */
+  async function backendForeignJobs() {
+    const q = await fetchImpl(new URL('queue', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
+    const ids = [...(q.queue_running ?? []), ...(q.queue_pending ?? [])].map(i => i?.[1]).filter(Boolean);
+    return ids.filter(id => !ctx.taskService?.tasks?.byPromptId?.(id));
+  }
+  async function guardedServiceOp(name, fn, {allowExternal = false} = {}) {
+    const release = locks.environment.tryAcquire(name);
+    if (!release) throw new AppError(CODES.LOCKED, `环境维护锁正被 ${locks.environment.holder ?? '其他操作'} 占用，请稍后再试。`);
+    let lease = null;
+    try {
+      lease = hooks.pauseSubmissions(name) ?? null;
+      if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '仍有本应用任务在提交或运行，请先等待完成或取消后再操作。');
+      try { await hooks.waitForIdle({timeoutMs: 5000}); } catch { throw new AppError(CODES.INVALID_STATE, '有任务正在启动，请稍后再试。'); }
+      if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '仍有本应用任务在提交或运行（等待期间已启动），请先等待完成或取消后再操作。');
+      let owned = false; try { owned = !!(await comfy.verifyOwned()); } catch { owned = false; }
+      if (!owned && !allowExternal) throw new AppError(CODES.NOT_OWNED, '当前 ComfyUI 不是本应用启动的实例（或无法核实），为安全起见不操作。');
+      let foreign;
+      try { foreign = await backendForeignJobs(); } catch (e) { throw new AppError(CODES.INVALID_STATE, `无法确认 ComfyUI 后端队列（${e.message}），为避免影响其他任务已停止操作。`); }
+      if (foreign.length) throw new AppError(CODES.INVALID_STATE, `ComfyUI 后端还有 ${foreign.length} 个其他来源（原生画布或其他程序）的任务，已阻止。`, {details: {foreign: foreign.length}});
+      const r = await fn({owned});
+      serviceStatus().catch(() => {});
+      return r;
+    } finally { lease?.(); release(); }
+  }
   const pickable = new Set(['comfy.root', 'comfy.python', 'comfy.workflowsDir', 'comfy.outputDir', 'comfy.inputDir', 'lmstudio.cli', 'paths.templates', 'paths.favorites', 'paths.downloads', 'paths.backups', 'gemma.patchFile']);
 
   const methods = {
@@ -72,17 +98,17 @@ function createApi(ctx) {
         return result;
       } catch (error) { events.emit('services.comfy', null, {phase: 'failed', error: error.message}); throw error; }
     }, {owner: 'start-comfy', timeoutMs: 1000}),
-    'services.stopComfy': async () => {
-      if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '仍有本应用任务在提交或运行，请先等待完成或取消后再停止服务。');
+    'services.stopComfy': async () => guardedServiceOp('stop-comfy', async ({owned}) => {
+      if (!owned) throw new AppError(CODES.NOT_OWNED, '当前 ComfyUI 不是本应用启动的实例（或无法核实），为安全起见不停止。');
       const result = await comfy.stop();
       if (editor.connected) editor.disconnectEditor();
-      await serviceStatus();
       return result;
-    },
-    'services.freeComfyMemory': async () => {
-      if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '任务运行中，释放显存会影响当前生成，已阻止。');
+    }),
+    /** RV06：释放显存会卸载后端所有模型。本应用实例在无任何任务时可直接释放；外部实例需显式确认（影响其他程序），且后端有任务时一律拒绝。 */
+    'services.freeComfyMemory': async ({confirmExternal = false} = {}) => guardedServiceOp('free-comfy-memory', async ({owned}) => {
+      if (!owned && confirmExternal !== true) throw new AppError(CODES.INVALID_STATE, '这是外部启动的 ComfyUI，释放显存会卸载它为其他程序加载的模型。需要确认后才执行。', {details: {needsConfirm: true}});
       return comfy.freeMemory(configRepo.config.comfy.url, fetchImpl);
-    },
+    }, {allowExternal: true}),
     'services.startLmServer': async () => {
       const lm = lmFor(); const cli = await lm.detect();
       if (!cli.available) throw new AppError(CODES.NOT_FOUND, `${cli.error} 也可以手动打开 LM Studio，在 Developer 页面启动 Server。`);
@@ -153,7 +179,14 @@ function createApi(ctx) {
   }
   const prepareQuit = () => prepareQuitFlow({hooks, showMessageBox: opts => electron.dialog.showMessageBox(getWindow(), opts)});
   async function shutdownOwnedServices() {
-    try { if (await comfy.verifyOwned()) await comfy.stop(); } catch (e) { logger.warn('stop owned comfy failed', {error: e.message}); }
+    // RV06：退出时 owned 服务里若有其他来源任务（或无法确认），不停止它，保持运行并记录
+    try {
+      if (await comfy.verifyOwned()) {
+        let foreign = null; try { foreign = await backendForeignJobs(); } catch (e) { foreign = null; logger.warn('退出时无法确认 ComfyUI 后端队列，保持运行', {error: e.message}); }
+        if (foreign && !foreign.length) await comfy.stop();
+        else if (foreign) logger.warn('退出时 ComfyUI 中还有其他来源任务，保持运行', {foreign: foreign.length});
+      }
+    } catch (e) { logger.warn('stop owned comfy failed', {error: e.message}); }
     try { const lm = lmFor(); if (lm.registry().serverOwned) { await lm.detect(); await lm.stopServer(); } } catch (e) { logger.warn('stop owned lm server failed', {error: e.message}); }
   }
   return {

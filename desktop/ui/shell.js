@@ -102,6 +102,14 @@ document.addEventListener('click', async e => {
     if (op === 'stopComfy' && !(await confirmModal('停止 ComfyUI', '只会停止由映作启动且已重新核实的实例。未保存的画布会先保存。'))) return;
     const label = {startComfy: '正在启动 ComfyUI，等待真实就绪…', freeComfyMemory: '正在释放显存…', startLmServer: '正在启动 LM Studio API…'}[op];
     if (label) toast(label);
+    if (op === 'freeComfyMemory') {
+      // RV06：外部实例需明确确认（会卸载其他程序加载的模型）
+      const r = await yz.services.freeComfyMemory();
+      if (r?.ok) { toast('已请求释放显存。'); return; }
+      if (!r?.error?.details?.needsConfirm) { toast(r?.error?.message || '操作未完成。', true); return; }
+      if (!(await confirmModal('释放外部 ComfyUI 的显存', '这是外部启动的 ComfyUI。释放显存会卸载它为其他程序加载的模型。后端没有任务时才会执行。确定继续？'))) return;
+      await call(yz.services.freeComfyMemory({confirmExternal: true}), '已请求释放显存。'); return;
+    }
     await call(yz.services[op](), {startComfy: d => d.started ? 'ComfyUI 已启动并就绪。' : '已有 ComfyUI 服务在运行，直接使用。', stopComfy: '已停止本应用启动的 ComfyUI。', freeComfyMemory: '已请求释放显存。', startLmServer: d => d.started ? 'LM Studio API 已启动。' : 'LM Studio API 原本就在运行。', stopLmServer: '已停止 LM Studio API。'}[op]);
   } catch (err) { swallow(err); }
   finally { b.disabled = false; refreshStatus(); }
