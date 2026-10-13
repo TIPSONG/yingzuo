@@ -1,7 +1,10 @@
 
-/* 无边框窗口标题栏 */
+/* 无边框窗口标题栏
+ * 布局：grid 两列 —— 左侧 titlebar-main（可裁切色条）| 右侧 titlebar-controls（不收缩、不透明、永远盖住色条）
+ */
 .titlebar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   height: 36px;
   min-height: 36px;
@@ -9,16 +12,33 @@
   border-bottom: 1px solid var(--sidebar-line, var(--line));
   user-select: none;
   z-index: 40;
+  overflow: hidden; /* 任何装饰不得画出格子 */
+}
+.titlebar-main {
+  min-width: 0;
+  overflow: hidden; /* 色条物理上裁在控制列左侧 */
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
 }
 .titlebar-drag {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 12px;
   -webkit-app-region: drag;
   app-region: drag;
+}
+.titlebar-stripe {
+  display: none; /* 默认皮肤无色条 */
+  height: 3px;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
+  pointer-events: none;
 }
 .titlebar-mark { width: 16px; height: 16px; flex-shrink: 0; }
 .titlebar-title {
@@ -35,56 +55,56 @@
 }
 .titlebar-controls {
   display: flex;
+  flex: none;
+  flex-shrink: 0;
+  align-items: stretch;
   -webkit-app-region: no-drag;
   app-region: no-drag;
+  position: relative;
+  z-index: 5;
+  isolation: isolate;
+  background: var(--sidebar); /* 所有皮肤：不透明底，挡住任何左侧装饰 */
+  border-left: 1px solid var(--sidebar-line, var(--line));
+  padding-left: 2px;
 }
 .titlebar-btn {
   width: 46px;
   height: 36px;
   border: 0;
   border-radius: 0;
-  background: transparent;
+  background: var(--sidebar);
   color: var(--sub);
   font-size: 14px;
   line-height: 1;
   padding: 0;
   display: grid;
   place-items: center;
+  position: relative;
+  z-index: 6;
 }
 .titlebar-btn:hover { background: var(--hover); color: var(--text); transform: none; }
 .titlebar-btn:focus-visible { outline-offset: -2px; }
 .titlebar-btn-close:hover { background: #e81123; color: #fff; border-color: transparent; }
+
+/* NASA：色条只画在 titlebar-stripe（main 列内），控制列不透明 */
 [data-skin="nasa-punk"] .titlebar {
   background: #0b1424;
-  border-bottom: 1px solid #2e4a6a;
-  /* 色条不画在整条 titlebar 上，避免盖住窗口按钮 */
+  border-bottom-color: #2e4a6a;
 }
-[data-skin="nasa-punk"] .titlebar-drag {
-  position: relative;
-  padding-bottom: 3px; /* 给底部色条留位 */
+[data-skin="nasa-punk"] .titlebar-main {
+  background: #0b1424;
 }
-[data-skin="nasa-punk"] .titlebar-drag::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
+[data-skin="nasa-punk"] .titlebar-stripe {
+  display: block;
   background: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%);
-  pointer-events: none;
-  z-index: 0;
 }
 [data-skin="nasa-punk"] .titlebar-controls {
-  position: relative;
-  z-index: 2;
   background: #0b1424;
-  border-bottom: 1px solid #2e4a6a;
-  box-shadow: -8px 0 12px #0b1424; /* 与拖拽区色条隔开 */
+  border-left-color: #2e4a6a;
 }
 [data-skin="nasa-punk"] .titlebar-btn {
   background: #0b1424;
-  position: relative;
-  z-index: 3;
+  color: #c8d4e4;
 }
 [data-skin="nasa-punk"] .titlebar-title {
   color: #e85d04;
@@ -92,19 +112,22 @@
   font-weight: 800;
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
   text-transform: uppercase;
-  position: relative;
-  z-index: 1;
 }
 [data-skin="nasa-punk"] .titlebar-sub {
   color: #ffffff;
   font-family: "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.22em;
   opacity: 0.9;
-  position: relative;
-  z-index: 1;
 }
 [data-skin="nasa-punk"] .titlebar-btn:hover { background: #1a2740; color: #ffffff; }
 [data-skin="nasa-punk"] .titlebar-btn-close:hover { background: #e85d04; color: #ffffff; }
+
+/* 浅色主题：控制列同样不透明 */
+[data-theme="light"] .titlebar-controls,
+[data-theme="light"] .titlebar-btn {
+  background: var(--sidebar);
+}
+[data-theme="light"] .titlebar-btn:hover { background: var(--hover); }
 
 /* 页面壳：首页 / 导航 / 列表 / 表单 / 队列 / 对话框 / 空状态 */
 #pages { min-width: 0; min-height: 0; display: grid; overflow: hidden; background: var(--bg); color: var(--text); }
@@ -769,15 +792,32 @@ button.theme-option.active {
 [data-skin="nasa-punk"] .page-head {
   border-bottom: 1px solid #2e4a6a;
   background: linear-gradient(180deg, rgba(14, 24, 44, 0.92), rgba(11, 20, 36, 0.4));
-  box-shadow: inset 0 -3px 0 0 transparent;
   position: relative;
+  gap: 12px;
 }
-[data-skin="nasa-punk"] .page-head::after {
+/* 色条只画在标题文字一侧，不到达右侧 header-actions */
+[data-skin="nasa-punk"] .page-head > div:first-child {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 6px;
+}
+[data-skin="nasa-punk"] .page-head > div:first-child::after {
   content: "";
   position: absolute;
-  left: 0; right: 0; bottom: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 3px;
   background: linear-gradient(90deg, var(--stripe-blue) 0 33%, var(--stripe-orange) 33% 66%, var(--stripe-yellow) 66% 100%);
+  pointer-events: none;
+}
+[data-skin="nasa-punk"] .page-head .header-actions {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  background: transparent;
+  align-self: center;
 }
 
 /* 分区标题：宽字距白/橙，飞行UI */
