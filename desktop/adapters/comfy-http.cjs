@@ -59,6 +59,13 @@ class ComfyHttpClient {
   }
   view({filename, subfolder = '', type = 'output'}) { return this.request('view', {query: {filename, subfolder, type}, raw: true, timeoutMs: 120000}); }
   deleteQueued(promptIds) { return this.request('queue', {method: 'POST', json: {delete: promptIds}}); }
+  /** D10：探测按任务取消接口（/api/jobs/{id}/cancel，服务端原子判断只中断仍在运行的该任务）。结果按实例缓存。 */
+  async jobCancelSupported() {
+    if (this._jobCancel !== undefined) return this._jobCancel;
+    try { const r = await this.request('api/jobs', {query: {limit: 1}, raw: true, timeoutMs: 5000}); this._jobCancel = r.status === 200; } catch { this._jobCancel = false; }
+    return this._jobCancel;
+  }
+  async cancelJob(promptId) { const r = await this.request(`api/jobs/${encodeURIComponent(promptId)}/cancel`, {method: 'POST', json: {}}); return {cancelled: r?.cancelled === true}; }
   interrupt(promptId) { return this.request('interrupt', {method: 'POST', json: promptId ? {prompt_id: promptId} : {}}); }
   free(options = {unload_models: true, free_memory: true}) { return this.request('free', {method: 'POST', json: options}); }
 }

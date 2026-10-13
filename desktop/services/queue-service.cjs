@@ -206,6 +206,12 @@ class QueueService {
     if (task.state === 'unknown') return this.tasks.transition(taskId, 'cancelled', {reason: '用户确认放弃状态未知的任务（未向后端发送取消）'});
     if (!task.comfyPromptId) throw new AppError(CODES.INVALID_STATE, '任务正在提交，尚无后端编号；请等待核对完成后再取消。');
     const client = this.client();
+    if (await client.jobCancelSupported?.()) {
+      // D10：服务端支持按任务取消——原子操作，不会误中断后来开始的其他任务
+      const r = await client.cancelJob(task.comfyPromptId);
+      if (r.cancelled) { this.events?.emit('tasks.progress', taskId, {progress: {cancelRequested: true, mode: 'job'}}); return this.tasks.get(taskId); }
+      return this.tasks.get(taskId);
+    }
     const q = parseQueue(await client.queue());
     if (q.pending.some(i => i.promptId === task.comfyPromptId)) {
       await client.deleteQueued([task.comfyPromptId]);
@@ -216,8 +222,11 @@ class QueueService {
     if (q.running.length && q.running[0].promptId === task.comfyPromptId) {
       // 重新确认正在运行的正是目标后发送带 prompt_id 的中断；老版本服务会忽略 prompt_id 做全局中断，
       // 但此刻运行的就是目标，风险仅限于极短的竞态窗口。
+      // 旧后端：发送前再核对一次，缩小竞态窗口；无法做到原子，状态里标注 legacy
+      const again = parseQueue(await client.queue());
+      if (again.running[0]?.promptId !== task.comfyPromptId) throw new AppError(CODES.CONFLICT, '目标任务已结束或已切换，未发送中断以免影响其他任务。');
       await client.interrupt(task.comfyPromptId);
-      this.events?.emit('tasks.progress', taskId, {progress: {cancelRequested: true}});
+      this.events?.emit('tasks.progress', taskId, {progress: {cancelRequested: true, mode: 'legacy-interrupt'}});
       return this.tasks.get(taskId); // 终态以 history（execution_interrupted）为准
     }
     throw new AppError(CODES.INVALID_STATE, '后端当前运行的不是这个任务，为避免误中断其他任务，已禁用取消。', {details: {running: q.running.map(i => i.promptId)}});

@@ -169,3 +169,22 @@ test('history / queue / node_errors 解析', () => {
   assert.equal(parseQueue({queue_running: [[1, 'p', {}, {yingzuo: {requestId: 'r'}}]], queue_pending: []}).running[0].requestId, 'r');
   assert.equal(nodeErrorList({3: {class_type: 'X', errors: [{message: 'm'}]}})[0].nodeType, 'X');
 });
+test('D10：后端支持按任务取消时用 /api/jobs/{id}/cancel，不发全局中断', async t => {
+  const {q, tasks, fake} = setup(t); fake.autoFinish = null;
+  const jobs = []; fake.jobCancelSupported = async () => true;
+  fake.cancelJob = async id => { jobs.push(id); const r = fake.queueRunning.find(x => x.id === id); if (r) { fake.queueRunning = []; fake.historyMap[id] = done(r.extra, 'interrupted'); } return {cancelled: !!r}; };
+  const a = q.enqueue({workflowId: 'w', snapshot: snap()});
+  for (let i = 0; i < 50 && !['submitted','running'].includes(tasks.get(a.id).state); i++) await new Promise(r => setImmediate(r));
+  await q.cancel(a.id);
+  assert.deepEqual(jobs, [a.requestId]); assert.deepEqual(fake.interrupts, []);
+  await settle(q); assert.equal(tasks.get(a.id).state, 'cancelled');
+});
+test('D10：旧后端发送前再核对，目标已切换时不发中断', async t => {
+  const {q, tasks, fake} = setup(t);
+  const other = tasks.create({workflowId: 'w', snapshot: snap(), clientId: 'c'}); tasks.transition(other.id, 'preparing'); tasks.transition(other.id, 'submitting'); tasks.transition(other.id, 'submitted', {patch: {comfyPromptId: 'p-x'}});
+  let n = 0; const orig = fake.queue.bind(fake);
+  fake.queue = async () => { n++; if (n === 2) fake.queueRunning = [{n: 2, id: 'p-next', extra: {}}]; return orig(); };
+  fake.queueRunning = [{n: 1, id: 'p-x', extra: {}}];
+  await assert.rejects(q.cancel(other.id), e => e.code === 'CONFLICT');
+  assert.deepEqual(fake.interrupts, []);
+});
