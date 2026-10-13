@@ -49,7 +49,8 @@ test('RV02：离线首次保存——task-service 读取落盘的 object_info �
   const d = tmp(t);
   fs.writeFileSync(path.join(d, 'object-info-cache.json'), JSON.stringify({savedAt: 'x', data: info}));
   const {Database} = require('../desktop/repositories/database.cjs');
-  const db = Database.open(path.join(d, 'y.sqlite')); t.after(() => db.close());
+  const db = Database.open(path.join(d, 'y.sqlite'));
+  try {
   const {createTaskService} = require('../desktop/services/task-service.cjs');
   const layout = {root: d, 'task-snapshots': path.join(d, 'snap'), references: path.join(d, 'refs')};
   const ts = createTaskService({db, layout, configRepo: {config: {comfy: {url: 'http://127.0.0.1:1/'}, queue: {maxBatch: 100}, output: {}}}, events: {emit() {}}, locks: {gpu: {run: f => f()}}, logger: null, editor: {}, fetchImpl: async () => { throw new Error('offline'); }});
@@ -57,4 +58,5 @@ test('RV02：离线首次保存——task-service 读取落盘的 object_info �
   const p = createGraphStoragePolicy({objectInfo: ts.cachedObjectInfo});
   const ex = p.stripForExport({nodes: [{id: 1, type: 'LLM', widgets_values: [SECRET, 'm']}]});
   assert.equal(ex.graph.nodes[0].widgets_values[0], '');
+  } finally { db.close(); } // Windows：先关库再删临时目录（after 钩子按登记顺序执行，删目录在前）
 });
