@@ -282,10 +282,10 @@
       "id": "PR11-R17",
       "level": "P2",
       "name": "大文件工作移出主进程",
-      "status": "实现中",
-      "commit": "3b8d5cd",
-      "tests": "review2 worker-pool.test；maint-service/app-backup 测试走 worker",
-      "note": "已用 worker：resources.hash、模型移动校验、备份逐文件哈希。未用：缩略图/图片元数据（assets 仍在主进程）、备份文件复制本身"
+      "status": "程序完成",
+      "commit": "372d900",
+      "tests": "worker-pool.test S09×2、Windows 打包自检 worker 步骤",
+      "note": "扫描/监视元数据走 worker（只回传小结果、读取上限 200MB）；缩略图在 worker 中由 sharp 生成，限制像素与大小、同键去重、tmp→原子改名、源变化丢弃；模型移动与备份中≥16MB 文件流式复制在 worker；共享池并发 2，退出 closeShared。单文件任务输出关联仍同步读取（有上限）；收藏复制图片仍同步"
     },
     {
       "id": "PR11-R18",
@@ -460,10 +460,10 @@
       "id": "S09",
       "level": "P2",
       "name": "完成 Worker 接入与生命周期",
-      "status": "未开始",
-      "commit": "",
-      "tests": "",
-      "note": ""
+      "status": "程序完成",
+      "commit": "372d900",
+      "tests": "worker-pool.test S09×2、Windows 打包自检 worker 步骤",
+      "note": "扫描/监视元数据走 worker（只回传小结果、读取上限 200MB）；缩略图在 worker 中由 sharp 生成，限制像素与大小、同键去重、tmp→原子改名、源变化丢弃；模型移动与备份中≥16MB 文件流式复制在 worker；共享池并发 2，退出 closeShared。单文件任务输出关联仍同步读取（有上限）；收藏复制图片仍同步"
     },
     {
       "id": "S10",

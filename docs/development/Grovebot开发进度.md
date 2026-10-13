@@ -62,7 +62,7 @@
 | PR11-R14 | P2 | 回收区与备份空间管理 | 程序完成 | ca3792f | maint-service.test R07/R14；review2 trash-store.test | 只管理本应用登记条目；永久清理需确认、逐项再核对；未完成恢复使用的条目受保护 |
 | PR11-R15 | P2 | 206 续传与来源身份 | 程序完成 | 50c8fa9 | review2 downloader-resume.test（7 项） | 由 feat/grovebot-review2 完成并已合并 |
 | PR11-R16 | P2 | 分享 JPEG 完整解析和方向策略 | 程序完成 | 50c8fa9 | review2 image-meta-jpeg.test（6 项） | 由 feat/grovebot-review2 完成并已合并；方向非 1 时拒绝无损剥离（不做像素旋转） |
-| PR11-R17 | P2 | 大文件工作移出主进程 | 实现中 | 3b8d5cd | review2 worker-pool.test；maint-service/app-backup 测试走 worker | 已用 worker：resources.hash、模型移动校验、备份逐文件哈希。未用：缩略图/图片元数据（assets 仍在主进程）、备份文件复制本身 |
+| PR11-R17 | P2 | 大文件工作移出主进程 | 程序完成 | 372d900 | worker-pool.test S09×2、Windows 打包自检 worker 步骤 | 扫描/监视元数据走 worker（只回传小结果、读取上限 200MB）；缩略图在 worker 中由 sharp 生成，限制像素与大小、同键去重、tmp→原子改名、源变化丢弃；模型移动与备份中≥16MB 文件流式复制在 worker；共享池并发 2，退出 closeShared。单文件任务输出关联仍同步读取（有上限）；收藏复制图片仍同步 |
 | PR11-R18 | P1 | 敏感输入引用与快照脱敏 | 程序完成 | 5729991 | task-service.test R18 两项；review2 的 secret-fields.test | 合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理 |
 | PR11-R19 | P2 | 批量参数变化与原子规划 | 程序完成 | 8e62ff0 | task-service.test R19；review2 batch-plan.test | 采样器/调度器变化只按文本校验，未对照 object_info 可选项 |
 | PR11-R20 | P2 | 稳定输出身份与真实保存节点适配 | 程序完成 | eebced9 | task-service.test A03/R20；review2 output-plan.test | 无模板时用结构指纹；SaveImageAdvanced 仅在 object_info 确认 STRING 前缀字段时改写 |
@@ -92,7 +92,7 @@
 | S06 | P1 | 可恢复的一致数据包 | 程序完成 | e1348c8 | app-backup.test S06×3 | 数据库先 VACUUM INTO 再复制只增目录，包内核对引用闭包；失败进入恢复模式（继续同一 journal/回退）；环境备份按登记目录排除、拒绝重叠。写入屏障=暂停提交+编辑器串行队列 |
 | S07 | P1 | 完成 D04 的所有入口与版本身份 | 程序完成 | 667ec2d | form-targets.test、task-service.test S07/D04、ui-tasks.test S07、workbench.test | 左侧正式参数面板按已保存表单（中文名/分组/顺序/约束）显示，修改经桥接写回同一 UI 根图；运行按钮=Ctrl+Enter，批量/润色从同一图编译；标签固定 templateVersionId，表单按该版本读取，存为模板后改固定到新版本；子图共享实例不单独编辑。独立副本不带模板绑定（不显示表单） |
 | S08 | P1 | 完成参考素材 manifest 与恢复闭包 | 程序完成 | bf2ef3a | graph-package.test×2、task-service.test S08、app-backup.test | 包=UI 图+模板/表单版本+槽位/内容ID/sha256/素材本体；导入先整体校验再写入、分配新标签；缺失素材如实列出；关闭归档写 meta（标题/模板版本），“最近关闭”可重开并带回关系；应用备份含 reference-relations.json、task-submissions 与 references |
-| S09 | P2 | 完成 Worker 接入与生命周期 | 未开始 |  |  |  |
+| S09 | P2 | 完成 Worker 接入与生命周期 | 程序完成 | 372d900 | worker-pool.test S09×2、Windows 打包自检 worker 步骤 | 扫描/监视元数据走 worker（只回传小结果、读取上限 200MB）；缩略图在 worker 中由 sharp 生成，限制像素与大小、同键去重、tmp→原子改名、源变化丢弃；模型移动与备份中≥16MB 文件流式复制在 worker；共享池并发 2，退出 closeShared。单文件任务输出关联仍同步读取（有上限）；收藏复制图片仍同步 |
 | S10 | P2 | 完整收尾与事实一致的交接 | 未开始 |  |  |  |
 
 <!-- /PR11 -->
