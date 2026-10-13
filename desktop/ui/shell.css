@@ -212,13 +212,16 @@ button.ghost { background: transparent; }
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   gap: 12px 18px;
+  align-items: start; /* 卡片高度随内容，避免与同排高卡片被拉齐留下大块空白 */
 }
 .settings fieldset {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 12px 14px;
   margin: 0;
   background: var(--panel);
+  height: auto;
+  align-self: start;
 }
 .settings legend {
   color: var(--accent);
@@ -460,27 +463,45 @@ button.ghost { background: transparent; }
 }
 
 
-/* 设置 · 主题切换 */
-.setting-theme { align-items: start; }
-.setting-theme .theme-options { display: flex; gap: 12px; flex-wrap: wrap; }
+/* 设置 · 主题切换（紧凑行，卡片贴合内容） */
+.setting-theme {
+  align-items: start;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 2px 0 0;
+}
+.setting-theme .theme-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.setting-theme .hint {
+  grid-column: 2 / 3;
+  margin: 0;
+  line-height: 1.4;
+}
 .theme-option {
-  width: 148px;
-  height: 96px;
-  border-radius: 10px;
+  width: auto;
+  min-width: 108px;
+  height: auto;
+  min-height: 0;
+  border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--panel);
-  padding: 12px;
+  padding: 8px 10px;
   text-align: left;
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 6px;
 }
 .theme-option:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--hover); transform: none; }
 .theme-option.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.theme-swatch { display: flex; gap: 6px; margin-bottom: 8px; }
+.theme-swatch { display: flex; gap: 4px; margin: 0; }
 .theme-swatch span {
-  height: 18px; width: 22px; border-radius: 5px;
+  height: 14px; width: 18px; border-radius: 4px;
   background: #0f130d; border: 1px solid #2a3028;
 }
 .theme-swatch span:nth-child(2) { background: #2c3426; }
@@ -488,8 +509,14 @@ button.ghost { background: transparent; }
 .theme-option-light .theme-swatch span { background: #f3f5ef; border-color: #cfd6c4; }
 .theme-option-light .theme-swatch span:nth-child(2) { background: #ffffff; }
 .theme-option-light .theme-swatch span:nth-child(3) { background: #5a7d28; border-color: #4a6c20; }
-.theme-option small { font-size: 11px; color: var(--sub); }
+.theme-option-system .theme-swatch span { background: linear-gradient(90deg, #0f130d 50%, #f3f5ef 50%); border-color: #6a7464; }
+.theme-option-system .theme-swatch span:nth-child(2) { background: linear-gradient(90deg, #2c3426 50%, #ffffff 50%); }
+.theme-option-system .theme-swatch span:nth-child(3) { background: linear-gradient(90deg, #d1ed87 50%, #5a7d28 50%); border-color: #8aaa58; }
+.theme-option small { font-size: 11px; color: var(--sub); line-height: 1.2; }
 .theme-option.active small { color: var(--text); font-weight: 600; }
+.settings fieldset:has(.setting-theme) {
+  padding-bottom: 10px;
+}
 [data-theme="light"] button.primary,
 [data-theme="light"] button.active {
   color: #f4f9e8;

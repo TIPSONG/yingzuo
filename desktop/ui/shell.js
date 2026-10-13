@@ -167,7 +167,7 @@ q('#export-diag').addEventListener('click', () => call(yz.maintenance.exportDiag
 
 /* ---------- 设置（S01/S08） ---------- */
 const FIELDS = [
-  ['外观', [['ui.theme', '界面主题', 'theme', '深色为默认；立即生效并写入配置']]],
+  ['外观', [['ui.theme', '界面主题', 'theme', '深色为默认；「跟随系统」随操作系统外观变化']]],
   ['ComfyUI', [['comfy.root', '安装目录', 'path'], ['comfy.python', 'Python', 'file', '按需启动用；通常是 .venv\\Scripts\\python.exe'], ['comfy.url', '地址', 'text', '仅本机 http 地址'], ['comfy.extraArgs', '附加启动参数', 'list', '每项以空格分隔；--listen/--port 由地址决定'], ['comfy.startTimeoutSec', '启动超时（秒）', 'int'], ['comfy.workflowsDir', '工作流目录', 'path', '留空 = <安装目录>\\user\\default\\workflows'], ['comfy.outputDir', '输出目录', 'path', '留空 = <安装目录>\\output'], ['comfy.inputDir', '输入目录', 'path', '留空 = <安装目录>\\input']]],
   ['LM Studio / Gemma', [['lmstudio.url', 'API 地址', 'text'], ['lmstudio.cli', 'lms CLI', 'file'], ['gemma.patchFile', 'Gemma 本地补丁', 'file', '仅登记位置，更新插件时据此保留补丁']]],
   ['目录', [['paths.templates', '模板', 'path', '留空使用数据目录'], ['paths.favorites', '收藏', 'path'], ['paths.downloads', '下载', 'path'], ['paths.backups', '备份', 'path']]],
@@ -175,9 +175,30 @@ const FIELDS = [
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a?.[k], o);
 
+let themeMedia = null;
+function resolvedTheme(theme) {
+  if (theme === 'light') return 'light';
+  if (theme === 'system') {
+    try { return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+    catch { return 'dark'; }
+  }
+  return 'dark';
+}
 function applyTheme(theme) {
-  const t = theme === 'light' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = t;
+  const mode = theme === 'light' || theme === 'system' || theme === 'dark' ? theme : 'dark';
+  document.documentElement.dataset.theme = resolvedTheme(mode);
+  if (themeMedia) { try { themeMedia.removeEventListener('change', onSystemTheme); } catch { /* 旧引擎 */ try { themeMedia.removeListener(onSystemTheme); } catch { /* ignore */ } } themeMedia = null; }
+  if (mode === 'system') {
+    try {
+      themeMedia = matchMedia('(prefers-color-scheme: dark)');
+      if (themeMedia.addEventListener) themeMedia.addEventListener('change', onSystemTheme);
+      else if (themeMedia.addListener) themeMedia.addListener(onSystemTheme);
+    } catch { /* ignore */ }
+  }
+}
+function onSystemTheme() {
+  const pref = settings?.config?.ui?.theme;
+  if (pref === 'system') document.documentElement.dataset.theme = resolvedTheme('system');
 }
 async function loadSettings() {
   try { settings = await call(yz.settings.get()); applyTheme(settings?.config?.ui?.theme); renderSettings(); } catch (e) { swallow(e); }
@@ -188,11 +209,9 @@ function renderSettings() {
   q('#settings-form').innerHTML = FIELDS.map(([legend, items]) => `<fieldset><legend>${esc(legend)}</legend>${items.map(([key, label, type, hint]) => {
     const v = getPath(c, key); let input;
     if (type === 'theme') {
-      const cur = v === 'light' ? 'light' : 'dark';
-      input = `<div class="theme-options" role="radiogroup" aria-label="${esc(label)}">
-        <button type="button" class="theme-option ${cur === 'dark' ? 'active' : ''}" data-theme-set="dark" aria-pressed="${cur === 'dark'}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>深色</small></button>
-        <button type="button" class="theme-option theme-option-light ${cur === 'light' ? 'active' : ''}" data-theme-set="light" aria-pressed="${cur === 'light'}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>浅色</small></button>
-      </div><input type="hidden" data-key="${key}" data-type="text" value="${cur}">`;
+      const cur = v === 'light' || v === 'system' ? v : 'dark';
+      const card = (id, cls, labelText) => `<button type="button" class="theme-option ${cls} ${cur === id ? 'active' : ''}" data-theme-set="${id}" aria-pressed="${cur === id}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>${labelText}</small></button>`;
+      input = `<div class="theme-options" role="radiogroup" aria-label="${esc(label)}">${card('dark', '', '深色')}${card('light', 'theme-option-light', '浅色')}${card('system', 'theme-option-system', '跟随系统')}</div><input type="hidden" data-key="${key}" data-type="text" value="${cur}">`;
       return `<div class="setting setting-theme"><span>${esc(label)}</span>${input}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>`;
     }
     if (type === 'bool') input = `<input type="checkbox" data-key="${key}" data-type="bool" ${v ? 'checked' : ''}>`;
@@ -220,12 +239,14 @@ q('#settings-reload').addEventListener('click', loadSettings);
 q('#settings-form').addEventListener('click', async e => {
   const themeBtn = e.target.closest('[data-theme-set]');
   if (themeBtn) {
-    const theme = themeBtn.dataset.themeSet === 'light' ? 'light' : 'dark';
+    const raw = themeBtn.dataset.themeSet;
+    const theme = raw === 'light' || raw === 'system' ? raw : 'dark';
     applyTheme(theme);
     const hidden = q('#settings-form [data-key="ui.theme"]');
     if (hidden) hidden.value = theme;
     try {
-      const r = await call(yz.settings.update({ui: {theme}}), theme === 'light' ? '已切换为浅色主题。' : '已切换为深色主题。');
+      const msg = theme === 'light' ? '已切换为浅色主题。' : theme === 'system' ? '已跟随系统外观。' : '已切换为深色主题。';
+      const r = await call(yz.settings.update({ui: {theme}}), msg);
       settings = {...settings, ...r};
       renderSettings();
     } catch (err) { swallow(err); }

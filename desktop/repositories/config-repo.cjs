@@ -65,7 +65,7 @@ function validate(config, {exists = p => fs.existsSync(p)} = {}) {
   if (!Array.isArray(config.paths?.extraOutputDirs)) add('paths.extraOutputDirs', '必须是目录列表。');
   if (!['stable', 'beta'].includes(config.updates?.channel)) add('updates.channel', '渠道只能是 stable / beta。');
   if (!['manual', 'daily', 'weekly'].includes(config.updates?.checkFrequency)) add('updates.checkFrequency', '检查频率只能是 manual / daily / weekly。');
-  if (!['dark', 'light'].includes(config.ui?.theme ?? 'dark')) add('ui.theme', '界面主题只能是 dark / light。');
+  if (!['dark', 'light', 'system'].includes(config.ui?.theme ?? 'dark')) add('ui.theme', '界面主题只能是 dark / light / system。');
   return issues;
 }
 function deepMerge(base, patch) {

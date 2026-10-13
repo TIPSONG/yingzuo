@@ -180,6 +180,8 @@ test('配置：默认值、问题清单、补丁白名单、损坏文件隔离�
   themeRepo.load();
   assert.equal(themeRepo.update({ui: {theme: 'light'}}).config.ui.theme, 'light');
   assert.equal(JSON.parse(fs.readFileSync(themeFile, 'utf8')).ui.theme, 'light');
+  assert.equal(themeRepo.update({ui: {theme: 'system'}}).config.ui.theme, 'system');
+  assert.ok(!validate({...defaults('linux'), ui: {startPage: 'home', theme: 'system'}}).some(i => i.field === 'ui.theme'));
 });
 for (const driver of ['better-sqlite3', 'node:sqlite']) {
   test(`SQLite（${driver}）：迁移、事务回滚、嵌套保存点、一致性备份、未来版本拒绝`, t => {
