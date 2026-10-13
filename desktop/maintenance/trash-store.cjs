@@ -25,7 +25,7 @@ class TrashStore {
     const id = `tr_${crypto.randomUUID()}`, stored = path.join(this.dir, kind, `${id}-${path.basename(from)}`);
     fs.mkdirSync(path.dirname(stored), {recursive: true});
     const bytes = sizeOf(from);
-    fs.renameSync(from, stored);
+    try { fs.renameSync(from, stored); } catch (e) { if (e.code !== 'EXDEV') throw e; fs.cpSync(from, stored, {recursive: true}); fs.rmSync(from, {recursive: true, force: true}); } // 跨盘：复制后删源
     const d = this._load(); const entry = {id, kind, origin: from, stored, bytes, at: this.now(), note}; d.items.push(entry); this._save(d);
     return entry;
   }

@@ -1,4 +1,5 @@
 'use strict';
+const {TrashStore} = require('../maintenance/trash-store.cjs');
 // assets.* 接口（A01–A08）。独立文件，api.cjs 只需展开 createAssetsMethods(ctx) 返回的方法表。
 // 渲染端只传作品 ID / 收藏 ID / 位置名，不传任意文件路径；导出目录经系统对话框选择。
 const path = require('node:path');
@@ -22,7 +23,7 @@ function createAssetsMethods({electron, layout, configRepo, db: givenDb = null, 
   const locations = () => { const d = derived(); return {output: d.output, input: d.input, favorites: d.favorites, downloads: d.downloads, backups: d.backups, logs: layout.logs}; };
   let index = null, board = null;
   const idx = () => (index ??= new AssetIndex({db: getDb(), roots: indexRoots, thumbsDir: layout.thumbnails}));
-  const fav = () => (board ??= new FavoritesBoard({db: getDb(), favoritesDir: derived().favorites || layout.favorites, trashDir: layout.trash}));
+  const fav = () => (board ??= new FavoritesBoard({db: getDb(), favoritesDir: derived().favorites || layout.favorites, trashDir: layout.trash, trashStore: new TrashStore({trashDir: layout.trash})}));
   const files = new AssetFiles({shell: electron.shell, allowedRoots: () => [...Object.values(outputRoots()), ...Object.values(locations()), layout.thumbnails].filter(Boolean)});
   const pathOf = id => { const a = idx().get(id); if (a.missing) throw new AppError(CODES.NOT_FOUND, `原图已不存在：${a.path}`, {details: {path: a.path}}); return a.path; };
   async function pickDir(title) {

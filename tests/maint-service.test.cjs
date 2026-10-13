@@ -102,7 +102,13 @@ test('R07 安装（本地仓库模拟）→ 移除进入回收区；移除前返
   const rm = await svc.methods['resources.removePlugin']('cool-nodes', {confirm: true});
   assert.equal(rm.status, 'done');
   assert.ok(!fs.existsSync(path.join(root, 'custom_nodes', 'cool-nodes')));
-  assert.ok(fs.readdirSync(path.join(layout.trash, 'plugins')).some(n => n.startsWith('cool-nodes-')));
+  // R14：进入登记的回收区，可列出并恢复
+  const list = await svc.methods['trash.list']();
+  const item = list.items.find(e => e.kind === 'plugin' && e.origin.endsWith('cool-nodes'));
+  assert.ok(item && fs.existsSync(item.stored));
+  await assert.rejects(svc.methods['trash.purge']({ids: [item.id]}), e => e.code === 'CONFIRM_REQUIRED');
+  await svc.methods['trash.restore'](item.id);
+  assert.ok(fs.existsSync(path.join(root, 'custom_nodes', 'cool-nodes')));
 });
 
 test('U06 更新：本地补丁可重放则保留；冲突则列入待处理且补丁文件仍在', async () => {

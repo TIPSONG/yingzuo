@@ -10,8 +10,8 @@ const {detectFormat} = require('../core/image-meta.cjs');
 const {imageSize, idFor} = require('./asset-index.cjs');
 
 class FavoritesBoard {
-  constructor({db, favoritesDir, trashDir, now = () => new Date().toISOString()}) {
-    this.db = db; this.dir = favoritesDir; this.trash = trashDir; this.now = now;
+  constructor({db, favoritesDir, trashDir, trashStore = null, now = () => new Date().toISOString()}) {
+    this.db = db; this.dir = favoritesDir; this.trash = trashDir; this.trashStore = trashStore; this.now = now;
   }
   async add(sourcePath, {assetId = null} = {}) {
     if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) throw new AppError(CODES.INVALID_PATH, `路径无效：${sourcePath}`);
@@ -41,9 +41,12 @@ class FavoritesBoard {
     if (!row) throw new AppError(CODES.NOT_FOUND, '收藏不存在。');
     let trashed = null;
     if (fs.existsSync(row.stored_path) && path.resolve(row.stored_path) !== path.resolve(row.source_path)) {
-      trashed = path.join(this.trash, 'favorites', `${Date.now()}-${path.basename(row.stored_path)}`);
-      fs.mkdirSync(path.dirname(trashed), {recursive: true});
-      fs.renameSync(row.stored_path, trashed);
+      if (this.trashStore) trashed = this.trashStore.move(row.stored_path, {kind: 'favorite', note: row.source_path}).stored; // R14：登记到回收区
+      else {
+        trashed = path.join(this.trash, 'favorites', `${Date.now()}-${path.basename(row.stored_path)}`);
+        fs.mkdirSync(path.dirname(trashed), {recursive: true});
+        fs.renameSync(row.stored_path, trashed);
+      }
     }
     this.db.run('DELETE FROM favorites WHERE id = ?', id);
     return {removed: id, sourceKept: row.source_path, trashed};

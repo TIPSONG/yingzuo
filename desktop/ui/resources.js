@@ -109,3 +109,21 @@ q('#nav').addEventListener('click', e => { if (e.target.closest('[data-page="res
 })();
 
 yz.events.subscribe(ev => { if (ev.type === 'maintenance.hold') { toast('维护恢复失败：任务已暂停、服务未启动。请到“资源与维护”完成恢复。', true); pending().catch(() => {}); } });
+// R14：回收区（只显示本应用登记的条目；永久清理需确认，执行时再核对）
+async function trashView() {
+  const r = await call(yz.trash.list());
+  q('#rs-maint').innerHTML = `<p class="muted">回收区共 ${size(r.bytes)}。永久清理不可撤销。</p><div class="actions"><button data-t="purge30">清理 30 天前的条目…</button></div>` + (r.items.map(e => `<div class="row"><span>${esc(e.kind)} · ${esc(e.origin)} <small class="muted">${size(e.bytes)}${e.exists ? '' : ' · 文件已不存在'}</small></span><button data-t="restore" data-id="${esc(e.id)}">恢复到原位置</button><button data-t="purge" data-id="${esc(e.id)}">永久删除…</button></div>`).join('') || '<p class="muted">回收区为空。</p>');
+}
+q('#rs-trash').addEventListener('click', () => trashView().catch(swallow));
+q('#rs-maint').addEventListener('click', async e => {
+  const b = e.target.closest('[data-t]'); if (!b) return;
+  try {
+    if (b.dataset.t === 'restore') { await call(yz.trash.restore(b.dataset.id), '已恢复到原位置。'); return trashView(); }
+    const opts = b.dataset.t === 'purge30' ? {olderThanDays: 30} : {ids: [b.dataset.id]};
+    const plan = await call(yz.trash.planPurge(opts));
+    if (!plan.items.length) { toast(plan.skipped.length ? `没有可清理的条目：${plan.skipped[0].reason}` : '没有可清理的条目。'); return; }
+    if (!await confirmBox('永久清理', `<p>将永久删除 ${plan.items.length} 项，释放 ${size(plan.bytes)}。${plan.skipped.length ? `另有 ${plan.skipped.length} 项受保护被跳过。` : ''}</p>`)) return;
+    const r = await call(yz.trash.purge({...opts, confirm: true}));
+    toast(`已清理 ${r.purged.length} 项${r.skipped.length ? `，跳过 ${r.skipped.length} 项` : ''}。`); trashView();
+  } catch (er) { swallow(er); }
+});

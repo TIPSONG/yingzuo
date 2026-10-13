@@ -62,14 +62,14 @@ function installPlan({comfyRoot, url, revision = null, python = null, installDep
   };
 }
 /** R07 移除：移到可恢复区（trash），不删除。 */
-function removePlan({comfyRoot, name, trashDir}) {
+function removePlan({comfyRoot, name, trashDir, trash = null}) {
   if (!/^[\w.-]+$/.test(name)) throw new AppError(CODES.INVALID_ARGUMENT, '插件名无效。');
   const nodes = path.join(comfyRoot, 'custom_nodes');
   const from = [path.join(nodes, name), path.join(nodes, DISABLED_DIR, name)].find(p => fs.existsSync(p));
   if (!from) throw new AppError(CODES.NOT_FOUND, `插件不存在：${name}`);
-  const to = path.join(trashDir, 'plugins', `${name}-${Date.now()}`);
+  let to = path.join(trashDir, 'plugins', `${name}-${Date.now()}`);
   return {title: `移除插件 ${name}`, kind: 'plugin-remove', target: name, roots: [nodes], backupRoots: [], requiredBytes: 0,
-    async apply(ctx) { fs.mkdirSync(path.dirname(to), {recursive: true}); try { fs.renameSync(from, to); } catch (e) { if (e.code !== 'EXDEV') throw e; fs.cpSync(from, to, {recursive: true}); fs.rmSync(from, {recursive: true}); } ctx.log.push(`已移到可恢复区 ${to}`); },
+    async apply(ctx) { if (trash) { to = trash.move(from, {kind: 'plugin', note: `插件 ${name}`}).stored; ctx.log.push(`已移到回收区 ${to}`); return; } fs.mkdirSync(path.dirname(to), {recursive: true}); try { fs.renameSync(from, to); } catch (e) { if (e.code !== 'EXDEV') throw e; fs.cpSync(from, to, {recursive: true}); fs.rmSync(from, {recursive: true}); } ctx.log.push(`已移到可恢复区 ${to}`); },
     async check() { return !fs.existsSync(from) && fs.existsSync(to); },
     result: () => ({name, trashPath: to, needsRestart: true})};
 }

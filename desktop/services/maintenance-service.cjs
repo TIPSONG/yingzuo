@@ -1,4 +1,5 @@
 'use strict';
+const {TrashStore} = require('../maintenance/trash-store.cjs');
 // 接入 maint 分支模块：maintenance.*（U01–U07）与 resources.*（R01–R08）。
 // 所有改动环境的操作都走 MaintenanceTransaction（环境锁 createLocks().environment、暂停队列并等待空闲、
 // 只停止本应用拥有的服务、备份、staging、apply、检查，失败自动恢复），结果写入 env_transactions 表（U07）。
@@ -110,6 +111,8 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
   const findItem = id => { const it = lastScan?.items.find(i => i.id === id); if (!it) throw new AppError(CODES.NOT_FOUND, '资源不存在，请重新扫描。'); return it; };
   async function objectInfo() { try { const r = await fetchImpl(new URL('object_info', configRepo.config.comfy.url), {signal: AbortSignal.timeout(10000)}); return r.ok ? r.json() : null; } catch { return null; } }
 
+  const trash = new TrashStore({trashDir: layout.trash});
+  const trashProtected = e => (restore.pending().some(j => path.resolve(j.backupDir) === path.resolve(e.stored)) ? '未完成的恢复正在使用' : null);
   /* ---------- U07：备份保留 ---------- */
   function listBackups() {
     const dir = backupsDir(); if (!fs.existsSync(dir)) return [];
@@ -137,7 +140,12 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id)),
     'maintenance.holds': async () => holds.map(h => ({id: h.id, stopped: h.stopped})),
     'maintenance.transactions': async () => listTransactions(),
-    'maintenance.pruneBackups': async () => { const list = planPrune(configRepo.config.maintenance?.keepBackups ?? 5); const trash = path.join(layout.trash, 'backups'); fs.mkdirSync(trash, {recursive: true}); for (const b of list) fs.renameSync(b.dir, path.join(trash, path.basename(b.dir))); return {moved: list.map(b => b.dir), to: trash}; },
+    'maintenance.pruneBackups': async () => { const list = planPrune(configRepo.config.maintenance?.keepBackups ?? 5); const moved = list.map(b => trash.move(b.dir, {kind: 'backup', note: b.createdAt})); return {moved: list.map(b => b.dir), to: trash.dir, items: moved.map(e => e.id)}; },
+    // ----- R14：回收区（只管理本应用登记条目；永久清理需确认并逐项再核对） -----
+    'trash.list': async () => { const items = trash.list(); return {items, bytes: items.reduce((n, e) => n + e.bytes, 0)}; },
+    'trash.restore': async id => trash.restore(id),
+    'trash.planPurge': async (opts = {}) => trash.planPurge({olderThanMs: opts.olderThanDays != null ? opts.olderThanDays * 86400000 : null, ids: opts.ids ?? null, isProtected: trashProtected}),
+    'trash.purge': async (opts = {}) => { const plan = trash.planPurge({olderThanMs: opts.olderThanDays != null ? opts.olderThanDays * 86400000 : null, ids: opts.ids ?? null, isProtected: trashProtected}); return trash.purge(plan, {confirm: opts.confirm === true, isProtected: trashProtected}); },
     // ----- U06：执行更新 -----
     'maintenance.updateComfy': async ({revision, updateDeps = true} = {}) => { if (!revision) throw new AppError(CODES.INVALID_ARGUMENT, '请指定目标版本（提交或标签）。'); return runTransaction(ops.updatePlan({repoDir: comfyRoot(), revision, python: configRepo.config.comfy.python, patchesDir: path.join(layout.root, 'patches'), title: `更新 ComfyUI 到 ${revision}`, kind: 'comfy-update', updateDeps})); },
     'maintenance.updatePlugin': async (name, {revision, updateDeps = true} = {}) => { if (!/^[\w.-]+$/.test(name ?? '')) throw new AppError(CODES.INVALID_ARGUMENT, '插件名无效。'); if (!revision) throw new AppError(CODES.INVALID_ARGUMENT, '请指定目标版本。'); return runTransaction(ops.updatePlan({repoDir: path.join(comfyRoot(), 'custom_nodes', name), revision, python: configRepo.config.comfy.python, patchesDir: path.join(layout.root, 'patches'), title: `更新插件 ${name} 到 ${revision}`, kind: 'plugin-update', updateDeps})); },
@@ -167,7 +175,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       const types = info ? Object.entries(info).filter(([, d]) => String(d.python_module ?? '').split('.')[1] === name).map(([t]) => t) : null;
       const users = types ? sources().filter(s => nodeTypesOf(s.graph).some(t => types.includes(t))).map(s => s.title) : null;
       if (!confirm) return {needsConfirm: true, nodeTypes: types, usedBy: users, note: types ? '' : 'ComfyUI 未运行，无法确认该插件提供的节点类型；移除后可从回收区恢复。'};
-      return runTransaction(ops.removePlan({comfyRoot: comfyRoot(), name, trashDir: layout.trash}));
+      return runTransaction(ops.removePlan({comfyRoot: comfyRoot(), name, trashDir: layout.trash, trash}));
     },
     // ----- R08：模型位置 -----
     'resources.modelRoots': async () => { const m = folderMap(); return Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.map(d => ({dir: d, exists: fs.existsSync(d)}))])); },
