@@ -52,7 +52,7 @@
 | PR11-R04 | P1 | 服务归属与停止闭环 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
 | PR11-R05 | P1 | 取消、退出和精确中断 | 程序完成 | 0fd23ab | quit-flow.test、queue.test D10 | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
 | PR11-R06 | P1 | 模型移动与环境操作共用锁 | 程序完成 | c2effab | maint-service.test R08/D12、R06 启动核对 | 环境锁+暂停租约+持锁后再核对；跨盘 journal 与启动核对。外部客户端是否加载模型只能以外部 ComfyUI 运行与否保守判断 |
-| PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 实现中 | fdbe85a | tests/fixtures/qwen21-gemma-api.json 脱敏夹具 | Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定 |
+| PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 程序完成 | b689b9d | bindings-real.test（10 项）+ 夹具 tests/fixtures/qwen21-gemma-api.json | 夹具是脱敏构造，不是真实 ComfyUI 编译结果；SaveImageAdvanced 动态子项在 API 中的键名需 Codex 用真实 object_info 只读确认 |
 | PR11-R08 | P1 | Gemma 原文连线与采用结果 | 程序完成 | fdbe85a | bindings-real.test | 读取图中 context_length/release_vram/disable_thinking/model/URL；上下文以节点值为准；重新润色改 cache_buster |
 | PR11-R09 | P1 | 异步 UI 固定发起标签和版本 | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
 | PR11-R10 | P1 | 自定义表单进入创作和运行 | 实现中 | 3c3202e | task-service.test D04（单次与批量）、ui-tasks.test D04 | 运行按钮按表单弹窗；后端单次/批量都可按表单写入并记入快照。未做：左侧参数面板改用表单、批量弹窗中填写表单、润色流程 |

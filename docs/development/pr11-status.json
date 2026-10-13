@@ -192,10 +192,10 @@
       "id": "PR11-R07",
       "level": "P1",
       "name": "真实五图适配和脱敏契约夹具",
-      "status": "实现中",
-      "commit": "fdbe85a",
-      "tests": "tests/fixtures/qwen21-gemma-api.json 脱敏夹具",
-      "note": "Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定"
+      "status": "程序完成",
+      "commit": "b689b9d",
+      "tests": "bindings-real.test（10 项）+ 夹具 tests/fixtures/qwen21-gemma-api.json",
+      "note": "夹具是脱敏构造，不是真实 ComfyUI 编译结果；SaveImageAdvanced 动态子项在 API 中的键名需 Codex 用真实 object_info 只读确认"
     },
     {
       "id": "PR11-R08",
