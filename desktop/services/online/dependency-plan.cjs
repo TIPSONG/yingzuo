@@ -44,7 +44,7 @@ function detectManager(customNodesDir) {
   let version = null;
   try { version = /^version\s*=\s*"([^"]+)"/m.exec(fs.readFileSync(path.join(full, 'pyproject.toml'), 'utf8'))?.[1] ?? null; } catch { /* 无 pyproject */ }
   const cli = ['cm-cli.py', path.join('cm_cli', '__main__.py')].find(f => fs.existsSync(path.join(full, f))) ?? null;
-  return {installed: true, path: full, version, cli, capabilities: {cli: !!cli, http: 'unverified'}, note: 'HTTP 接口因版本差异未做猜测性调用；插件操作需等环境事务（U01–U04/R07）合入后按已知 CLI 接入。'};
+  return {installed: true, path: full, version, cli, capabilities: {cli: !!cli, http: 'unverified'}, note: 'Manager 的 HTTP/CLI 接口因版本差异未做猜测性调用；插件安装/更新/移除统一走映作的受限 Git 维护事务（R07），可备份与回滚。'};
 }
 function createDependencyService({editor, diagnostics, online, configRepo, layout}) {
   const methods = {

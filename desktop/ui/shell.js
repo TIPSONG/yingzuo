@@ -190,7 +190,7 @@ function renderSettings() {
     return `<label class="setting"><span>${esc(label)}</span>${input}${pick}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</label>`;
   }).join('')}</fieldset>`).join('') + `<fieldset><legend>数据位置</legend>${Object.entries(settings.locations).map(([k, v]) => `<div class="setting"><span>${esc(k)}</span><span class="muted">${esc(v || '未配置')}</span>${v ? `<button type="button" data-open-loc="${k}">打开</button>` : '<span></span>'}</div>`).join('')}</fieldset>`;
   const cred = settings.credentials;
-  q('#credentials').innerHTML = cred.available ? ['huggingface', 'civitai'].map(n => `<div class="row"><span>${n === 'huggingface' ? 'Hugging Face 令牌' : 'Civitai API Key'}：${cred.configured[n] ? '已保存（系统加密）' : '未设置'}</span><span><input type="password" data-cred="${n}" placeholder="粘贴后保存" style="width:220px"> <button data-cred-save="${n}">保存</button> ${cred.configured[n] ? `<button data-cred-remove="${n}">删除</button>` : ''}</span></div>`).join('') : '<div class="issue error">系统加密存储不可用，为避免明文保存，映作不会保存在线来源凭据。公开资源仍可下载。</div>';
+  q('#credentials').innerHTML = cred.available ? ['huggingface', 'civitai'].map(n => `<div class="row"><span>${n === 'huggingface' ? 'Hugging Face 令牌' : 'Civitai API Key'}：${cred.configured[n] ? '已保存（系统加密）' : '未设置'}</span><span><input type="password" data-cred="${n}" placeholder="粘贴后保存" class="w220"> <button data-cred-save="${n}">保存</button> ${cred.configured[n] ? `<button data-cred-remove="${n}">删除</button>` : ''}</span></div>`).join('') : '<div class="issue error">系统加密存储不可用，为避免明文保存，映作不会保存在线来源凭据。公开资源仍可下载。</div>';
 }
 function collectPatch() {
   const patch = {};

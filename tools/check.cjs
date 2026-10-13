@@ -24,6 +24,24 @@ else {
   for (const [group, names] of Object.entries(declared)) for (const name of names) if (!apiSource.includes(`'${group}.${name}'`)) problems.push(`preload 公开了 ${group}.${name}，但主进程没有实现`);
   for (const banned of ['exec', 'readFile', 'writeFile', 'spawn', 'shell']) if (Object.values(declared).flat().includes(banned)) problems.push(`preload 不得公开通用接口 ${banned}`);
 }
+
+// B01/B02：正式界面不得调用未公开的接口、引用不存在的元素、使用内联 style（CSP 会拦截）或残留假数据。
+{
+  const uiDir = path.join(root, 'desktop', 'ui');
+  const html = fs.readFileSync(path.join(root, 'desktop', 'workbench.html'), 'utf8');
+  const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]));
+  const declared = groups ? Function(`return ${groups[1]}`)() : {};
+  const uiFiles = [...fs.readdirSync(uiDir).filter(f => f.endsWith('.js')).map(f => path.join(uiDir, f)), path.join(root, 'desktop', 'workbench.js')];
+  for (const file of uiFiles) {
+    const src = fs.readFileSync(file, 'utf8'), rel = path.relative(root, file);
+    const dynamicIds = new Set([...src.matchAll(/\sid="([^"$]+)"/g)].map(m => m[1]));
+    for (const m of src.matchAll(/\byz\.(\w+)\.(\w+)\(/g)) if (!declared[m[1]]?.includes(m[2]) && !(m[1] === 'events' && m[2] === 'subscribe' && /subscribe/.test(preload))) problems.push(`${rel} 调用了未公开的接口 ${m[1]}.${m[2]}`);
+    for (const m of src.matchAll(/\bq\('#([\w-]+)'\)/g)) if (!ids.has(m[1]) && !dynamicIds.has(m[1])) problems.push(`${rel} 引用了不存在的元素 #${m[1]}`);
+    if (/\sstyle="/.test(src)) problems.push(`${rel} 使用了内联 style 属性（CSP 禁止，请改用 class）`);
+    if (/\b(mock|fake|lorem|dummy)\b|假数据|Math\.random\(/i.test(src.replace(/\/\/.*$/gm, ''))) problems.push(`${rel} 疑似残留假数据或模拟逻辑`);
+  }
+  if (/\sstyle="/.test(html)) problems.push('workbench.html 使用了内联 style 属性');
+}
 if (/nodeIntegration\s*:\s*true/.test(files.filter(f => f.endsWith('.cjs') && f.includes(`${path.sep}desktop${path.sep}`)).map(f => fs.readFileSync(f, 'utf8')).join('\n'))) problems.push('发现 nodeIntegration:true');
 if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
 console.log(`check 通过：${files.filter(f => /\.(c?js|mjs)$/.test(f)).length} 个脚本语法正确，接口白名单一致。`);

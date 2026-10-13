@@ -90,7 +90,7 @@ try {
 } catch (error) { logger.error('任务数据库不可用，运行功能停用', {error: error.message}); }
 const diagnostics = createDiagnosticsService({editor, client: () => new ComfyHttpClient(configRepo.config.comfy.url, {fetchImpl: fetch}), fetchImpl: fetch, configRepo, layout, dialog, getWindow: () => window});
 const dependencies = onlineService ? createDependencyService({editor, diagnostics, online: onlineService, configRepo, layout}) : null;
-const updates = onlineService ? createUpdateService({app, configRepo, layout, fetchImpl: fetch, online: onlineService, electron}) : null;
+const updates = onlineService ? createUpdateService({app, configRepo, layout, fetchImpl: fetch, online: onlineService, electron, events, logger}) : null;
 const api = createApi({taskService, credentials, extraMethods: {...updates?.methods, ...templateService?.methods, ...diagnostics.methods, ...onlineService?.methods, ...dependencies?.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
 if (appDb) { const m = createMaintenanceService({db: appDb, layout, configRepo, locks, events, logger, comfy: api.comfy, taskService, templateRepo: templateService?.repo, editor, fetchImpl: fetch}); Object.assign(api.methods, m.methods); }
 
@@ -145,7 +145,7 @@ async function requestQuit() {
     }
     await api.shutdownOwnedServices();
     explicitQuit = true;
-    taskService?.stop(); editor.closeViews(); tray?.destroy?.(); window?.destroy(); app.quit();
+    taskService?.stop(); updates?.stopSchedule(); editor.closeViews(); tray?.destroy?.(); window?.destroy(); app.quit();
     return true;
   })().finally(() => { quitInProgress = null; });
   return quitInProgress;
@@ -159,7 +159,7 @@ else {
     window=new BrowserWindow({width:1500,height:980,minWidth:1050,minHeight:700,backgroundColor:'#131514',title:'映作',icon:path.join(ROOT,'assets','icon-256.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
     editor.attachWindow(window);
     taskService?.start();
-    onlineService?.start();
+    onlineService?.start(); updates?.startSchedule();
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',(event,url)=>{if((event.url??url)!==WORKBENCH)event.preventDefault();});
     ipcMain.handle('yingzuo:p0',async(event,message)=>{

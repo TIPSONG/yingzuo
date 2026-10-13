@@ -33,3 +33,18 @@ test('U08：版本比较、校验和、发行来源不可访问时给手动流�
   const ok = await checkAppRelease({currentVersion: '0.1.0', fetchImpl: async () => new Response(JSON.stringify([{tag_name: 'v0.2.0', draft: false, prerelease: false, assets: [{name: 'SHA256SUMS.txt', size: 1, browser_download_url: 'https://x'}]}]))});
   assert.equal(ok.updateAvailable, true); assert.equal(ok.latest.hasChecksums, true); assert.equal(ok.signed, false);
 });
+
+test('U05：频率判断与渠道（beta 含预发布）', async () => {
+  const {dueForCheck, checkAppRelease} = require('../desktop/services/update-check.cjs');
+  const now = Date.parse('2026-10-13T00:00:00Z');
+  assert.equal(dueForCheck('manual', null, now), false);
+  assert.equal(dueForCheck('daily', null, now), true);
+  assert.equal(dueForCheck('daily', '2026-10-12T12:00:00Z', now), false);
+  assert.equal(dueForCheck('weekly', '2026-10-05T00:00:00Z', now), true);
+  const rel = [{tag_name: 'v0.3.0-beta.1', prerelease: true, draft: false, assets: [], published_at: 'x'}, {tag_name: 'v0.2.0', prerelease: false, draft: false, assets: [], published_at: 'x'}];
+  const fetchImpl = async () => new Response(JSON.stringify(rel), {status: 200});
+  assert.equal((await checkAppRelease({currentVersion: '0.2.0', channel: 'stable', fetchImpl})).latest.version, 'v0.2.0');
+  const b = await checkAppRelease({currentVersion: '0.2.0', channel: 'beta', fetchImpl});
+  assert.equal(b.latest.version, 'v0.3.0-beta.1'); assert.equal(b.updateAvailable, true);
+  await assert.rejects(checkAppRelease({currentVersion: '0', repo: '../x', fetchImpl}), /owner\/repo/);
+});

@@ -16,6 +16,8 @@
       <button data-page="create" class="nav" id="editor-home">创作工作区</button>
       <button data-page="templates" class="nav">模板库</button>
       <button data-page="online" class="nav">在线资源</button>
+      <button data-page="assets" class="nav">作品与收藏</button>
+      <button data-page="resources" class="nav">资源与维护</button>
       <button data-page="queue" class="nav">任务队列 <span id="queue-badge" class="count" hidden></span></button>
       <button data-page="services" class="nav">服务与日志</button>
       <button data-page="settings" class="nav">设置</button>
@@ -23,7 +25,7 @@
     <div class="divider"></div>
     <div class="eyebrow">现有工作流</div>
     <div id="templates"></div>
-    <div class="side-bottom"><strong id="connection">ComfyUI 未连接</strong><small id="endpoint">本机绘图环境</small><button id="connect">连接已有服务</button><button id="preview" class="ghost">A 测界面预览</button></div>
+    <div class="side-bottom"><strong id="connection">ComfyUI 未连接</strong><small id="endpoint">本机绘图环境</small><button id="connect">连接已有服务</button><button id="preview" class="ghost">进入创作工作区</button></div>
   </aside>
   <div id="pages">
     <section id="page-home" class="page" aria-label="首页">
@@ -74,6 +76,21 @@
       <div id="on-results" class="list"></div><button id="on-more" hidden>下一页</button>
       <h2 class="section-title">下载</h2><div id="dl-list" class="list"></div></div>
     </section>
+    <section id="page-assets" class="page" hidden aria-label="作品与收藏">
+      <header class="page-head"><div><span class="eyebrow">GALLERY</span><h1>作品与收藏</h1></div><div class="header-actions"><button id="as-scan">扫描输出目录</button><button id="as-open-output">打开输出目录</button><button id="as-open-fav">打开收藏目录</button></div></header>
+      <div class="page-body"><div class="actions"><button id="as-tab-all" class="primary">全部作品</button><button id="as-tab-fav">收藏板</button><input id="as-q" placeholder="按文件名搜索"><span id="as-count" class="muted"></span></div>
+        <div id="as-grid" class="asset-grid"></div><div id="as-board" class="fav-board" hidden></div><div class="actions"><button id="as-more" hidden>加载更多</button></div></div>
+    </section>
+    <section id="page-resources" class="page" hidden aria-label="资源与维护">
+      <header class="page-head"><div><span class="eyebrow">RESOURCES</span><h1>资源与维护</h1></div><div class="header-actions"><button id="rs-scan" class="primary">扫描本地模型</button><button id="rs-refs">引用诊断</button></div></header>
+      <div class="page-body">
+        <div id="rs-models" class="list"><p class="muted">点击“扫描本地模型”读取 ComfyUI 模型目录与 extra_model_paths.yaml。</p></div>
+        <h2 class="section-title">插件</h2><div class="actions"><button id="rs-plugins">读取插件列表</button><button id="rs-install">从 Git 地址安装…</button></div><div id="rs-plugin-list" class="list"></div>
+        <h2 class="section-title">备份、更新与恢复（所有改动都经维护事务：先备份，失败自动恢复）</h2>
+        <div class="actions"><button id="rs-backup">立即备份 ComfyUI</button><button id="rs-backups">查看备份</button><button id="rs-prune">按保留策略清理旧备份</button><button id="rs-update-comfy">更新 ComfyUI 到指定版本…</button><button id="rs-tx">维护记录</button></div>
+        <div id="rs-pending" class="list"></div><div id="rs-maint" class="list"></div>
+      </div>
+    </section>
     <section id="page-queue" class="page" hidden aria-label="任务队列">
       <header class="page-head"><div><span class="eyebrow">QUEUE</span><h1>任务队列</h1></div><div class="header-actions"><button id="queue-pause">暂停提交</button><button id="queue-resume">继续</button><button id="queue-refresh">刷新</button></div></header>
       <div class="page-body"><div id="queue-state" class="muted"></div><div id="queue-list" class="list"></div></div>
@@ -82,7 +99,7 @@
       <header class="page-head"><div><span class="eyebrow">SERVICES</span><h1>服务与日志</h1></div><div class="header-actions"><button id="logs-refresh">刷新日志</button><button id="open-logs">打开日志目录</button><button id="export-diag" class="primary">导出诊断信息</button></div></header>
       <div class="page-body">
         <div id="service-detail" class="cards"></div>
-        <h2 class="section-title">版本与更新（只检测，不自动执行）</h2><div class="actions"><button id="up-check">检查 ComfyUI 与插件</button><button id="up-fetch">联网获取远端版本</button><button id="up-app">检查映作新版本</button></div><div id="up-result" class="list"></div>
+        <h2 class="section-title">版本与更新（这里只检测；执行更新与恢复在“资源与维护”，均先备份）</h2><div class="actions"><button id="up-check">检查 ComfyUI 与插件</button><button id="up-fetch">联网获取远端版本</button><button id="up-app">检查映作新版本</button></div><div id="up-result" class="list"></div>
         <h2 class="section-title">ComfyUI 输出（本应用启动时）</h2><pre id="comfy-log" class="log">—</pre>
         <h2 class="section-title">映作日志（已脱敏）</h2><pre id="app-log" class="log">—</pre>
       </div>
@@ -106,5 +123,7 @@
   <script src="ui/templates.js"></script>
   <script src="ui/online.js"></script>
   <script src="ui/updates.js"></script>
+  <script src="ui/assets.js"></script>
+  <script src="ui/resources.js"></script>
 </body>
 </html>
