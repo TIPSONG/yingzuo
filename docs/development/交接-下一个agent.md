@@ -42,7 +42,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 1. 批次 2 剩余：把 `QueueService`（`desktop/services/queue-service.cjs`）接入 main/api：`Database.open(layout.database)`、`new TaskRepository(db, new SnapshotStore(layout.taskSnapshots))`、启动时 `recoverOnStartup()`、`tasks.*` 方法（enqueue/list/get/cancel/retry/recheck/pause/resume）加到 api.cjs 与 preload `GROUPS`；把 `activeTasks/waitForIdle/cancelActive/pauseSubmissions/resumeSubmissions` 接到 api.hooks，S07 即可标程序完成。ComfySocket 事件转给 `queue.handleSocketEvent`。
 2. Q06 统一运行入口（创作页“运行”按钮 → compile → enqueue）、Q08/Q09 Gemma、E07–E10、Q10 批量 UI。
 3. 批次 3–6（A/T/R/U → O/R06-08/T08 → Q10/U05-08 → B01-B06）。
-4. 最后一个草稿 PR 已开（见文末），继续推送到同一分支即可，不要再开 PR、不要合并。
+4. 草稿 PR 已开：https://github.com/TIPSONG/yingzuo/pull/11，继续推送到同一分支即可，不要再开 PR、不要合并。
 
 ## 6. 检查点记录
 
