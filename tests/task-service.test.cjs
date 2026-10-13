@@ -132,11 +132,14 @@ test('D04/PR11-R10：模板自定义表单进入正式运行——按表单映�
   svc.setFormProvider(id => id === 'tpl1' ? {versionId: 'v2', fields} : null);
   const f = await svc.methods['tasks.form']('tab1');
   assert.deepEqual(f.fields.map(x => [x.label, x.status, x.value]), [['已删节点', 'missing-node', null], ['步数', 'ok', 20]]);
+  // C06：存在失效字段时运行被拒绝（即使只传了有效字段的值）；移除失效字段后可运行
+  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 33}, expectedRevision: 3}), e => e.code === 'INVALID_STATE' && /映射失效/.test(e.message));
+  fields.splice(1, 1);
   const task = await svc.methods['tasks.run']('tab1', {formValues: {0: 33}, expectedRevision: 3}); await settle();
   assert.equal(submitted[0].prompt[7].inputs.steps, 33);
   assert.equal(svc.tasks.snapshotOf(svc.tasks.get(task.id)).form.versionId, 'v2');
-  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 99}}), /超出范围/);
-  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {1: 2}}), /映射失效/);
+  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 99}}), /不能大于|超出范围/);
+  await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {1: 2}}), /没有第 1 个字段|映射失效/);
   const b = await svc.methods['tasks.runBatch']('tab1', {seeds: [5, 6], formValues: {0: 41}}); await settle();
   assert.deepEqual(submitted.slice(-2).map(x => [x.prompt[7].inputs.steps, x.prompt[7].inputs.seed]), [[41, 5], [41, 6]]);
   assert.equal(b.tasks.length, 2);
@@ -302,4 +305,75 @@ test('T01：模板缩略图——任务首个输出自动生成（worker 内 sha
   const first = ts.repo.get(tpl.id).thumbnail;
   assert.equal(await ts.autoThumbnail(tpl.id, img), null, '已有缩略图不覆盖');
   assert.equal(ts.repo.get(tpl.id).thumbnail, first);
+});
+
+/* ---------- C06：表单版本、约束与任务身份 ---------- */
+function formSetup(t) {
+  const ctx = setup(t);
+  const ui = {nodes: [{id: 7, type: 'KSampler', widgets_values: [1, 'fixed', 20]}]};
+  let revision = 3;
+  ctx.editor.commands.compileTab = async id => ({tabId: id, templateId: 'tpl1', templateVersionId: 'v1', title: 'T', revision, uiGraph: ui, apiPrompt: prompt()});
+  const applied = [];
+  ctx.editor.commands.applyParameters = async (updates, tabId, expectedRevision) => { applied.push({updates, tabId, expectedRevision}); revision++; return {state: {tabs: [{id: tabId, revision}]}}; };
+  const fields = [{scopePath: [], nodeId: '7', nodeType: 'KSampler', fieldName: 'steps', widgetType: 'int', constraints: {min: 1, max: 50}, label: '步数', group: '采样', order: 0, defaultValue: 20}];
+  const versions = {v1: fields, v2: [{...fields[0], label: '新步数', constraints: {min: 1, max: 30}}]};
+  ctx.svc.setFormProvider((id, vid) => (id === 'tpl1' ? {versionId: vid ?? 'v2', fields: versions[vid ?? 'v2'], pinned: !!vid} : null));
+  return {...ctx, applied, setRevision: r => { revision = r; }};
+}
+test('C06：表单写回主进程入口——越界/错误类型/版本变化/标签已改都拒绝且不写画布；合法值带 expectedRevision 写入', async t => {
+  const {svc, applied} = formSetup(t);
+  const f = await svc.methods['tasks.form']('tab1');
+  assert.equal(f.versionId, 'v1', '按标签固定版本取表单（不是最新版 v2）');
+  assert.equal(f.fields[0].label, '步数');
+  const base = {index: 0, expectedRevision: f.revision, versionId: f.versionId};
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {...base, value: 99}), e => e.code === 'INVALID_ARGUMENT');
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {...base, value: 2.5}), /整数/);
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {...base, value: '12'}), /有效数字/);
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {...base, value: Infinity}), /有效数字/);
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {...base, value: 10, versionId: 'v2'}), e => e.code === 'CONFLICT');
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {...base, value: 10, expectedRevision: 2}), e => e.code === 'REVISION_MISMATCH');
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {index: 0, value: 10, versionId: 'v1'}), /缺少标签版本/);
+  assert.equal(applied.length, 0, '被拒绝的写入不修改画布');
+  const r = await svc.methods['tasks.applyFormField']('tab1', {...base, value: 10});
+  assert.equal(applied.length, 1); assert.equal(applied[0].expectedRevision, 3); assert.deepEqual(applied[0].updates[0], {nodeId: 7, graphId: null, widgetName: 'steps', value: 10});
+  assert.equal(r.revision, 4);
+  // 迟到的旧版本写入（revision 已变）被拒绝
+  await assert.rejects(svc.methods['tasks.applyFormField']('tab1', {...base, value: 11}), e => e.code === 'REVISION_MISMATCH');
+});
+test('C06：运行/批量/润色/快捷使用——编译后校验画布中的表单值，记录同一模板/表单版本与实际值', async t => {
+  const {svc, settle, editor, submitted} = formSetup(t);
+  const orig = editor.commands.compileTab;
+  editor.commands.compileTab = async id => { const c = await orig(id); c.apiPrompt[7].inputs.steps = 80; return c; };
+  await assert.rejects(svc.methods['tasks.run']('tab1', {}), e => e.code === 'INVALID_ARGUMENT' && /不能大于 50/.test(e.message));
+  await assert.rejects(svc.methods['tasks.runBatch']('tab1', {seeds: [1]}), /不能大于 50/);
+  await assert.rejects(svc.methods['tasks.enhance']('tab1', {text: 'x'}), /不能大于 50/);
+  assert.equal(submitted.length, 0);
+  editor.commands.compileTab = orig;
+  const a = await svc.methods['tasks.run']('tab1', {});
+  const b = await svc.methods['tasks.runBatch']('tab1', {seeds: [1, 2]});
+  const c = await svc.compile('tab1'); const q = svc.submissions.enqueueCompiled(c, c.apiPrompt, {references: []});
+  await settle();
+  for (const id of [a.id, ...b.tasks.map(x => x.id), q.id]) {
+    const s = svc.tasks.snapshotOf(svc.tasks.get(id));
+    assert.equal(s.templateId, 'tpl1'); assert.equal(s.form.versionId, 'v1'); assert.equal(s.form.values[0], 20);
+  }
+});
+test('C06：模板来源但表单为空——任务仍记录模板来源（缩略图不漏接）', async t => {
+  const {svc, settle, editor} = setup(t);
+  editor.commands.compileTab = async id => ({tabId: id, templateId: 'tplX', templateVersionId: 'vx', title: 'T', revision: 3, uiGraph: {nodes: []}, apiPrompt: prompt()});
+  svc.setFormProvider(() => ({versionId: 'vx', fields: null}));
+  const task = await svc.methods['tasks.run']('tab1', {}); await settle();
+  assert.equal(svc.tasks.snapshotOf(svc.tasks.get(task.id)).templateId, 'tplX');
+});
+test('C06：表单设置以标签固定版本为起点；明确升级才用最新版', async t => {
+  const {db, layout, editor} = setup(t);
+  const {createTemplateService} = require('../desktop/services/template-service.cjs');
+  const ts = createTemplateService({db, layout, editor, taskService: {compile: async () => ({tabId: 'tab1', templateId: tplId, templateVersionId: v1, revision: 3, apiPrompt: prompt(), bindings: {}})}, dialog: {}, getWindow: () => null});
+  const f1 = [{scopePath: [], nodeId: '7', nodeType: 'KSampler', fieldName: 'steps', widgetType: 'int', constraints: {}, label: 'v1 字段', group: 'a', order: 0}];
+  const tpl = ts.repo.create({name: 'T', graph: {nodes: []}, formSchema: f1, source: 'test'}); var tplId = tpl.id; var v1 = ts.repo.current(tpl.id).versionId;
+  ts.repo.saveVersion(tpl.id, {graph: {nodes: []}, formSchema: [{...f1[0], label: 'v2 字段'}]});
+  const d = await ts.methods['templates.formDraft'](tpl.id, 'tab1');
+  assert.equal(d.fields[0].label, 'v1 字段'); assert.equal(d.baseVersionId, v1); assert.notEqual(d.latestVersionId, v1);
+  assert.equal((await ts.methods['templates.formDraft'](tpl.id, 'tab1', {upgrade: true})).fields[0].label, 'v2 字段');
+  assert.equal((await ts.methods['templates.checkMapping'](tpl.id, 'tab1'))[0].binding.label, 'v1 字段');
 });

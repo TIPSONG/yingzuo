@@ -56,6 +56,27 @@ function rebind(binding, prompt, nodeId) {
   if (!Object.hasOwn(node.inputs ?? {}, binding.fieldName) || isLink(node.inputs[binding.fieldName])) throw new Error(`节点 ${nodeId} 的 ${binding.fieldName} 不可写入。`);
   return {...binding, nodeId: String(nodeId)};
 }
+/**
+ * C06：字段约束校验（纯函数，主进程写回入口与运行前共用；前端只做即时提示）。
+ * 返回 null 表示通过，否则返回中文原因。检查类型、有限数字、整数、范围、选项与步长。
+ */
+const INT_TYPES = new Set(['int', 'seed']), NUM_TYPES = new Set(['number', 'int', 'float', 'seed']), BOOL_TYPES = new Set(['toggle', 'boolean']), STR_TYPES = new Set(['string', 'text', 'customtext']);
+function checkFieldValue(binding, value) {
+  const name = binding?.label ?? binding?.fieldName ?? '字段', t = binding?.widgetType, c = binding?.constraints ?? {};
+  if (NUM_TYPES.has(t) || (t === undefined && typeof value === 'number')) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return `“${name}”必须是有效数字。`;
+    if (INT_TYPES.has(t) && !Number.isInteger(value)) return `“${name}”必须是整数。`;
+    if (c.min !== undefined && value < c.min) return `“${name}”不能小于 ${c.min}。`;
+    if (c.max !== undefined && value > c.max) return `“${name}”不能大于 ${c.max}。`;
+    if (c.step && c.step > 0 && INT_TYPES.has(t) && c.step >= 1) { const base = c.min ?? 0; if (Math.abs(((value - base) / c.step) - Math.round((value - base) / c.step)) > 1e-9) return `“${name}”须按步长 ${c.step} 取值。`; }
+    return null;
+  }
+  if (BOOL_TYPES.has(t)) return typeof value === 'boolean' ? null : `“${name}”必须是开/关。`;
+  if (STR_TYPES.has(t)) return typeof value === 'string' ? (value.length > 200000 ? `“${name}”过长。` : null) : `“${name}”必须是文本。`;
+  if (t === 'combo') { if (Array.isArray(c.values) && c.values.length && !c.values.some(v => String(v) === String(value))) return `“${name}”不是可选项之一。`; return ['string', 'number'].includes(typeof value) ? null : `“${name}”取值无效。`; }
+  if (t === 'image') return typeof value === 'string' ? null : `“${name}”必须是图片文件名。`;
+  return null;
+}
 /** 表单值 → prompt 副本（运行时使用；失效字段拒绝）。 */
 function applyForm(list, prompt, values) {
   const next = structuredClone(prompt);
@@ -64,10 +85,9 @@ function applyForm(list, prompt, values) {
     const m = map[Number(i)];
     if (!m) throw new Error(`表单没有第 ${i} 个字段。`);
     if (m.status !== 'ok') throw new Error(`字段“${m.binding.label ?? m.binding.fieldName}”映射失效：${m.reason}`);
-    const c = m.binding.constraints ?? {};
-    if (typeof value === 'number' && ((c.min !== undefined && value < c.min) || (c.max !== undefined && value > c.max))) throw new Error(`字段“${m.binding.label}”超出范围 ${c.min}–${c.max}。`);
+    const bad = checkFieldValue(m.binding, value); if (bad) throw new Error(bad);
     next[m.binding.nodeId].inputs[m.binding.fieldName] = value;
   }
   return next;
 }
-module.exports = {fromBindings, validateSchema, validateMapping, rebind, applyForm};
+module.exports = {fromBindings, validateSchema, validateMapping, rebind, applyForm, checkFieldValue};

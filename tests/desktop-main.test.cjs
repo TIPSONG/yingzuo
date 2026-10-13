@@ -311,3 +311,10 @@ test('C01：系统加密存储不可用——保存返回可操作错误，不�
   const r=await f.send('save');assert.equal(r.ok,false);assert.match(r.error,/加密存储不可用/);
   const drafts=path.join(f.root,'.local','data','drafts');for(const n of fs.readdirSync(drafts))assert.ok(!fs.readFileSync(path.join(drafts,n),'utf8').includes(FAKE_KEY));
 });
+
+test('C06：独立副本保留模板与固定表单版本绑定',async t=>{
+  const f=await connected(t,workspace({id:'a',title:'a',mode:'graph',templateId:'tpl_1',templateVersionId:'ver_1',graph:graph('x')}));
+  const r=await f.send('duplicateTab');assert.equal(r.ok,true);
+  const copy=r.state.tabs.find(x=>x.id===r.state.activeId);assert.notEqual(copy.id,'a');
+  assert.equal(copy.templateId,'tpl_1');assert.equal(copy.templateVersionId,'ver_1');
+});

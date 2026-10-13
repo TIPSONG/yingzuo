@@ -63,5 +63,5 @@ test('T04：映射失效——删除、改类、改连线；只允许同类型�
   assert.throws(() => F.rebind(fields[steps], p, '6'), /类型/);
   assert.throws(() => F.applyForm(fields, p, {[steps]: 30}), /映射失效/);
   assert.equal(F.applyForm(fields, prompt(), {[steps]: 30})[7].inputs.steps, 30);
-  assert.throws(() => F.applyForm(fields, prompt(), {[steps]: 999}), /超出范围/);
+  assert.throws(() => F.applyForm(fields, prompt(), {[steps]: 999}), /不能大于/);
 });

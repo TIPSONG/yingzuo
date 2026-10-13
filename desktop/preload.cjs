@@ -13,7 +13,7 @@ api.onStatus = callback => {
 const GROUPS = {
   services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
   settings: ['get','update','pickPath','setCredential','removeCredential'],
-  tasks: ['preview','form','run','previewBatch','runBatch','enhance','enhanceResult','list','get','cancel','retry','recheck','pause','resume','pickReference','refs','setRefs','copyRefs','exportPackage','importPackage','closedList','reopenClosed'],
+  tasks: ['preview','form','applyFormField','run','previewBatch','runBatch','enhance','enhanceResult','list','get','cancel','retry','recheck','pause','resume','pickReference','refs','setRefs','copyRefs','exportPackage','importPackage','closedList','reopenClosed'],
   templates: ['list','get','update','import','importBuiltins','open','saveFromTab','restore','export','formDraft','saveForm','checkMapping','rebind','diagnose','catalog','applyFix','undoFix','exportFixed','importOnline','dependencyPlan','findModelSources','applyDependencyPlan','detectManager','installMissingPlugins','thumbnail','setThumbnail','onlineSources','browseOnline','onlineThumbnail','importFromSource'],
   downloads: ['search','detail','version','parseLink','plan','pickDir','add','list','pause','resume','cancel'],
   maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts','checkUpdates','checkAppRelease','downloadAppRelease','openAppUpdateFolder','lastUpdateCheck','manifest','backups','createBackup','verifyBackup','restoreBackup','pendingRestores','appRecovery','chooseAppRecovery','appBackup','appBackups','scheduleAppRestore','resumeRestore','holds','clearHold','transactions','pruneBackups','updateComfy','updatePlugin'],

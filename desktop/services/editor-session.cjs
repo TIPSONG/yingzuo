@@ -281,7 +281,7 @@ const commands = {
     return newTab(template.name,Store.validateGraph(graph),id);
   },
   activateTab: activate,
-  duplicateTab: async()=>{await capture();const tab=active();if(!tab)throw new Error('请先打开工作流。');return newTab(`${tab.title} · 副本`,structuredClone(tab.graph));},
+  duplicateTab: async()=>{await capture();const tab=active();if(!tab)throw new Error('请先打开工作流。');return newTab(`${tab.title} · 副本`,structuredClone(tab.graph),tab.templateId??null,tab.templateVersionId??null);}, /* C06：独立副本保留同一固定模板版本的表单绑定，不用最新版代替 */
   closeTab: async id=>{
     const index=workspace.tabs.findIndex(t=>t.id===id);if(index<0)return {state:state(),snapshot:currentSnapshot()};
     return changeWorkspace(()=>{

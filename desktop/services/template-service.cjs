@@ -18,6 +18,12 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
   const stripPlaceholders = v => (typeof v === 'string' ? (v.startsWith(SF.PLACEHOLDER_PREFIX) ? '' : v) : Array.isArray(v) ? v.map(stripPlaceholders) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, stripPlaceholders(x)])) : v);
   const pin = async (tabId, templateId, version) => { const vid = version?.versionId ?? version?.version_id ?? null; if (vid && editor?.commands?.setTemplateVersion) await editor.enqueue(() => editor.commands.setTemplateVersion(tabId, templateId, vid)); };
   const pinned = async (tabId, templateId, version) => { await pin(tabId, templateId, version); return version; };
+  /** C06：以标签固定的模板版本为起点；只有用户明确选择升级（upgrade）才用最新版。 */
+  const baseVersion = (id, c, {upgrade = false} = {}) => {
+    const vid = !upgrade && c?.templateId === id ? c.templateVersionId ?? null : null;
+    if (vid) { try { const v = repo.version(vid); if (v?.templateId === id) return v; } catch { /* 固定版本已不存在时退回最新版 */ } }
+    return repo.current(id);
+  };
   const compile = async tabId => { if (!taskService) throw new AppError(CODES.SERVICE_UNAVAILABLE, '任务服务不可用，无法编译工作流。'); return taskService.compile(tabId); };
   function importText(text, {name, folder, tags, source}) {
     let info;
@@ -78,27 +84,29 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       return {path: r.filePath};
     },
     /** T03：表单编辑。默认表单由当前编译结果推断；保存时与图一起成为新版本。 */
-    'templates.formDraft': async (id, tabId) => {
+    'templates.formDraft': async (id, tabId, {upgrade = false} = {}) => {
       const c = await compile(tabId);
-      const saved = id ? repo.current(id).formSchema : null;
+      const base = id ? baseVersion(id, c, {upgrade}) : null;
+      const saved = base ? base.formSchema : null;
       const fields = saved ?? F.fromBindings(c.bindings);
       // 可选字段：所有未连线的标量输入（供用户添加）
       const available = Object.entries(c.apiPrompt).flatMap(([nodeId, n]) => Object.entries(n.inputs ?? {}).filter(([, v]) => !B.isLink(v) && ['string', 'number', 'boolean'].includes(typeof v)).map(([fieldName, v]) => ({nodeId, nodeType: n.class_type, fieldName, value: v})));
-      return {fields, mapping: F.validateMapping(fields, c.apiPrompt), available, fromSaved: !!saved};
+      return {fields, mapping: F.validateMapping(fields, c.apiPrompt), available, fromSaved: !!saved, baseVersionId: base?.versionId ?? null, latestVersionId: id ? repo.current(id).versionId ?? null : null};
     },
-    'templates.saveForm': async (id, tabId, fields, note) => {
+    'templates.saveForm': async (id, tabId, fields, note, {baseVersionId} = {}) => {
       const errors = F.validateSchema(fields);
       if (errors.length) throw new AppError(CODES.INVALID_ARGUMENT, errors[0], {details: {errors}});
       const c = await compile(tabId);
       const bad = F.validateMapping(fields, c.apiPrompt).filter(m => m.status !== 'ok');
       if (bad.length) throw new AppError(CODES.INVALID_ARGUMENT, `有 ${bad.length} 个字段映射失效：${bad[0].reason}`, {details: {bad}});
       const t = await securedGraph(tabId);
-      const version = repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: note ?? '更新表单'}); await pin(tabId, id, version); return version;
+      // C06：编辑起点不是最新版时，用 expectedCurrent 防止静默覆盖他处的新版本（仍只追加新版本）
+      const version = repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: note ?? '更新表单', ...(baseVersionId ? {expectedCurrent: baseVersionId} : {})}); await pin(tabId, id, version); return version;
     },
     /** T04：映射校验与重新绑定（必须同类型同字段）。 */
-    'templates.checkMapping': async (id, tabId) => { const c = await compile(tabId); const fields = repo.current(id).formSchema ?? []; return F.validateMapping(fields, c.apiPrompt); },
+    'templates.checkMapping': async (id, tabId, {upgrade = false} = {}) => { const c = await compile(tabId); const fields = baseVersion(id, c, {upgrade}).formSchema ?? []; return F.validateMapping(fields, c.apiPrompt); },
     'templates.rebind': async (id, tabId, index, nodeId) => {
-      const c = await compile(tabId); const cur = repo.current(id); const fields = [...(cur.formSchema ?? [])];
+      const c = await compile(tabId); const cur = baseVersion(id, c); const fields = [...(cur.formSchema ?? [])];
       if (!fields[index]) throw new AppError(CODES.NOT_FOUND, '字段不存在。');
       try { fields[index] = F.rebind(fields[index], c.apiPrompt, nodeId); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       const t = await securedGraph(tabId);

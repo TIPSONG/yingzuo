@@ -175,7 +175,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     /** 从已编译标签和最终 API 图生成任务（不直接接触 queue/仓库）。 */
     enqueueCompiled: (c, prompt, {kind = 'generate', params = null, meta = {}, references, prefixMode} = {}) => {
       const p = withPrefix(prompt, c, prefixMode);
-      return enqueue({kind, workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, references), params, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...meta}})});
+      return enqueue({kind, workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, references), params, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...formIdentity(c, p.prompt), ...meta}})});
     },
     enqueue,
     enqueueGroup: specs => queue.enqueueGroup(specs.map(sp => ({...sp, snapshot: redactSnapshot(sp.snapshot)}))),
@@ -185,7 +185,22 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
   let formProvider = null;
   const formOf = c => (c.templateId && formProvider ? formProvider(c.templateId, c.templateVersionId ?? null) : null);
   /** S07：任务快照记录使用的模板/表单版本（参数已经由面板写入图中）。 */
-  const formIdentity = c => { const f = formOf(c); return f?.fields?.length ? {templateId: c.templateId, form: {templateId: c.templateId, versionId: f.versionId ?? null, pinned: !!f.pinned}} : {}; };
+  // C06：只要来自模板就记录模板来源（表单为空也保留，模板首图缩略图不漏接）；有表单时记录版本与实际使用值
+  const formIdentity = (c, prompt = c.apiPrompt) => {
+    if (!c.templateId) return {};
+    const f = formOf(c);
+    if (!f?.fields?.length) return {templateId: c.templateId, form: {templateId: c.templateId, versionId: f?.versionId ?? c.templateVersionId ?? null, pinned: !!f?.pinned, fields: null}};
+    const values = Object.fromEntries(f.fields.map((b, i) => [i, prompt?.[b.nodeId]?.inputs?.[b.fieldName] ?? null]));
+    return {templateId: c.templateId, form: {templateId: c.templateId, versionId: f.versionId ?? null, pinned: !!f.pinned, values}};
+  };
+  /** C06：运行、批量、润色在编译后统一校验表单映射与实际值（不因没有传 formValues 就跳过）。 */
+  function checkFormForRun(c, formValues = null) {
+    const form = formOf(c); if (!form?.fields?.length) return;
+    const map = F.validateMapping(form.fields, c.apiPrompt);
+    const bad = map.filter(m => m.status !== 'ok');
+    if (bad.length) throw new AppError(CODES.INVALID_STATE, `表单有 ${bad.length} 个字段映射失效：${bad[0].binding.label ?? bad[0].binding.fieldName}——${bad[0].reason} 请在表单设置中重新绑定或移除后再运行。`, {details: {bad: bad.map(m => ({label: m.binding.label ?? m.binding.fieldName, status: m.status}))}});
+    map.forEach((m, i) => { if (formValues && Object.hasOwn(formValues, i)) return; const err = F.checkFieldValue(m.binding, c.apiPrompt[m.binding.nodeId].inputs[m.binding.fieldName]); if (err) throw new AppError(CODES.INVALID_ARGUMENT, `当前画布中的值不符合表单约束：${err}`); });
+  }
   function applyCustomForm(c, prompt, formValues) {
     if (formValues === undefined || formValues === null) return {prompt, form: null};
     const form = formOf(c);
@@ -207,18 +222,35 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
         return {index: i, ...m.binding, status: m.status, reason: m.reason, target: m.status === 'ok' && t.status === 'ok' ? t.target : null, panelStatus: t.status, panelReason: t.reason, value: m.status === 'ok' ? c.apiPrompt[m.binding.nodeId].inputs[m.binding.fieldName] : null};
       }).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))};
     },
+    /** C06：表单面板写回的主进程入口——校验表单版本、标签版本、映射与约束后再写画布；任何一项变化都拒绝并要求刷新。 */
+    'tasks.applyFormField': async (tabId, {index, value, expectedRevision, versionId} = {}) => {
+      if (!Number.isInteger(expectedRevision)) throw new AppError(CODES.INVALID_ARGUMENT, '缺少标签版本，请刷新表单。');
+      const c = await compile(tabId, {expectedRevision});
+      const form = formOf(c);
+      if (!form?.fields?.length) throw new AppError(CODES.INVALID_STATE, '该标签没有已保存的自定义表单。');
+      if ((form.versionId ?? null) !== (versionId ?? null)) throw new AppError(CODES.CONFLICT, '表单版本已变化，已拒绝写入，请刷新表单。');
+      const field = form.fields[index]; if (!field) throw new AppError(CODES.NOT_FOUND, '表单字段不存在，请刷新。');
+      const m = F.validateMapping([field], c.apiPrompt)[0];
+      if (m.status !== 'ok') throw new AppError(CODES.INVALID_STATE, `字段映射失效：${m.reason}`);
+      const err = F.checkFieldValue(field, value); if (err) throw new AppError(CODES.INVALID_ARGUMENT, err);
+      const t = mapFormTargets([field], c.uiGraph)[0];
+      if (t.status !== 'ok') throw new AppError(CODES.INVALID_STATE, t.reason ?? '未在画布中找到该参数。');
+      const r = await editor.enqueue(() => editor.commands.applyParameters([{nodeId: t.target.nodeId, graphId: t.target.graphId, widgetName: t.target.widgetName, value}], c.tabId, c.revision));
+      return {tabId: c.tabId, revision: r?.state?.tabs?.find(x => x.id === c.tabId)?.revision ?? null, applied: {index, value}};
+    },
     'tasks.preview': async tabId => { const c = await compile(tabId); return {tabId: c.tabId, title: c.title, revision: c.revision, issues: c.issues, objectInfoAvailable: c.objectInfoAvailable, bindings: c.bindings, nodeCount: Object.keys(c.apiPrompt).length}; },
     /** Q06：运行当前（或指定）标签。values 为绑定参数覆盖，references 为 [{nodeId,input,refId}]。 */
     'tasks.run': async (tabId, options = {}) => {
       const c = await compile(tabId, {expectedRevision: options.expectedRevision});
       assertRunnable(c.issues);
+      checkFormForRun(c, options.formValues);
       const custom = applyCustomForm(c, c.apiPrompt, options.formValues);
       let prompt = B.applyValues(custom.prompt, c.bindings, options.values);
       const enh = c.bindings.enhancer;
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
-      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : formIdentity(c))}})});
+      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : formIdentity(c, prompt))}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
@@ -233,12 +265,13 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       const items = plan.items.flatMap(it => params.map(p => ({prompt: it.prompt, seed: it.seed, params: {...p, ...it.values}})));
       if ((spec.prompts?.length > 0) && !c.bindings.prompt) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的提示词输入，不能批量替换提示词。');
       if (items.some(i => i.seed !== null) && !(c.bindings.seed && (!c.bindings.seed.readonly || c.bindings.seedSource))) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的 seed 输入。');
+      checkFormForRun(c, spec.formValues);
       const custom = applyCustomForm(c, c.apiPrompt, spec.formValues); // D04：批量同样按自定义表单写入
       const groupId = crypto.randomUUID();
       const specs = items.map(item => {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
         const p = withPrefix(B.applyValues(custom.prompt, c.bindings, values), c, spec.prefixMode);
-        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})};
+        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : formIdentity(c, p.prompt))}})}; // C06：批量沿用同一表单身份
       });
       const created = submissions.enqueueGroup(specs);
       return {groupId, tasks: created};
@@ -248,6 +281,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       const c = await compile(tabId, {expectedRevision});
       const enh = c.bindings.enhancer;
       if (!enh) throw new AppError(CODES.NOT_FOUND, '此工作流没有 Gemma 润色节点。');
+      checkFormForRun(c);
       let prompt = c.apiPrompt;
       if (typeof text === 'string' && text.trim()) { try { prompt = B.setEnhancerOriginal(prompt, enh, text); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const info = await getObjectInfo();
@@ -255,7 +289,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       let sub;
       try { sub = B.extractEnhanceOnly(prompt, enh.nodeId, {objectInfo: info, rerun}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       assertRunnable([...checkPrompt(sub.prompt, {objectInfo: info}), ...B.checkEnhancerRun(sub.prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages})]);
-      return enqueue({kind: 'enhance', workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: refsForRun(c.tabId, references).filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
+      return enqueue({kind: 'enhance', workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: refsForRun(c.tabId, references).filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}, ...formIdentity(c)}})});
     },
     'tasks.enhanceResult': async id => {
       const t = tasks.get(id); if (!t || t.kind !== 'enhance') throw new AppError(CODES.NOT_FOUND, '不是润色任务。');
