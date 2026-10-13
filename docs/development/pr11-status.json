@@ -31,7 +31,10 @@
       "id": "D04",
       "level": "P1",
       "name": "自定义表单未进入正式创作",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "40fc5b1",
+      "tests": "task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签",
+      "note": "“运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单"
     },
     {
       "id": "D05",
@@ -178,7 +181,10 @@
       "id": "PR11-R10",
       "level": "P1",
       "name": "自定义表单进入创作和运行",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "40fc5b1",
+      "tests": "task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签",
+      "note": "“运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单"
     },
     {
       "id": "PR11-R11",

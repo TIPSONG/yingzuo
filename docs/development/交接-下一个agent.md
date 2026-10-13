@@ -110,5 +110,5 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 ## 第四轮（PR11 审阅修复）进度 — 2026-10-13
 - 审阅原文：docs/development/PR11代码审阅与下一轮程序计划.md；逐项状态：`node tools/pr11.cjs render`（数据 docs/development/pr11-status.json，渲染到 Grovebot开发进度.md 的 PR11 区块）。
-- 已完成：D01、D02、D03/PR11-R09、PR11-R08；PR11-R07 实现中（ResolutionSelector/SaveImageAdvanced 输入名未核实）。
-- 下一步按顺序：D04/PR11-R10 自定义表单进入正式创作与运行 → D05/PR11-R01 暂停租约、恢复失败不启动服务不恢复队列 → PR11-R05/D09/D10 → PR11-R04/D11 → PR11-R13 → 文档顺序其余项。
+- 已完成：D01、D02、D03/PR11-R09、PR11-R08、D05/PR11-R01。实现中：PR11-R07（ResolutionSelector/SaveImageAdvanced 输入名未核实）、D04/PR11-R10（运行按钮已走表单；左侧参数面板/批量/润色未走）、D06/PR11-R02（缺测试与 UI）、D09（缺测试）。
+- 下一步按顺序：D10 定向中断探测 → PR11-R04/D11 进程退出确认与 LM Studio 归属 → PR11-R13 应用数据备份 → R03/D07 → R06/D12 → R11 → R12/D08 → R18/D15 → R14 → R15/D14 → R16/D13 → R17 → R19 → R20 → R21 → R22（含更新 PR #11 标题正文、待Codex验收.md）。

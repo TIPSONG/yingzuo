@@ -29,7 +29,7 @@
 | D01 | P1 | 真实 Qwen 提示词绑定（TextEncodeQwenImage21） | 程序完成 | fdbe85a | bindings-real.test：Qwen21 两输出槽、SamplerCustomAdvanced、未适配编码器 | 按 ComfyUI nodes_qwen.py 定义适配；旧 CLIP 图继续可用 |
 | D02 | P1 | Gemma 原文连线被当成没有可写输入 | 程序完成 | fdbe85a | bindings-real.test：连线原文、仅润色替换原文、采用结果、cache_buster | 原文来源沿连线追踪到 PrimitiveStringMultiline.value；采用时提交副本插入 yz_adopted_text 节点并 enable_llm=false |
 | D03 | P1 | 异步流程重读当前标签，A 的结果用到 B | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
-| D04 | P1 | 自定义表单未进入正式创作 | 未开始 |  |  |  |
+| D04 | P1 | 自定义表单未进入正式创作 | 实现中 | 40fc5b1 | task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签 | “运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单 |
 | D05 | P1 | 维护失败仍启动服务、继续队列 | 程序完成 | ea187ce | maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时 | 队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放 |
 | D06 | P1 | 继续恢复绕开运行保护 | 实现中 | ea187ce |  | restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds |
 | D07 | P1 | 补丁冲突仍记成功 | 未开始 |  |  |  |
@@ -55,7 +55,7 @@
 | PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 实现中 | fdbe85a | tests/fixtures/qwen21-gemma-api.json 脱敏夹具 | Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定 |
 | PR11-R08 | P1 | Gemma 原文连线与采用结果 | 程序完成 | fdbe85a | bindings-real.test | 读取图中 context_length/release_vram/disable_thinking/model/URL；上下文以节点值为准；重新润色改 cache_buster |
 | PR11-R09 | P1 | 异步 UI 固定发起标签和版本 | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
-| PR11-R10 | P1 | 自定义表单进入创作和运行 | 未开始 |  |  |  |
+| PR11-R10 | P1 | 自定义表单进入创作和运行 | 实现中 | 40fc5b1 | task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签 | “运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单 |
 | PR11-R11 | P1 | 参考图关系进工作区仓库 | 未开始 |  |  |  |
 | PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 未开始 |  |  |  |
 | PR11-R13 | P1 | 环境备份与应用数据备份分开 | 未开始 |  |  |  |
