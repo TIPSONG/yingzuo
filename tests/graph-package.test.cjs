@@ -16,7 +16,7 @@ function fixture(t) {
   const ref = store.importFile(src);
   return {d, store, ref};
 }
-const graph = {nodes: [{id: 5, type: 'LoadImage', widgets_values: ['x.png']}, {id: 6, type: 'LMStudioPromptEnhancer', widgets_values: ['猫', '__yz_credential__:node-secret:0123456789abcdef']}]};
+const graph = {nodes: [{id: 5, type: 'LoadImage', widgets_values: ['x.png']}, {id: 7, type: 'LoadImage', widgets_values: ['y.png']}, {id: 6, type: 'LMStudioPromptEnhancer', widgets_values: ['猫', '__yz_credential__:node-secret:0123456789abcdef']}]};
 
 test('S08：导出→在新数据根导入，内容与关系一致；中文名保留；凭据占位不导出；缺失素材如实标出', t => {
   const {d, store, ref} = fixture(t);

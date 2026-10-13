@@ -35,6 +35,13 @@ class ReferenceStore {
     if (!fs.existsSync(target)) { fs.mkdirSync(path.dirname(target), {recursive: true}); fs.writeFileSync(target + '.tmp', buf); fs.renameSync(target + '.tmp', target); }
     return {id: `${hash}${ext}`, hash, ext, name: path.basename(file), size: st.size};
   }
+  /** C08：采用 worker 已校验并写好的暂存文件（同盘改名，不在主进程读整文件）。 */
+  adoptFile(staged, refId) {
+    if (!/^[0-9a-f]{64}\.(png|jpe?g|webp)$/.test(refId)) throw new AppError(CODES.INVALID_ARGUMENT, '参考图编号无效。');
+    const target = path.join(this.dir, refId.slice(0, 2), refId);
+    if (fs.existsSync(target)) { fs.rmSync(staged, {force: true}); return refId; }
+    fs.mkdirSync(path.dirname(target), {recursive: true}); fs.renameSync(staged, target); return refId;
+  }
   /** S08：从图包导入：内容编号即 sha256，写入前已由调用方校验。 */
   importBuffer(buf, refId) {
     if (!/^[0-9a-f]{64}\.(png|jpe?g|webp)$/.test(refId) || crypto.createHash('sha256').update(buf).digest('hex') !== refId.slice(0, 64)) throw new AppError(CODES.INTEGRITY, '参考图内容与编号不符。');
@@ -63,7 +70,9 @@ async function uploadReferences(prompt, references, client, refStore) {
   return next;
 }
 
-function createTaskService({credentials = null, db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow, onTerminal = null}) {
+function createTaskService({credentials = null, db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow, onTerminal = null, pool = null}) {
+  const filePool = () => pool ?? require('../core/worker-pool.cjs').sharedPool();
+  let templateRepo = null;
   const tasks = new TaskRepository(db, new SnapshotStore(layout['task-snapshots']), {events});
   const refs = new ReferenceStore(layout.references);
   let clientCache = null;
@@ -144,6 +153,7 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     const clean = items.map(r => { if (!r || typeof r.nodeId !== 'string' || typeof r.refId !== 'string' || !REF_ID.test(r.refId)) throw new AppError(CODES.INVALID_ARGUMENT, '参考图编号无效。'); return {nodeId: r.nodeId, input: typeof r.input === 'string' ? r.input : 'image', refId: r.refId, name: String(r.name ?? '').slice(0, 200)}; });
     const d = readRel(); d.tabs[tabId] = {revision, items: clean, updatedAt: new Date().toISOString()}; writeRel(d); return clean;
   }
+  function dropRelations(tabId) { const d = readRel(); if (d.tabs[tabId]) { delete d.tabs[tabId]; writeRel(d); } }
   /** 关系 + 每项素材是否仍在本机（不能仅凭目录存在就认为引用有效）。 */
   function relationsOf(tabId) { return (readRel().tabs[tabId]?.items ?? []).map(r => ({...r, missing: !refs.has(r.refId)})); }
   function refsForRun(tabId, given) {
@@ -316,22 +326,48 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     'tasks.exportPackage': async (tabId, {filePath = null} = {}) => {
       const t = await editor.enqueue(() => editor.commands.tabGraph(tabId));
       const form = t.templateId && formProvider ? formProvider(t.templateId, t.templateVersionId ?? null) : null;
-      const pkg = GP.buildPackage({title: t.title, graph: t.graph, template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: form?.fields ?? null} : null, relations: relationsOf(tabId), readRef: id => refs.pathOf(id), exportGraph: editor.exportCopy ?? null});
       let target = filePath;
       if (!target) { const r = await dialog.showSaveDialog(getWindow(), {title: '导出图与参考素材', defaultPath: `${t.title}.yingzuo.json`, filters: [{name: '映作图包', extensions: ['json']}]}); if (r.canceled || !r.filePath) return {cancelled: true}; target = r.filePath; }
-      const tmp = `${target}.tmp`; fs.writeFileSync(tmp, JSON.stringify(pkg)); fs.renameSync(tmp, target);
-      return {path: target, references: pkg.references.length, missing: pkg.references.filter(r => r.missing).map(r => r.name || r.refId)};
+      // C01：导出政策移除敏感值；C08：读取素材、base64、JSON 与写盘在 worker 中进行，这里只传路径
+      const ex = editor.exportCopy ? editor.exportCopy(t.graph) : null;
+      const relations = relationsOf(tabId).map(({missing, ...r}) => ({...r, file: missing ? null : refs.pathOf(r.refId)}));
+      return filePool().run('packBuild', {target, title: t.title, graph: t.graph, exportedGraph: ex?.graph ?? null, refill: ex?.refill ?? [], template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: form?.fields ?? null} : null, relations});
     },
+    /**
+     * C07：先整体校验（worker 内：大小、hash、槽位），再导入素材、打开标签、提交关系（缺失项也作为缺失关系恢复，运行时阻止）；
+     * 包内表单恢复为新的本地模板版本（来源 ID 只作追溯，不绑定本机同名模板）。任一步失败：关闭新标签、移除关系，不留半成品。
+     */
     'tasks.importPackage': async ({filePath = null} = {}) => {
       let file = filePath;
       if (!file) { const r = await dialog.showOpenDialog(getWindow(), {title: '导入映作图包', properties: ['openFile'], filters: [{name: '映作图包', extensions: ['json']}]}); if (r.canceled || !r.filePaths?.length) return {cancelled: true}; file = r.filePaths[0]; }
-      const pkg = GP.parsePackage(fs.readFileSync(file, 'utf8')); // 全部校验通过才写入
-      for (const r of pkg.references) if (!r.missing) refs.importBuffer(r.buffer, r.refId);
-      const opened = await editor.enqueue(() => editor.commands.reopenArchived(pkg.title, pkg.graph, null, null));
-      const tabId = opened?.state?.activeId;
-      const present = pkg.references.filter(r => !r.missing);
-      if (tabId && present.length) setRelations(tabId, present.map(({buffer, missing, ...r}) => r));
-      return {tabId, references: present.length, missing: pkg.references.filter(r => r.missing).map(r => r.name || r.refId), template: pkg.template ? {templateId: pkg.template.templateId, versionId: pkg.template.versionId, note: '图包中的模板/表单只作记录；导入后为独立工作副本。'} : null};
+      const stageDir = path.join(layout.root, 'staging', `pkg-${crypto.randomBytes(6).toString('hex')}`);
+      let tabId = null;
+      try {
+        let pkg;
+        try { pkg = await filePool().run('packParse', {file, stageDir, objectInfo: objectInfo ?? null}); }
+        catch (e) { throw new AppError(CODES[e.code] ? e.code : CODES.INVALID_ARGUMENT, e.message); }
+        const formSchema = Array.isArray(pkg.template?.formSchema) && pkg.template.formSchema.length ? pkg.template.formSchema : null;
+        const formErrors = formSchema ? F.validateSchema(formSchema) : [];
+        for (const r of pkg.references) if (!r.missing) refs.adoptFile(r.staged, r.refId);
+        const opened = await editor.enqueue(() => editor.commands.reopenArchived(pkg.title, pkg.graph, null, null));
+        tabId = opened?.state?.activeId ?? null;
+        if (!tabId) throw new AppError(CODES.INTERNAL, '未能打开导入的标签。');
+        if (pkg.references.length) setRelations(tabId, pkg.references.map(r => ({nodeId: r.nodeId, input: r.input, refId: r.refId, name: r.name})));
+        let template = null;
+        if (formSchema && !formErrors.length && templateRepo) {
+          const src = pkg.template.templateId ? String(pkg.template.templateId).slice(0, 80) : '未知';
+          const created = templateRepo.create({name: `${pkg.title}（图包表单）`, graph: pkg.graph, formSchema, folder: '图包导入', source: `package:${src}`, note: `来自图包；原模板 ${src} @ ${String(pkg.template.versionId ?? '?').slice(0, 80)}，仅作追溯`});
+          const ver = templateRepo.current(created.id).versionId;
+          await editor.enqueue(() => editor.commands.setTemplateVersion(tabId, created.id, ver));
+          template = {templateId: created.id, versionId: ver, sourceTemplateId: pkg.template.templateId ?? null, note: '包内表单已恢复为新的本地模板版本，可继续编辑与运行；原模板编号仅作追溯。'};
+        } else if (pkg.template) template = {templateId: null, sourceTemplateId: pkg.template.templateId ?? null, note: formErrors.length ? `包内表单无效（${formErrors[0]}），已作为独立工作副本导入。` : '图包没有可用表单；已作为独立工作副本导入。'};
+        const result = {tabId, references: pkg.references.filter(r => !r.missing).length, missing: pkg.references.filter(r => r.missing).map(r => r.name || r.refId), unverified: pkg.references.filter(r => r.verify === 'unverified').map(r => `${r.nodeId}.${r.input}`), refill: pkg.refill ?? [], template};
+        tabId = null; // 成功：不再回滚
+        return result;
+      } catch (e) {
+        if (tabId) { try { dropRelations(tabId); await editor.enqueue(() => editor.commands.closeTab(tabId)); } catch (re) { logger?.warn('图包导入回滚失败', {error: re.message}); } }
+        throw e;
+      } finally { fs.rmSync(stageDir, {recursive: true, force: true}); }
     },
     'tasks.closedList': async () => {
       const dir = layout.closed ?? path.join(layout.root, 'closed-workflows'); if (!fs.existsSync(dir)) return [];
@@ -371,6 +407,6 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     /** S05：模板/草稿等持久化 UI 图前调用——敏感值转入系统加密存储，图中只留占位。 */
     redactGraph: (graph, apiPrompt) => redactSnapshot({uiGraph: graph, apiPrompt}).uiGraph,
   };
-  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, cachedObjectInfo: () => objectInfo, setFormProvider: f => { formProvider = f; }};
+  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, cachedObjectInfo: () => objectInfo, setTemplateRepo: r => { templateRepo = r; }, setFormProvider: f => { formProvider = f; }};
 }
 module.exports = {createTaskService, ReferenceStore, uploadReferences};

@@ -377,3 +377,78 @@ test('C06：表单设置以标签固定版本为起点；明确升级才用最�
   assert.equal((await ts.methods['templates.formDraft'](tpl.id, 'tab1', {upgrade: true})).fields[0].label, 'v2 字段');
   assert.equal((await ts.methods['templates.checkMapping'](tpl.id, 'tab1'))[0].binding.label, 'v1 字段');
 });
+
+/* ---------- C07：图包往返不丢语义 ---------- */
+async function pkgSetup(t, graph) {
+  const ctx = setup(t);
+  const img = path.join(ctx.layout.root, '参考.png');
+  await require('sharp')({create: {width: 8, height: 8, channels: 3, background: '#123456'}}).png().toFile(img);
+  const ref = ctx.svc.refs.importFile(img);
+  const opened = [], closed = [], pinnedTo = [];
+  ctx.editor.workspace = {tabs: [{id: 'tab1'}]};
+  ctx.editor.commands.tabGraph = async id => ({tabId: id, title: '原图', templateId: 'tpl-old', templateVersionId: 'v-old', graph});
+  ctx.editor.commands.reopenArchived = async (title, g) => { const id = `new${opened.length + 1}`; opened.push({id, title, g}); ctx.editor.workspace.tabs.push({id}); return {state: {activeId: id}}; };
+  ctx.editor.commands.closeTab = async id => { closed.push(id); };
+  ctx.editor.commands.setTemplateVersion = async (tabId, tpl, ver) => { pinnedTo.push({tabId, tpl, ver}); };
+  return {...ctx, ref, opened, closed, pinnedTo};
+}
+const pkgGraph = () => ({nodes: [{id: 5, type: 'LoadImage', widgets_values: ['old-backend.png']}, {id: 9, type: 'sg-A'}], definitions: {subgraphs: [{id: 'sg-A', nodes: [{id: 5, type: 'LoadImage', inputs: [{name: 'image', widget: {name: 'image'}}]}]}]}});
+test('C07：真实 PNG 在新数据根往返；缺失素材恢复为缺失关系并阻止运行；包内表单恢复为新的本地模板版本', async t => {
+  const a = await pkgSetup(t, pkgGraph());
+  const fields = [{scopePath: [], nodeId: '7', nodeType: 'KSampler', fieldName: 'steps', widgetType: 'int', constraints: {min: 1, max: 50}, label: '步数', group: '采样', order: 0, defaultValue: 20}];
+  a.svc.setFormProvider(() => ({versionId: 'v-old', fields, pinned: true}));
+  await a.svc.methods['tasks.setRefs']('tab1', [{nodeId: '5', input: 'image', refId: a.ref.id, name: '参考.png'}, {nodeId: '9:5', input: 'image', refId: 'b'.repeat(64) + '.png', name: '子图里丢失.png'}]);
+  const file = path.join(a.layout.root, 'pkg.yingzuo.json');
+  const ex = await a.svc.methods['tasks.exportPackage']('tab1', {filePath: file});
+  assert.equal(ex.references, 2); assert.deepEqual(ex.missing, ['子图里丢失.png']);
+  // 全新数据根
+  const b = await pkgSetup(t, pkgGraph());
+  const {TemplateRepository} = require('../desktop/repositories/template-repo.cjs');
+  const repo = new TemplateRepository(b.db, b.layout.templates); b.svc.setTemplateRepo(repo);
+  const im = await b.svc.methods['tasks.importPackage']({filePath: file});
+  assert.equal(im.tabId, 'new1');
+  const rel = await b.svc.methods['tasks.refs']('new1');
+  assert.deepEqual(rel.map(r => [r.nodeId, r.missing]), [['5', false], ['9:5', true]], '缺失项也恢复为关系');
+  assert.deepEqual(fs.readFileSync(b.svc.refs.pathOf(a.ref.id)), fs.readFileSync(a.svc.refs.pathOf(a.ref.id)));
+  b.editor.commands.compileTab = async id => ({tabId: id, title: 'T', revision: 1, uiGraph: {nodes: []}, apiPrompt: prompt()});
+  await assert.rejects(b.svc.methods['tasks.run']('new1', {}), e => e.code === 'NOT_FOUND' && /子图里丢失/.test(e.message));
+  assert.ok(im.template.templateId && im.template.templateId !== 'tpl-old', '不绑定来源模板编号');
+  assert.deepEqual(b.pinnedTo[0].tabId, 'new1'); assert.equal(repo.current(im.template.templateId).formSchema[0].label, '步数', '表单可继续编辑运行');
+  assert.equal(repo.get(im.template.templateId).source, 'package:tpl-old');
+  assert.deepEqual(fs.readdirSync(path.join(b.layout.root, 'staging')), [], '暂存目录已清理');
+});
+test('C07：错误节点、错误输入、重复槽位、子图路径不成立、损坏 hash 整体拒绝；不留标签与关系', async t => {
+  const a = await pkgSetup(t, pkgGraph());
+  await a.svc.methods['tasks.setRefs']('tab1', [{nodeId: '5', input: 'image', refId: a.ref.id, name: 'r'}]);
+  const file = path.join(a.layout.root, 'p.json');
+  await a.svc.methods['tasks.exportPackage']('tab1', {filePath: file});
+  const good = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const variants = {
+    '没有节点': p => { p.references[0].nodeId = '77'; },
+    '实例路径': p => { p.references[0].nodeId = '5:5'; },
+    '同一槽位': p => { p.references.push({...p.references[0]}); },
+    '内容校验失败': p => { p.references[0].sha256 = 'c'.repeat(64); },
+    '超过 50 MB': p => { p.references[0].size = 60 * 1024 * 1024; },
+  };
+  for (const [msg, mut] of Object.entries(variants)) {
+    const p = structuredClone(good); mut(p); const f = path.join(a.layout.root, `bad-${msg}.json`); fs.writeFileSync(f, JSON.stringify(p));
+    await assert.rejects(a.svc.methods['tasks.importPackage']({filePath: f}), new RegExp(msg));
+  }
+  assert.equal(a.opened.length, 0, '整体校验在打开标签之前');
+  // 连接后（有 object_info）可确认的错误输入名也拒绝
+  const p = structuredClone(good); p.references[0].input = 'mask'; const f = path.join(a.layout.root, 'bad-input.json'); fs.writeFileSync(f, JSON.stringify(p));
+  const GP = require('../desktop/services/graph-package.cjs');
+  assert.throws(() => GP.parsePackage(JSON.stringify(p), {objectInfo: {LoadImage: {input: {required: {image: [['a.png']]}}}}}), /没有输入 mask/);
+  assert.equal(GP.parsePackage(JSON.stringify(p)).references[0].verify, 'unverified', '离线无法确认时标待核实');
+  // 打开标签后失败 → 关闭标签并移除关系，不留半成品
+  a.editor.commands.reopenArchived = async () => { a.opened.push('x'); return {state: {activeId: 'half'}}; };
+  const g2 = structuredClone(good); g2.template = {templateId: 't', versionId: 'v', formSchema: [{scopePath: [], nodeId: '5', nodeType: 'LoadImage', fieldName: 'image', widgetType: 'image', constraints: {}, label: '图', order: 0}]};
+  fs.writeFileSync(f, JSON.stringify(g2));
+  a.svc.setTemplateRepo({create() { throw new Error('模板写入失败'); }});
+  await assert.rejects(a.svc.methods['tasks.importPackage']({filePath: f}), /模板写入失败/);
+  assert.deepEqual(a.closed, ['half']); assert.deepEqual(await a.svc.methods['tasks.refs']('half'), []);
+  // 无效表单：图照常导入，如实说明
+  g2.template.formSchema = [{bad: true}]; fs.writeFileSync(f, JSON.stringify(g2));
+  const ok = await a.svc.methods['tasks.importPackage']({filePath: f});
+  assert.match(ok.template.note, /表单无效/);
+});

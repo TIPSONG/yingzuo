@@ -53,7 +53,10 @@ async function copyFile({src, dest, excl = true}, progress) {
     return {bytes: done};
   } catch (e) { try { fs.rmSync(tmp, {force: true}); } catch { /* 忽略 */ } throw e; }
 }
-const TASKS = {sha256, imageProbe, imageMeta, thumbnail, copyFile, sleep: ({ms}) => new Promise(r => setTimeout(() => r({slept: ms}), ms))};
+// C08：图包整包读写（含 base64、JSON、hash）在 worker 中执行
+const packBuild = a => require('../../services/graph-package.cjs').workerBuild(a);
+const packParse = a => require('../../services/graph-package.cjs').workerParse(a);
+const TASKS = {sha256, imageProbe, imageMeta, thumbnail, copyFile, packBuild, packParse, sleep: ({ms}) => new Promise(r => setTimeout(() => r({slept: ms}), ms))};
 
 parentPort.on('message', async ({id, kind, args}) => {
   try {
