@@ -18,9 +18,10 @@ if (cmd === 'set') {
 }
 const esc = s => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 let md = '<!-- PR11 -->\n## PR #11 审阅修复（2026-10-13 起）\n\n来源：`docs/development/PR11代码审阅与下一轮程序计划.md`（审阅 head 47e2e18）。审阅里的任务编号 R01–R22 与原计划的 R01–R08（资源任务）重名，这里统一写作 **PR11-R01…R22**。\n\n';
-for (const [title, pre] of [['审阅发现', 'D'], ['后续程序任务', 'PR11-R'], ['第二轮审阅发现（PR11第二轮代码审阅与收尾计划.md，审阅 head 68f7598）', 'N'], ['第二轮收尾任务', 'S'], ['第三轮收尾任务（PR11第三轮代码审阅与最终收尾计划.md，审阅 head f493fce）', 'C0']]) {
-  md += `### ${title}\n\n| 编号 | 级别 | 名称 | 状态 | 提交 | 回归检查 | 说明 |\n| --- | --- | --- | --- | --- | --- | --- |\n`;
-  for (const it of data.items.filter(x => x.id.startsWith(pre))) md += `| ${it.id} | ${it.level} | ${esc(it.name)} | ${it.status} | ${esc(it.commit)} | ${esc(it.tests)} | ${esc(it.note)} |\n`;
+for (const [title, pre] of [['审阅发现', 'D'], ['后续程序任务', 'PR11-R'], ['第二轮审阅发现（PR11第二轮代码审阅与收尾计划.md，审阅 head 68f7598）', 'N'], ['第二轮收尾任务', 'S'], ['第三轮收尾任务（PR11第三轮代码审阅与最终收尾计划.md，审阅 head f493fce）', 'C0'], ['代码与截图审阅（PR11代码与截图审阅-d5cca17.md，审阅 head d5cca17；人工验收栏由验收方填写）', 'RV']]) {
+  const accept = pre === 'RV'; // RV：多一列“人工验收”，始终留空
+  md += `### ${title}\n\n| 编号 | 级别 | 名称 | 状态 | 提交 | 回归检查 | 说明 |${accept ? ' 人工验收 |' : ''}\n| --- | --- | --- | --- | --- | --- | --- |${accept ? ' --- |' : ''}\n`;
+  for (const it of data.items.filter(x => x.id.startsWith(pre))) md += `| ${it.id} | ${it.level} | ${esc(it.name)} | ${it.status} | ${esc(it.commit)} | ${esc(it.tests)} | ${esc(it.note)} |${accept ? '  |' : ''}\n`;
   md += '\n';
 }
 md += '<!-- /PR11 -->';

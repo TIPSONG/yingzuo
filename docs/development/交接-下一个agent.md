@@ -143,7 +143,25 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 测试：`npm run check` → 339 / 338 通过 / 1 跳过 / 0 失败（抛光前后一致）。
 - PR #11 仍为草稿。
 
-## 当前状态（第六轮：PR11 第三轮审阅 C01–C09，以此为准）— 2026-10-13
+## 当前状态（第七轮：PR11 代码与截图审阅 RV01–RV15，以此为准）— 2026-10-13
+- 审阅原文：docs/development/PR11代码与截图审阅-d5cca17.md（审阅 head d5cca17）。状态表：`node tools/pr11.cjs render`（Grovebot开发进度.md 的 RV 区块，“人工验收”列留空）。
+- RV01 草稿哈希：`workspace-store.writeWorkspace` 对落盘（已脱敏）图算 graphHash；`readWorkspace(file, {resolveGraph})` 只在“解析占位符后哈希等于旧索引”时修复旧索引。
+- RV02 密钥映射：forceInput/连线输入不占 widget 位；数量对不上时为“不确定”，导出不清空猜测位并在提示中列出；object_info 落盘缓存 `object-info-cache.json`，服务就绪时预热。
+- RV03 任务快照：`desktop/services/snapshot-secrets.cjs`；TaskRepository.create 统一脱敏；旧快照由 secret-migration 迁移到新内容地址。
+- RV04 服务三态：maintenance-service `probeState` → confirmed-stopped / running / unknown；unknown 阻止维护、移动与恢复。
+- RV05 启动恢复：`desktop/startup-restore.cjs`；恢复前只用 `describeLayout`（不建目录）。
+- RV06 停止/释放显存：api.cjs `guardedServiceOp`（环境锁→暂停租约→等 starting→锁内核实归属→后端 /queue 中其他来源任务）；外部实例释放显存需 `{confirmExternal:true}`；退出时有其他来源任务或无法确认则不停止。
+- RV07/RV14：task-service `checkFinalPrompt` 对全部覆盖后的最终 prompt 校验；批量整组先校验，任一无效零入队；快照 form.values 为最终值。`queue.maxBatch` 是唯一上限来源（预览、planBatch、整组检查、批量弹窗）。
+- RV08 快捷使用：不传 references（统一入口按标签关系解析并检查缺失）；确认返回 tabId/revision，运行带 expectedRevision。
+- RV09 模板目录：固定为数据目录 templates，设置项只读显示；`paths.templates` 非空时给警告并忽略。
+- RV10 Worker 临时文件：worker-pool `TEMP_PLAN` 由主进程分配临时名并写 `worker-temps.json`；worker 真实退出后清理；启动时 `configureShared` 只清理登记路径；关闭中/后 `sharedPool()` 返回已关闭的池（CLOSED），`reopenShared()` 才重建。
+- RV11/RV12 配色：新增 `--nav-active-fg`、`--accent-fill`；NASA 组件统一使用 `--nasa-*` token，深/浅成对；NASA 浅色主按钮 #b84400。
+- RV13 设置草稿：shell.js `settingsDraft` + `restoreDraft`；外观由 `saveAppearance` 只更新选中卡，失败恢复、按最新操作收敛；凭据区 `renderCredentials` 单独刷新。
+- RV15 截图：`node tools/ui-shots.mjs`（需 `npm i --no-save puppeteer-core` 与 Chrome），固定数据 `tools/ui-shots/fixtures.json`，替身 `tools/ui-shots/stub.cjs`；输出 docs/development/ui-shots（40 张：default / light / nasa / nasa-light）与 manifest.json。
+- 浏览器回归 `tests/review-rv13-ui.test.cjs` 需要 puppeteer-core 与 Chrome；Windows CI 未安装，自动跳过（静态对比度检查 review-rv11-12 照常运行）。
+- 仍有限：截图是静态页 + 替身数据，不代表 Electron 真机；NASA 浅色、系统主题切换、Windows 下 worker 句柄释放与外部 ComfyUI 队列判断需真机验收（见 待Codex验收.md “PR11 代码与截图审阅（RV01–RV15）”）。
+
+## 第六轮：PR11 第三轮审阅 C01–C09 — 2026-10-13
 - 审阅原文：docs/development/PR11第三轮代码审阅与最终收尾计划.md（审阅 head f493fce）。状态表：`node tools/pr11.cjs render`（Grovebot开发进度.md 的 C01–C09 区块）。
 - **范围冻结**：本轮之后不再加功能；剩下的只有 Codex 在 Windows 上的人工验收与验收中发现的问题修复。
 - C01 图密钥：`shared/graph-storage-policy.cjs`（secureForStorage / stripForExport / resolveInMemory / scan）。草稿自动保存、关闭归档、模板版本、模板/诊断/工作流导出都经过该策略；启动迁移 `desktop/maintenance/secret-migration.cjs` 处理历史数据并写 `migrations/secret-scan.json`；应用备份前先迁移，仍有未处理项则阻止备份。

@@ -109,6 +109,26 @@
 | C08 | P1 | WorkerPool 关闭收尾；任务输出关联/收藏复制走 worker | 程序完成 | feab742 | worker-pool.test C08 ×3；assets.test C08 | 主进程只写数据库 |
 | C09 | P2 | 交接/验收文档与 CI 记录收口 | 程序完成 | 见交接文档 | — | 范围在本轮后冻结 |
 
+### 代码与截图审阅（PR11代码与截图审阅-d5cca17.md，审阅 head d5cca17；人工验收栏由验收方填写）
+
+| 编号 | 级别 | 名称 | 状态 | 提交 | 回归检查 | 说明 | 人工验收 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| RV01 | P1 | 脱敏草稿与索引哈希不一致 | 程序完成 | 0766956 | review-rv01.test：保存→重启读取、旧索引受控修复、篡改仍拒绝 | graphHash 对落盘（已脱敏）图计算；旧索引仅当“解析占位符后哈希等于旧值”时修复 |  |
+| RV02 | P1 | forceInput 计入 widget 序列 | 程序完成 | 0766956 | review-rv02.test：forceInput/连线输入、数量不一致、导出 uncertain | forceInput/rawLink 不占 widget 位；映射不确定时不按猜测清空，导出提示 uncertain；object_info 落盘缓存并在连接后预热 |  |
+| RV03 | P1 | 任务 UI 快照残留节点密钥 | 程序完成 | f926325 | review-rv03.test：UI 图/表单/参数脱敏、批量与重试、旧快照迁移 | 仓库创建时统一脱敏（snapshot-secrets）；旧快照迁移到新内容地址并事务更新引用；凭据不可用时记录待迁移，备份被阻止 |  |
+| RV04 | P1 | HTTP 探测失败当作已停止 | 程序完成 | f85b55b | maint-service.test：unknown 阻止维护/移动/恢复；HTTP 不通的本应用实例先停止 | 三态 confirmed-stopped/running/unknown；端口检查可注入 |  |
+| RV05 | P1 | 恢复前 ensureLayout 重建目标目录 | 程序完成 | 0d0faf8 | review-rv05.test：各步中断后启动继续恢复；异常进入恢复模式 | describeLayout 纯函数；startup-restore 只建 migrations/logs |  |
+| RV06 | P1 | 停止/释放显存绕过 starting 与外部任务保护 | 程序完成 | 085abfa | review-rv06.test：starting 等待后复核、只有外部任务、队列无法确认、等待期间身份变化、环境锁占用、外部释放需确认、退出不停止、租约与锁释放 | guardedServiceOp：环境锁→暂停提交→等待 starting→锁内核实归属→后端队列核对 |  |
+| RV07 | P2 | 覆盖后未校验最终表单值 | 程序完成 | be63709 | review-rv07.test：values 20→99、批量 [20,99] 零入队、params 覆盖、表单值与批量冲突、枚举不存在值、快照记录最终值 | 对最终 prompt 校验表单约束 + 被覆盖输入的节点枚举/范围；快照 form.values 为实际提交值，requestedValues 为表单原值 |  |
+| RV08 | P2 | 快捷使用强制传空 references | 程序完成 | 33216c8 | maint-service.test RV08、review-rv07.test RV08：不传 references、确认期间改图拒绝、参考图缺失不入队 | 确认时返回 tabId/revision，运行必须带 expectedRevision |  |
+| RV09 | P2 | 模板目录配置未接线 | 程序完成 | 51b18b1 | review-rv09.test：派生路径=仓库路径、旧配置警告、设置页只读 | 选择“禁用并说明固定位置”方案：模板固定在数据目录 templates；暂不支持迁移到其他目录 |  |
+| RV10 | P2 | Worker 临时文件未登记 | 程序完成 | a01cd44 | review-rv10.test：真实 copyFile 取消/close/崩溃、图包临时名、启动只清理登记路径、关闭期间不新建共享池 | 主进程分配临时名并写 worker-temps.json；worker 真实退出后清理 |  |
+| RV11 | P2 | 浅色导航选中项对比度 1.25:1 | 程序完成 | c204b75 | review-rv11-12.test（静态 token 对比度）+ review-rv13-ui.test（浏览器实测） | 导航/模式/主题卡独立前景 token；浅色实色按钮底改为 --accent-fill，白字 ≥ 4.5:1 |  |
+| RV12 | P2 | NASA + 浅色组件配色不完整 | 程序完成 | c204b75 | review-rv11-12.test：NASA 浅色弹窗/任务/空状态/表单对比度 ≥ 4.5、token 成对；浏览器实测 | 补全 NASA 浅色 token（含 body/aside/page-head 渐变），组件统一走 token |  |
+| RV13 | P2 | 切外观丢失设置草稿 | 程序完成 | ef69e31 | review-rv13-ui.test：多字段编辑→切主题/皮肤→保存、路径选择/凭据、保存失败恢复、快速切换收敛 | 需要 puppeteer-core + Chrome，Windows CI 上跳过（静态部分仍运行） |  |
+| RV14 | P2 | queue.maxBatch 无效 | 程序完成 | be63709 | review-rv07.test RV14：预览/规划/整组检查用配置值，上限 3 与 200 | tasks.preview 返回 maxBatch，批量弹窗与提示同步 |  |
+| RV15 | P3 | 截图数据/时机不一致 | 程序完成 | 41e1972、e1aa3d6 | node tools/ui-shots.mjs 重拍 40 张；manifest.json 记录 HEAD/视口/DPR | tools/ui-shots.mjs + fixtures；主题/皮肤经配置替身驱动；新增 NASA 浅色 10 张 |  |
+
 <!-- /PR11 -->
 
 <!-- TABLE -->
