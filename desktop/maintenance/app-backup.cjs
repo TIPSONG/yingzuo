@@ -116,7 +116,11 @@ function appRecoveryState(layout) {
 function chooseAppRecovery(layout, action) {
   if (!['resume', 'rollback'].includes(action)) throw new AppError(CODES.INVALID_ARGUMENT, '只能选择继续或回退。');
   const f = pendingFile(layout); if (!fs.existsSync(f)) throw new AppError(CODES.NOT_FOUND, '没有未完成的应用数据恢复。');
-  const p = JSON.parse(fs.readFileSync(f, 'utf8'));
+  let p; try { p = JSON.parse(fs.readFileSync(f, 'utf8')); if (!p || typeof p !== 'object') throw new Error('格式无效'); }
+  catch { // C04：标记损坏时从未完成的 journal 重建，不能当成没有恢复
+    const open = new RestoreEngine({journalDir: path.join(layout.migrations, 'app-restore')}).pending().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+    p = open ? {dir: open.backupDir, journalId: open.id, rebuilt: true} : {dir: null, journalId: null, rebuilt: true};
+  }
   if (action === 'rollback' && !p.journalId) { fs.rmSync(f, {force: true}); return {action, note: '恢复尚未改动任何数据，已取消登记。'}; }
   fs.writeFileSync(f, JSON.stringify({...p, action}));
   return {action, note: '请退出并重新打开映作以执行。'};

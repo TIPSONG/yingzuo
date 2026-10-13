@@ -217,3 +217,38 @@ test('D05/PR11-R01：恢复失败时不启动服务、不释放暂停租约，�
   assert.equal(deps.locks.environment.locked, false);
   held.lease(); assert.deepEqual(calls.at(-1), ['resume']);
 });
+
+/* ---------- C04：回退把 carry 搬出的排除内容搬回原路径 ---------- */
+async function carryFixture() {
+  const base = tmp(), env = path.join(base, 'env');
+  fs.mkdirSync(path.join(env, 'models'), {recursive: true}); fs.mkdirSync(path.join(env, 'output'), {recursive: true});
+  fs.writeFileSync(path.join(env, 'main.py'), 'v1'); fs.writeFileSync(path.join(env, 'models', 'm.safetensors'), 'MODEL-BYTES'); fs.writeFileSync(path.join(env, 'output', 'o.png'), 'OUT');
+  const {dir} = await createBackup({backupRoot: path.join(base, 'bk'), sources: [{id: 'env', path: env}], excludeDirs: new Set(['models', 'output']), excludeExt: [], id: 'c'});
+  fs.writeFileSync(path.join(env, 'main.py'), 'v2-broken');
+  return {base, env, dir};
+}
+for (const failAt of ['carry', 'swap', 'verify']) {
+  test(`C04：恢复在 ${failAt} 后失败→回退；被排除的模型/输出在原路径、字节一致`, async () => {
+    const {base, env, dir} = await carryFixture();
+    const eng = new RestoreEngine({journalDir: path.join(base, 'j'), hooks: {afterStep: async (_id, step) => { if (step === failAt) throw new Error(`注入失败@${step}`); }}});
+    const j = await eng.prepare(dir);
+    await assert.rejects(eng.run(j.id), /注入失败/);
+    const r = await eng.rollback(j.id);
+    assert.equal(r.status, 'aborted');
+    assert.equal(fs.readFileSync(path.join(env, 'models', 'm.safetensors'), 'utf8'), 'MODEL-BYTES');
+    assert.equal(fs.readFileSync(path.join(env, 'output', 'o.png'), 'utf8'), 'OUT');
+    assert.equal(fs.readFileSync(path.join(env, 'main.py'), 'utf8'), 'v2-broken', '回到恢复前的现场');
+    // 可重入：再回退一次不出错
+    assert.equal((await eng.rollback(j.id)).status, 'aborted');
+  });
+}
+test('C04：回退时现场同路径已有内容——停止并保留两份', async () => {
+  const {base, env, dir} = await carryFixture();
+  const eng = new RestoreEngine({journalDir: path.join(base, 'j'), hooks: {afterStep: async (_id, step) => { if (step === 'carry') throw new Error('x'); }}});
+  const j = await eng.prepare(dir); await assert.rejects(eng.run(j.id));
+  const scene = eng.load(j.id).items[0].scene;
+  fs.mkdirSync(path.join(scene, 'models'), {recursive: true}); fs.writeFileSync(path.join(scene, 'models', 'm.safetensors'), 'OTHER');
+  await assert.rejects(eng.rollback(j.id), e => e.code === 'CONFLICT');
+  assert.equal(fs.readFileSync(path.join(scene, 'models', 'm.safetensors'), 'utf8'), 'OTHER');
+  assert.ok(fs.readdirSync(base).some(n => n.includes('yz-restore')), 'staged 中的模型仍保留');
+});

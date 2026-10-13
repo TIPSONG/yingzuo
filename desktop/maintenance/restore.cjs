@@ -71,7 +71,7 @@ class RestoreEngine {
         for (const step of STEPS) {
           if (item.steps[step] === 'done') continue;
           item.steps[step] = 'running'; this.save(j);
-          await this[`_${step}`](item, rec, j);
+          this._j = j; await this[`_${step}`](item, rec, j);
           item.steps[step] = 'done'; this.save(j);
           if (this.hooks.afterStep) await this.hooks.afterStep(item.id, step);
         }
@@ -84,19 +84,50 @@ class RestoreEngine {
     }
   }
 
-  /** S06：回退一次未完成的恢复——把已切换的目标移为 .yz-failed-<id>，把保留的现场移回；每步幂等，不删除任何内容。 */
+  /**
+   * S06/C04：回退一次未完成的恢复（可重入，每个动作先看现状再做，不依赖一轮 rename 全部成功）：
+   * 1. 先把 _carry 从现场搬出的排除内容（模型、input/output 等）按 journal 从 staged 或已切换的新 target 搬回现场；
+   *    现场同一路径已有内容（冲突）时停止并提示，不覆盖唯一内容；
+   * 2. 再把已切换的目标移为 .yz-failed-<id>，把现场改回目标（数据库含 -wal/-shm）；原目标本不存在时只把新目标移开。
+   */
   async rollback(id) {
     const j = this.load(id);
     if (j.status === 'done') throw new AppError(CODES.INVALID_STATE, '恢复已完成，不能回退；可另行恢复到更早的备份。');
+    let rec = null; try { rec = JSON.parse(fs.readFileSync(path.join(j.backupDir, 'backup.json'), 'utf8')); } catch { /* 备份不可读时只按 journal 记录搬回 */ }
+    j.status = 'rolling-back'; this.save(j);
+    const freeName = base => { let p = base, n = 1; while (fs.existsSync(p)) p = `${base}-${n++}`; return p; };
     for (const item of [...j.items].reverse()) {
-      const pairs = item.type === 'database' ? ['', '-wal', '-shm'] : [''];
-      for (const suf of pairs) {
-        const target = item.target + suf, scene = item.scene + suf;
-        if (!fs.existsSync(scene)) continue;
-        if (fs.existsSync(target)) fs.renameSync(target, `${target}.yz-failed-${id}`);
-        fs.renameSync(scene, target);
+      if (item.rolledBack) continue;
+      if (item.type === 'source') {
+        const swapped = !fs.existsSync(item.staged) && fs.existsSync(item.scene);
+        const rels = [...new Set([...(item.carried ?? []), ...((rec && this._source(item, rec)?.excluded) ?? [])])];
+        item.carriedBack = item.carriedBack ?? [];
+        for (const rel of rels) {
+          if (item.carriedBack.includes(rel)) continue;
+          const home = path.join(item.scene, rel);
+          const where = [path.join(item.staged, rel), swapped ? path.join(item.target, rel) : null].find(p => p && fs.existsSync(p));
+          if (!where) continue; // 从未搬出（仍在现场）或原本不存在
+          if (fs.existsSync(home)) {
+            j.status = 'interrupted'; j.lastError = {code: CODES.CONFLICT, message: `回退冲突：${home} 与 ${where} 都存在，已停止，两份都保留。`}; this.save(j);
+            throw new AppError(CODES.CONFLICT, j.lastError.message, {details: {home, where}});
+          }
+          fs.mkdirSync(path.dirname(home), {recursive: true}); fs.renameSync(where, home);
+          item.carriedBack.push(rel); this.save(j);
+        }
       }
-      if (fs.existsSync(item.staged)) fs.renameSync(item.staged, `${item.staged}.yz-failed`);
+      const sufs = item.type === 'database' ? ['', '-wal', '-shm'] : [''];
+      const hadScene = sufs.some(suf => fs.existsSync(item.scene + suf));
+      for (const suf of sufs) {
+        const target = item.target + suf, scene = item.scene + suf;
+        if (fs.existsSync(scene)) {
+          if (fs.existsSync(target)) fs.renameSync(target, freeName(`${target}.yz-failed-${id}`));
+          fs.renameSync(scene, target);
+        } else if (!hadScene && item.steps.preserve === 'done' && !(item.preserved ?? []).length && ['running', 'done'].includes(item.steps.swap) && fs.existsSync(target)) {
+          fs.renameSync(target, freeName(`${target}.yz-failed-${id}`)); // 原目标本不存在：只移开新切换进来的内容
+        }
+      }
+      if (fs.existsSync(item.staged)) fs.renameSync(item.staged, freeName(`${item.staged}.yz-failed`));
+      item.rolledBack = true; this.save(j);
     }
     j.status = 'aborted'; j.rolledBackAt = this.now(); this.save(j);
     return j;
@@ -125,7 +156,7 @@ class RestoreEngine {
     item.preserved = item.preserved ?? [];
     for (const t of targets) {
       const sc = t === item.target ? item.scene : item.scene + t.slice(item.target.length);
-      if (fs.existsSync(t) && !fs.existsSync(sc)) { fs.renameSync(t, sc); item.preserved.push(sc); }
+      if (fs.existsSync(t) && !fs.existsSync(sc)) { fs.renameSync(t, sc); item.preserved.push(sc); this.save(this._j); }
     }
   }
 
@@ -136,7 +167,7 @@ class RestoreEngine {
     item.carried = item.carried ?? [];
     for (const rel of s.excluded ?? []) {
       const from = path.join(item.scene, rel), to = path.join(item.staged, rel);
-      if (fs.existsSync(from) && !fs.existsSync(to)) { fs.mkdirSync(path.dirname(to), {recursive: true}); fs.renameSync(from, to); item.carried.push(rel); }
+      if (fs.existsSync(from) && !fs.existsSync(to)) { item.carried.push(rel); this.save(this._j); fs.mkdirSync(path.dirname(to), {recursive: true}); fs.renameSync(from, to); } // C04：写前记录每个 carry
     }
   }
 
