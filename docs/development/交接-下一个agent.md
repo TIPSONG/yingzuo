@@ -192,3 +192,6 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 ##### 第五轮 CI 记录
 - 8654359（及 a11de2c、e6d2d80、ce73b3d、7d6f45e、14ef487、ff3604e）：Windows build 与 Regression 全部成功；打包自检的 worker 步骤（asar 内加载 worker、sharp 缩略图/元数据/复制）已通过。
 - PR #11 描述已更新，仍为草稿。
+
+## 创作页工具条（2026-10-13）
+固定高度工具条导致运行按钮叠 `#status`。已改为自适应网格；见 commit「创作页工具条改为自适应网格」。
