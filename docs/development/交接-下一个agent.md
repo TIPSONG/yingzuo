@@ -113,6 +113,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - `ui.skin`：`default` | `nasa-punk`（叠在明暗之上；`data-skin`）。外观区两行：主题三卡 + 皮肤两卡（默认 / NASA朋克）。
 - NASA 朋克：暗色科技底 + 橙/琥珀/青强调、细网格、等宽提示文字。
 - 无边框：`BrowserWindow({frame:false})`；标题栏最小化 / 最大化·还原 / 关闭；`-webkit-app-region: drag`；preload `windowMinimize|Maximize|Close|IsMaximized` + `onWindowState`。
+- NASA 朋克可读性：底板/面板抬亮；主题·皮肤选中卡改为描边+浅色叠色（禁止实心填充盖住预览与文字）。
 - 截图：`/workspace/yingzuo-ui-shots/nasa-01-home.png`、`nasa-09-settings.png`（含三颗窗口按钮与皮肤卡）。
 - 测试：`npm run check` 339 / 338 通过 / 1 跳过。
 
