@@ -16,11 +16,11 @@ const prompt = () => ({
   4: {class_type: 'CLIPTextEncode', inputs: {text: ['3', 0]}},
   6: {class_type: 'EmptySD3LatentImage', inputs: {width: 512, height: 512, batch_size: 1}},
   7: {class_type: 'KSampler', inputs: {seed: 1, steps: 20, positive: ['4', 0], negative: ['4', 0], latent_image: ['6', 0]}},
-  12: {class_type: 'SaveImage', inputs: {images: ['7', 0]}},
+  12: {class_type: 'SaveImage', inputs: {images: ['7', 0], filename_prefix: 'ComfyUI'}},
 });
 const info = {LMStudioPromptEnhancer: {input: {required: {}}, output: ['STRING']}, CLIPTextEncode: {input: {required: {}}, output: ['C']}, EmptySD3LatentImage: {input: {required: {}}, output: ['L']}, KSampler: {input: {required: {}}, output: ['L']}, SaveImage: {input: {required: {}}, output: [], output_node: true}, PreviewAny: {input: {required: {}}, output: [], output_node: true}};
 
-function setup(t) {
+function setup(t, extra = {}) {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-ts-')); t.after(() => { try { db.close(); } catch { /* 已关闭 */ } fs.rmSync(d, {recursive: true, force: true}); }); // Windows：先关库再删目录
   const layout = ensureLayout(d);
   const db = Database.open(layout.database);
@@ -36,7 +36,8 @@ function setup(t) {
   };
   const editor = {enqueue: f => f(), commands: {compileTab: async id => ({tabId: id ?? 'tab1', title: 'T', revision: 3, uiGraph: {nodes: []}, apiPrompt: prompt()})}};
   const configRepo = {config: {comfy: {url: 'http://127.0.0.1:8188'}, gemma: {contextLength: 8192, maxReferenceImages: 2}}};
-  const svc = createTaskService({db, layout, configRepo, events: new EventBus(), locks: createLocks(), editor, fetchImpl, WebSocketImpl: null});
+  Object.assign(configRepo.config, extra.config ?? {});
+  const svc = createTaskService({db, layout, configRepo, events: new EventBus(), locks: createLocks(), editor, fetchImpl, WebSocketImpl: null, onTerminal: extra.onTerminal});
   svc.queue.pollMs = 1; svc.queue.sleep = () => new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 300 && (svc.queue.pumping || svc.queue.running); i++) await new Promise(r => setTimeout(r, 1)); };
   return {svc, submitted, settle};
@@ -80,4 +81,18 @@ test('S07：退出钩子——暂停后不再提交，等待空闲立即返回',
   await svc.hooks.waitForIdle();
   svc.hooks.resumeSubmissions(); await settle();
   assert.equal(submitted.length, 1);
+});
+
+test('A03 输出前缀进入运行路径；A01 成功终态回调作品关联', async t => {
+  const linked = [];
+  const {svc, submitted, settle} = setup(t, {config: {output: {prefixMode: 'workflow'}}, onTerminal: task => linked.push(task.id)});
+  const task = await svc.methods['tasks.run'](null, {});
+  await settle(); await new Promise(r => setTimeout(r, 5));
+  const save = Object.values(submitted[0].prompt).find(n => n.class_type === 'SaveImage');
+  assert.match(save.inputs.filename_prefix, /^映作\/T_tab1\//);
+  assert.deepEqual(linked, [task.id]);
+  const none = await svc.methods['tasks.run'](null, {prefixMode: 'none'});
+  await settle();
+  assert.ok(none);
+  assert.doesNotMatch(Object.values(submitted[1].prompt).find(n => n.class_type === 'SaveImage').inputs.filename_prefix, /映作/);
 });

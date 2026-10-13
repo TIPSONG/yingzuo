@@ -14,9 +14,10 @@ const GROUPS = {
   services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
   settings: ['get','update','pickPath','setCredential','removeCredential'],
   tasks: ['preview','run','previewBatch','runBatch','enhance','enhanceResult','list','get','cancel','retry','recheck','pause','resume','pickReference'],
-  templates: ['list','get','update','import','importBuiltins','open','saveFromTab','restore','export','formDraft','saveForm','checkMapping','rebind','diagnose','catalog','applyFix','undoFix','exportFixed','importOnline','dependencyPlan','findModelSources','applyDependencyPlan','detectManager'],
+  templates: ['list','get','update','import','importBuiltins','open','saveFromTab','restore','export','formDraft','saveForm','checkMapping','rebind','diagnose','catalog','applyFix','undoFix','exportFixed','importOnline','dependencyPlan','findModelSources','applyDependencyPlan','detectManager','installMissingPlugins'],
   downloads: ['search','detail','version','parseLink','plan','pickDir','add','list','pause','resume','cancel'],
-  maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts','checkUpdates','checkAppRelease','downloadAppRelease','openAppUpdateFolder'],
+  maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts','checkUpdates','checkAppRelease','downloadAppRelease','openAppUpdateFolder','manifest','backups','createBackup','verifyBackup','restoreBackup','pendingRestores','resumeRestore','transactions','pruneBackups','updateComfy','updatePlugin'],
+  resources: ['scan','detail','setNote','hash','references','impact','quickUse','plugins','disablePlugin','enablePlugin','installPlugin','removePlugin','modelRoots','moveModel'],
   assets: ['scan','watch','list','recent','get','thumbnail','linkTask','previewPrefix','openFile','revealFile','openLocation','shareSupport','exportOriginal','exportShare','favorite','unfavorite','favorites','favoriteLayout'],
 };
 let counter = 0;

@@ -31,6 +31,8 @@ function defaults(platform = process.platform) {
     ui: {startPage: 'home'},
     updates: {channel: 'stable', checkFrequency: 'manual', appReleaseRepo: 'TIPSONG/yingzuo'},
     network: {onlineSources: true},
+    output: {prefixMode: 'none'},
+    maintenance: {keepBackups: 5},
   };
 }
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -55,6 +57,8 @@ function validate(config, {exists = p => fs.existsSync(p)} = {}) {
   if (!Array.isArray(config.comfy?.extraArgs) || config.comfy.extraArgs.some(a => typeof a !== 'string' || a.length > 500) || config.comfy.extraArgs.length > 40) add('comfy.extraArgs', '启动参数必须是字符串列表（每项一个参数）。');
   if (!Number.isInteger(config.comfy?.startTimeoutSec) || config.comfy.startTimeoutSec < 10 || config.comfy.startTimeoutSec > 1800) add('comfy.startTimeoutSec', '启动超时应为 10–1800 秒。');
   if (!Number.isInteger(config.downloads?.concurrency) || config.downloads.concurrency < 1 || config.downloads.concurrency > 4) add('downloads.concurrency', '下载并发应为 1–4。');
+  if (!['none', 'date', 'workflow', 'date-workflow'].includes(config.output?.prefixMode ?? 'none')) add('output.prefixMode', '输出前缀模式只能是 none / date / workflow / date-workflow。');
+  if (!Number.isInteger(config.maintenance?.keepBackups ?? 5) || (config.maintenance?.keepBackups ?? 5) < 1 || (config.maintenance?.keepBackups ?? 5) > 100) add('maintenance.keepBackups', '保留备份数应为 1–100。');
   if (!Number.isInteger(config.queue?.maxBatch) || config.queue.maxBatch < 1 || config.queue.maxBatch > 1000) add('queue.maxBatch', '批量上限应为 1–1000。');
   if (config.gemma?.contextLength !== 8192) add('gemma.contextLength', 'Gemma 上下文须保持 8192（与现有补丁一致）。', 'warning');
   for (const key of ['templates', 'favorites', 'downloads', 'backups']) { const v = config.paths?.[key]; if (v && !path.isAbsolute(v) && !/^[a-zA-Z]:[\\/]/.test(v)) add(`paths.${key}`, '必须是绝对路径。'); }

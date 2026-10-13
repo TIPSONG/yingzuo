@@ -19,6 +19,7 @@ const {createApi} = require('./services/api.cjs');
 const {Database} = require('./repositories/database.cjs');
 const {ComfyHttpClient} = require('./adapters/comfy-http.cjs');
 const {createTaskService} = require('./services/task-service.cjs');
+const {createMaintenanceService} = require('./services/maintenance-service.cjs');
 const {createTemplateService} = require('./services/template-service.cjs');
 const {createDiagnosticsService} = require('./services/diagnostics-service.cjs');
 const {createOnlineService} = require('./services/online/online-service.cjs');
@@ -79,11 +80,11 @@ const editor = createEditorSession({
   getWindow: () => window, timers: {setTimeout, clearTimeout}, fetch, AbortSignal,
 });
 // ---------- 任务（Q01–Q10） ----------
-let taskService = null, templateService = null, onlineService = null;
+let taskService = null, templateService = null, onlineService = null, appDb = null;
 const credentials = new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
 try {
-  const db = Database.open(layout.database);
-  taskService = createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window});
+  const db = appDb = Database.open(layout.database);
+  taskService = createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window, onTerminal: task => api.methods['assets.linkTask'](task.id)});
   templateService = createTemplateService({db, layout, editor, taskService, dialog, getWindow: () => window, builtins: templates});
   onlineService = createOnlineService({db, configRepo, layout, credentials, fetchImpl: fetch, events, logger, templateRepo: templateService.repo, dialog, getWindow: () => window});
 } catch (error) { logger.error('任务数据库不可用，运行功能停用', {error: error.message}); }
@@ -91,6 +92,7 @@ const diagnostics = createDiagnosticsService({editor, client: () => new ComfyHtt
 const dependencies = onlineService ? createDependencyService({editor, diagnostics, online: onlineService, configRepo, layout}) : null;
 const updates = onlineService ? createUpdateService({app, configRepo, layout, fetchImpl: fetch, online: onlineService, electron}) : null;
 const api = createApi({taskService, credentials, extraMethods: {...updates?.methods, ...templateService?.methods, ...diagnostics.methods, ...onlineService?.methods, ...dependencies?.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
+if (appDb) { const m = createMaintenanceService({db: appDb, layout, configRepo, locks, events, logger, comfy: api.comfy, taskService, templateRepo: templateService?.repo, editor, fetchImpl: fetch}); Object.assign(api.methods, m.methods); }
 
 function assertSender(event) {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== WORKBENCH) throw new Error('拒绝未知页面请求。');

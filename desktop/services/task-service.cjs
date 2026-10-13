@@ -9,6 +9,7 @@ const {QueueService, expandBatch} = require('./queue-service.cjs');
 const {ComfyHttpClient, ComfySocket} = require('../adapters/comfy-http.cjs');
 const {checkPrompt} = require('../../shared/prompt-check.cjs');
 const B = require('../../shared/bindings.cjs');
+const {applyOutputPrefix} = require('./output-prefix.cjs');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const MIME = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'};
@@ -48,7 +49,7 @@ async function uploadReferences(prompt, references, client, refStore) {
   return next;
 }
 
-function createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow}) {
+function createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow, onTerminal = null}) {
   const tasks = new TaskRepository(db, new SnapshotStore(layout['task-snapshots']), {events});
   const refs = new ReferenceStore(layout.references);
   let clientCache = null;
@@ -66,7 +67,16 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
   const queue = new QueueService({
     tasks, client, gpuLock: locks.gpu, events, logger, clientId,
     prepare: async (_task, snapshot, c) => uploadReferences(snapshot.apiPrompt, snapshot.references, c, refs),
+    // A01/A02：终态时把任务输出关联进作品库（失败只记日志，不影响任务状态）
+    onTerminal: task => { if (!onTerminal || task.state !== 'succeeded') return; Promise.resolve().then(() => onTerminal(task)).catch(e => logger?.warn('作品关联失败', {id: task.id, error: e.message})); },
   });
+  /** A03：按设置（或单次覆盖）调整已登记保存节点的输出前缀；返回调整后的 prompt 与改动说明。 */
+  function withPrefix(prompt, c, mode) {
+    const m = mode ?? configRepo.config.output?.prefixMode ?? 'none';
+    if (m === 'none') return {prompt, prefix: null};
+    const r = applyOutputPrefix(prompt, {mode: m, workflowId: c.tabId, workflowName: c.title});
+    return {prompt: r.prompt, prefix: {dir: r.dir, changed: r.changed, untouched: r.untouched}};
+  }
   let socket = null;
   function connectSocket() {
     socket?.close();
@@ -94,7 +104,8 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       const enh = c.bindings.enhancer;
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) prompt = B.adoptEnhanced(prompt, enh, options.adoptedText);
-      return queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, prompt, {references: options.references, params: options.values})});
+      const p = withPrefix(prompt, c, options.prefixMode);
+      return queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
@@ -107,8 +118,8 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       const created = [];
       for (const item of items) {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
-        const prompt = B.applyValues(c.apiPrompt, c.bindings, values);
-        created.push(queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, groupId, snapshot: snapshotFor(c, prompt, {references: spec.references, params: values})}));
+        const p = withPrefix(B.applyValues(c.apiPrompt, c.bindings, values), c, spec.prefixMode);
+        created.push(queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: spec.references, params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})}));
       }
       return {groupId, tasks: created};
     },
