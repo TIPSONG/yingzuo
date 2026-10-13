@@ -12,6 +12,21 @@ async function runSmoke(target, {app}) {
   await step('versions', () => ({electron: process.versions.electron, node: process.versions.node, modules: process.versions.modules, app: app.getVersion()}));
   await step('sqlite', () => { const {Database} = require('./repositories/database.cjs'); const db = Database.open(path.join(tmp, 'app.db')); try { return {driver: db.driver.name ?? 'unknown', tables: db.all("SELECT name FROM sqlite_master WHERE type='table'").length}; } finally { db.close(); } });
   await step('sharp', async () => { const sharp = require('sharp'); const buf = await sharp({create: {width: 4, height: 4, channels: 3, background: '#808080'}}).webp().toBuffer(); return {bytes: buf.length}; });
+  // S09：打包后 worker 线程能加载、在 worker 内由 sharp 生成缩略图、读取元数据、复制与哈希
+  await step('worker', async () => {
+    const {WorkerPool} = require('./core/worker-pool.cjs');
+    const sharp = require('sharp'); const png = path.join(tmp, 'w.png');
+    await sharp({create: {width: 8, height: 8, channels: 3, background: '#406080'}}).png().toFile(png);
+    const pool = new WorkerPool({size: 1});
+    try {
+      const h = await pool.run('sha256', {file: png});
+      const m = await pool.run('imageMeta', {file: png});
+      const t = await pool.run('thumbnail', {src: png, tmp: path.join(tmp, 't.webp'), size: 4});
+      const c = await pool.run('copyFile', {src: png, dest: path.join(tmp, 'c.png')});
+      if (!m.metadata?.dimensions?.width) throw new Error('worker 未读出尺寸');
+      return {sha256: h.sha256.slice(0, 12), format: m.format, thumbBytes: t.bytes, copied: c.bytes};
+    } finally { await pool.close(); }
+  });
   await step('modules', () => { for (const m of ['./services/api.cjs', './services/task-service.cjs', './services/maintenance-service.cjs', './services/assets-api.cjs', './services/online/online-service.cjs']) require(m); return 'ok'; });
   await step('workbench', () => { for (const f of ['workbench.html', 'workbench.js', 'preload.cjs']) if (!fs.existsSync(path.join(__dirname, f))) throw new Error(`缺少 ${f}`); return 'ok'; });
   try { fs.rmSync(tmp, {recursive: true, force: true}); } catch { /* 忽略 */ }

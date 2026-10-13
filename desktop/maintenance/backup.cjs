@@ -51,7 +51,7 @@ function backupSqlite(src, dest, {driver} = {}) {
  * @param {{id:string,path:string,kind?:string}[]} o.sources  要备份的目录或文件（原绝对路径）
  * @param {{id:string,path:string}[]} [o.databases] SQLite 数据库
  */
-async function createBackup({backupRoot, manifest, sources = [], databases = [], id, excludeDirs = DEFAULT_EXCLUDE_DIRS, excludeExt = WEIGHT_EXTENSIONS, excludePaths = null, protectedPaths = [], databasesFirst = false, postCheck = null, driver, token, hashImpl = sha256File, now = () => new Date().toISOString()}) {
+async function createBackup({backupRoot, manifest, sources = [], databases = [], id, excludeDirs = DEFAULT_EXCLUDE_DIRS, excludeExt = WEIGHT_EXTENSIONS, excludePaths = null, protectedPaths = [], databasesFirst = false, postCheck = null, copyImpl = null, bigFileBytes = 16 << 20, driver, token, hashImpl = sha256File, now = () => new Date().toISOString()}) {
   if (!sources.length && !databases.length) throw new AppError(CODES.INVALID_ARGUMENT, '备份内容为空。');
   // S06：备份根、journal、staging、回收区等不能位于被备份来源之内（也不能反过来包含来源）
   const inside = (a, b) => { const rel = path.relative(path.resolve(b), path.resolve(a)); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
@@ -94,7 +94,8 @@ async function createBackup({backupRoot, manifest, sources = [], databases = [],
         else if (e.type === 'excluded') entry.excluded.push(e.rel);
         else {
           const src = path.join(abs, e.rel), dst = path.join(destBase, e.rel);
-          fs.copyFileSync(src, dst);
+          // S09：大文件交给 worker 流式复制（不阻塞主进程）；小文件直接复制避免频繁启动 worker
+          if (copyImpl && fs.statSync(src).size >= bigFileBytes) await copyImpl(src, dst); else fs.copyFileSync(src, dst);
           const sha = await hashImpl(dst), size = fs.statSync(dst).size;
           entry.files.push({rel: e.rel, size, sha256: sha}); entry.bytes += size;
         }

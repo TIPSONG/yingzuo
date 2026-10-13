@@ -37,5 +37,9 @@ class WorkerPool {
   }
   async close() { this.waiting.splice(0).forEach(j => j.reject(cancelled())); await Promise.all([...this.active].map(w => w.terminate())); this.active.clear(); }
 }
+let shared = null;
+/** S09：全应用共享一个池（并发上限 2），退出时 closeShared() 终止全部 worker。 */
+const sharedPool = () => (shared ??= new WorkerPool({size: 2}));
+async function closeShared() { const p = shared; shared = null; if (p) await p.close(); }
 const cancelled = () => Object.assign(new Error('已取消'), {code: 'CANCELLED'});
-module.exports = {WorkerPool, WORKER};
+module.exports = {WorkerPool, WORKER, sharedPool, closeShared};

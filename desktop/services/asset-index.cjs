@@ -17,7 +17,8 @@ const tick = () => new Promise(r => setImmediate(r));
 
 class AssetIndex {
   /** roots: () => [{id, path}]；sharp 可注入（测试或缺少原生模块时为 null，缩略图返回 UNSUPPORTED）。 */
-  constructor({db, roots, thumbsDir, now = () => new Date().toISOString(), sharp, batch = 100, platform = process.platform}) {
+  constructor({db, roots, thumbsDir, now = () => new Date().toISOString(), sharp, batch = 100, platform = process.platform, pool = null, maxReadBytes = 200 << 20}) {
+    this.pool = pool; this.maxReadBytes = maxReadBytes; this.thumbJobs = new Map();
     this.db = db; this.rootsFn = typeof roots === 'function' ? roots : () => roots; this.thumbsDir = thumbsDir;
     this.now = now; this.batch = batch; this.platform = platform; this.watchers = new Map(); this.scanning = null;
     if (sharp === undefined) { try { this.sharp = require('sharp'); } catch { this.sharp = null; } } else this.sharp = sharp;
@@ -25,24 +26,45 @@ class AssetIndex {
   roots() { return this.rootsFn().filter(r => r && r.path && path.isAbsolute(r.path)); }
   rootFor(file) { return this.roots().find(r => isInside(r.path, file, this.platform)) ?? null; }
 
-  /** 读取单个文件并写入索引（大小与 mtime 未变时跳过）。返回记录或 null。 */
-  indexFile(file, {rootId, taskId = null, source = 'scan', extra = null, force = false} = {}) {
+  /** 读取单个文件并写入索引（大小与 mtime 未变时跳过）。返回记录或 null。同步版本只用于单个文件（任务输出关联）。 */
+  indexFile(file, opts = {}) {
+    const pre = this._pre(file, opts); if (!pre || pre.done) return pre?.row ?? null;
+    return this._store(pre, opts, pre.kind === 'image' ? this._metaSync(file) : {format: pre.format, metadata: {}});
+  }
+  /** S09：扫描/监视用的异步版本——有 WorkerPool 时元数据在 worker 中读取。 */
+  async indexFileAsync(file, opts = {}) {
+    const pre = this._pre(file, opts); if (!pre || pre.done) return pre?.row ?? null;
+    let meta = {format: pre.format, metadata: {}};
+    if (pre.kind === 'image') {
+      if (this.pool) { try { meta = await this.pool.run('imageMeta', {file, maxBytes: this.maxReadBytes}, {signal: opts.signal}); } catch (e) { if (e.code === 'CANCELLED') throw e; meta = {format: pre.format, metadata: {readError: e.message}}; } }
+      else meta = this._metaSync(file);
+      // 读取期间文件变化：以最新 stat 为准，下次扫描再读
+      try { const st = fs.statSync(file); if (st.size !== pre.st.size || st.mtimeMs !== pre.st.mtimeMs) return null; } catch { this.markMissing(file); return null; }
+    }
+    return this._store(pre, opts, meta);
+  }
+  _pre(file, {taskId = null, extra = null, force = false} = {}) {
     const ext = path.extname(file).toLowerCase(), kind = kindOf(ext);
     if (!kind) return null;
     let st;
     try { st = fs.statSync(file); } catch { this.markMissing(file); return null; }
     if (!st.isFile()) return null;
-    const key = canonical(file, this.platform), id = idFor(file);
+    const id = idFor(file);
     const existing = this.db.get('SELECT * FROM assets WHERE id = ?', id);
-    if (existing && !force && existing.file_size === st.size && existing.mtime === st.mtimeMs && !existing.missing && !taskId && !extra) return existing;
-    let format = ext.slice(1).replace('jpg', 'jpeg'), metadata = {};
-    if (kind === 'image') {
-      try {
-        const fd = fs.openSync(file, 'r');
-        try { const buf = fs.readFileSync(fd); format = detectFormat(buf); metadata.generation = readGenerationInfo(buf); metadata.dimensions = imageSize(buf); }
-        finally { fs.closeSync(fd); }
-      } catch (e) { metadata.readError = e.message; }
-    }
+    if (existing && !force && existing.file_size === st.size && existing.mtime === st.mtimeMs && !existing.missing && !taskId && !extra) return {done: true, row: existing};
+    return {file, ext, kind, st, id, existing, format: ext.slice(1).replace('jpg', 'jpeg')};
+  }
+  _metaSync(file) {
+    try {
+      const size = fs.statSync(file).size;
+      if (size > this.maxReadBytes) return {format: null, metadata: {readError: `图片 ${size} 字节，超过读取上限。`}};
+      const buf = fs.readFileSync(file);
+      return {format: detectFormat(buf), metadata: {generation: readGenerationInfo(buf), dimensions: imageSize(buf)}};
+    } catch (e) { return {format: null, metadata: {readError: e.message}}; }
+  }
+  _store({file, st, id, existing, kind, format: fallback}, {rootId, taskId = null, source = 'scan', extra = null} = {}, meta) {
+    const key = canonical(file, this.platform);
+    const format = meta.format ?? fallback, metadata = {...meta.metadata};
     const prev = existing ? JSON.parse(existing.metadata || '{}') : {};
     if (prev.task) metadata.task = prev.task;
     if (extra) Object.assign(metadata, extra);
@@ -78,7 +100,7 @@ class AssetIndex {
               if (!ent.isFile() || !kindOf(path.extname(ent.name).toLowerCase())) continue;
               seen.add(idFor(full)); stats.seen++;
               const before = this.db.get('SELECT indexed_at FROM assets WHERE id = ?', idFor(full))?.indexed_at;
-              const rec = this.indexFile(full, {rootId: root.id});
+              const rec = await this.indexFileAsync(full, {rootId: root.id, signal});
               if (rec && rec.indexed_at !== before) stats.indexed++;
               if (++n % this.batch === 0) { onProgress?.({...stats}); await tick(); }
             }
@@ -100,7 +122,7 @@ class AssetIndex {
       if (!fs.existsSync(root.path)) continue;
       const pending = new Set();
       let timer = null;
-      const flush = () => { timer = null; const files = [...pending]; pending.clear(); for (const f of files) { try { fs.existsSync(f) ? this.indexFile(f, {rootId: root.id}) : this.markMissing(f); } catch { /* 下次扫描再处理 */ } } onChange?.({root: root.id, files}); };
+      const flush = async () => { timer = null; const files = [...pending]; pending.clear(); for (const f of files) { try { if (fs.existsSync(f)) await this.indexFileAsync(f, {rootId: root.id}); else this.markMissing(f); } catch { /* 下次扫描再处理 */ } } onChange?.({root: root.id, files}); };
       try {
         const w = fs.watch(root.path, {recursive: true}, (_event, name) => { if (!name) return; pending.add(path.join(root.path, String(name))); timer ??= setTimeout(flush, debounceMs); });
         w.on('error', () => {});
@@ -146,22 +168,34 @@ class AssetIndex {
     if (r.missing) missing.push('file');
     return {...this.summary(r), task, taskOutput: m.task ?? null, generation: {source: g.source ?? null, prompts: g.prompts ?? [], seed: g.seed ?? null, samplers: g.samplers ?? [], parameters: g.parameters ?? null, checkpoints: g.checkpoints ?? [], hasWorkflow: !!g.hasWorkflow}, missingFields: missing, readError: m.readError ?? null};
   }
-  /** 缩略图缓存：键 = 路径 + mtime + 大小 + 尺寸；源文件变化后自动失效。 */
-  async thumbnail(id, {size = 256} = {}) {
+  /** 缩略图缓存：键 = 路径 + mtime + 大小 + 尺寸；源文件变化后自动失效。
+   *  S09：有 WorkerPool 时在 worker 中由 sharp 生成；同一键并发请求去重；临时文件写完再原子改名；可用 signal 取消。 */
+  async thumbnail(id, {size = 256, signal = null} = {}) {
     size = [128, 256, 512, 1024].includes(size) ? size : 256;
     const r = this.db.get('SELECT * FROM assets WHERE id = ?', id);
     if (!r) throw new AppError(CODES.NOT_FOUND, '作品不在索引中。');
     if (r.kind !== 'image') throw new AppError(CODES.UNSUPPORTED, '该类型没有缩略图。');
-    if (!this.sharp) throw new AppError(CODES.UNSUPPORTED, '缩略图组件不可用（sharp 未加载）。');
+    if (!this.pool && !this.sharp) throw new AppError(CODES.UNSUPPORTED, '缩略图组件不可用（sharp 未加载）。');
     const key = crypto.createHash('sha1').update(`${r.canonical_path}|${r.mtime}|${r.file_size}|${size}`).digest('hex');
     const target = path.join(this.thumbsDir, key.slice(0, 2), `${key}.webp`);
     if (fs.existsSync(target)) return {path: target, cached: true};
-    if (!fs.existsSync(r.canonical_path)) { this.db.run('UPDATE assets SET missing = 1 WHERE id = ?', id); throw new AppError(CODES.NOT_FOUND, `原图已不存在：${r.canonical_path}`); }
-    fs.mkdirSync(path.dirname(target), {recursive: true});
-    const tmp = `${target}.${process.pid}.tmp`;
-    await this.sharp(r.canonical_path, {limitInputPixels: 268402689, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true}).webp({quality: 80}).toFile(tmp);
-    fs.renameSync(tmp, target);
-    return {path: target, cached: false};
+    if (this.thumbJobs.has(key)) return this.thumbJobs.get(key);
+    const job = (async () => {
+      if (!fs.existsSync(r.canonical_path)) { this.db.run('UPDATE assets SET missing = 1 WHERE id = ?', id); throw new AppError(CODES.NOT_FOUND, `原图已不存在：${r.canonical_path}`); }
+      fs.mkdirSync(path.dirname(target), {recursive: true});
+      const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+      try {
+        if (this.pool) await this.pool.run('thumbnail', {src: r.canonical_path, tmp, size}, {signal});
+        else await this.sharp(r.canonical_path, {limitInputPixels: 268402689, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true}).webp({quality: 80}).toFile(tmp);
+        // 源在生成期间变化：丢弃结果（键含 mtime/大小，下次按新键生成）
+        const st = fs.statSync(r.canonical_path);
+        if (st.size !== r.file_size || st.mtimeMs !== r.mtime) { fs.rmSync(tmp, {force: true}); throw new AppError(CODES.CONFLICT, '原图在生成缩略图期间已改变，请重试。'); }
+        fs.renameSync(tmp, target);
+        return {path: target, cached: false};
+      } catch (e) { fs.rmSync(tmp, {force: true}); if (e.code === 'UNSUPPORTED') throw new AppError(CODES.UNSUPPORTED, e.message); throw e; }
+    })().finally(() => this.thumbJobs.delete(key));
+    this.thumbJobs.set(key, job);
+    return job;
   }
 
   /** A02：把任务 history 输出解析为真实文件并关联。不能确认合法根目录时返回 unresolved 及原因。 */

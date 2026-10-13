@@ -205,5 +205,6 @@ else {
     }
   }).catch(error=>{dialog.showErrorBox('映作启动失败',error.message);app.quit();});
   app.on('before-quit', event => { if (!explicitQuit) { event.preventDefault(); requestQuit(); } });
+  app.on('will-quit', () => { require('./core/worker-pool.cjs').closeShared().catch(() => {}); }); /* S09：退出时终止全部 worker */
   app.on('window-all-closed',()=>{ if (explicitQuit) app.quit(); });
 }

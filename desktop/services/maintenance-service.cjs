@@ -1,6 +1,6 @@
 'use strict';
 const {TrashStore} = require('../maintenance/trash-store.cjs');
-const {WorkerPool} = require('../core/worker-pool.cjs');
+const {sharedPool} = require('../core/worker-pool.cjs');
 const appBackup = require('../maintenance/app-backup.cjs');
 // 接入 maint 分支模块：maintenance.*（U01–U07）与 resources.*（R01–R08）。
 // 所有改动环境的操作都走 MaintenanceTransaction（环境锁 createLocks().environment、暂停队列并等待空闲、
@@ -122,7 +122,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       startService: async () => { await comfy.ensureRunning(configRepo.config); },
       queue: taskService ? {pauseSubmissions: r => taskService.hooks.pauseSubmissions(r), waitForIdle: o => taskService.hooks.waitForIdle(o)} : null,
       onHold: h => holdAfterFailure({...h, backupDir: txBackupDir, roots: plan.roots ?? []}),
-      backup: async p => { const r = await createBackup({...envBackupScope(), backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile}); txBackupDir = r.dir; return {dir: r.dir}; },
+      backup: async p => { const r = await createBackup({...envBackupScope(), backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile, copyImpl: (src, dst) => pool.run('copyFile', {src, dest: dst, excl: false})}); txBackupDir = r.dir; return {dir: r.dir}; },
       restore: async dir => { const j = await restore.prepare(dir); return restore.run(j.id); },
       onEvent: e => { journal.push(e); record(id, {phase: ['plan', 'disk', 'services', 'lock', 'pause', 'stop'].includes(e.phase) ? 'plan' : e.phase === 'backup' ? 'backup' : e.phase === 'staging' ? 'staging' : e.phase === 'apply' ? 'apply' : e.phase === 'check' ? 'healthcheck' : e.phase === 'done' ? 'done' : e.phase === 'restore' ? 'restore' : e.phase === 'restore-check' ? (e.state === 'done' ? 'restored' : 'failed') : 'failed', journal}); events.emit('maintenance.progress', id, e); },
     });
@@ -209,7 +209,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     } finally { lease?.(); release(); }
   }
   // R17：大文件 sha256 在 worker 中计算，不阻塞主进程
-  const pool = new WorkerPool({size: 2});
+  const pool = sharedPool();
   const hashFile = async p => (await pool.run('sha256', {file: p})).sha256;
   const trashProtected = e => (restore.pending().some(j => path.resolve(j.backupDir) === path.resolve(e.stored)) ? '未完成的恢复正在使用' : null);
   /* ---------- U07：备份保留 ---------- */
@@ -317,7 +317,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
         const srcHash = await hashFile(it.path);
         fs.writeFileSync(journal, JSON.stringify({src: it.path, dest, tmp, sha256: srcHash, at: new Date().toISOString()}));
         try {
-          fs.copyFileSync(it.path, tmp, fs.constants.COPYFILE_EXCL);
+          await pool.run('copyFile', {src: it.path, dest: tmp, excl: true}); // S09：大文件复制在 worker 中流式进行
           if (await hashFile(tmp) !== srcHash) throw new AppError(CODES.CORRUPT_DATA, '复制后校验不一致，已放弃移动，原文件未动。');
           fs.renameSync(tmp, dest);
         } catch (e) { fs.rmSync(tmp, {force: true}); fs.rmSync(journal, {force: true}); throw e; }
