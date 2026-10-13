@@ -24,7 +24,7 @@ function createAssetsMethods({electron, layout, configRepo, db: givenDb = null, 
   const locations = () => { const d = derived(); return {output: d.output, input: d.input, favorites: d.favorites, downloads: d.downloads, backups: d.backups, logs: layout.logs}; };
   let index = null, board = null;
   const idx = () => (index ??= new AssetIndex({db: getDb(), roots: indexRoots, thumbsDir: layout.thumbnails, pool: sharedPool()}));
-  const fav = () => (board ??= new FavoritesBoard({db: getDb(), favoritesDir: derived().favorites || layout.favorites, trashDir: layout.trash, trashStore: new TrashStore({trashDir: layout.trash})}));
+  const fav = () => (board ??= new FavoritesBoard({db: getDb(), favoritesDir: derived().favorites || layout.favorites, trashDir: layout.trash, trashStore: new TrashStore({trashDir: layout.trash}), pool: sharedPool()})); // C08：收藏复制与校验在 worker 中
   const files = new AssetFiles({shell: electron.shell, allowedRoots: () => [...Object.values(outputRoots()), ...Object.values(locations()), layout.thumbnails].filter(Boolean)});
   const pathOf = id => { const a = idx().get(id); if (a.missing) throw new AppError(CODES.NOT_FOUND, `原图已不存在：${a.path}`, {details: {path: a.path}}); return a.path; };
   async function pickDir(title) {
@@ -39,10 +39,10 @@ function createAssetsMethods({electron, layout, configRepo, db: givenDb = null, 
     'assets.recent': (limit = 24) => idx().recent(limit),
     'assets.get': id => idx().get(id),
     'assets.thumbnail': async (id, opts = {}) => { const t = await idx().thumbnail(id, opts); return {...t, dataUrl: `data:image/webp;base64,${fs.readFileSync(t.path).toString('base64')}`}; },
-    'assets.linkTask': taskId => {
+    'assets.linkTask': async taskId => {
       const row = getDb().get('SELECT id, outputs FROM tasks WHERE id = ?', taskId);
       if (!row) throw new AppError(CODES.NOT_FOUND, '任务不存在。');
-      return idx().linkTaskOutputs({id: row.id, outputs: JSON.parse(row.outputs || '[]')}, {outputRoots: outputRoots()});
+      return idx().linkTaskOutputsAsync({id: row.id, outputs: JSON.parse(row.outputs || '[]')}, {outputRoots: outputRoots()}); // C08：元数据在 worker 中读取
     },
     'assets.previewPrefix': (prompt, opts = {}) => applyOutputPrefix(prompt, opts),
     'assets.openFile': id => files.openFile(pathOf(id)),

@@ -10,8 +10,8 @@ const {detectFormat} = require('../core/image-meta.cjs');
 const {imageSize, idFor} = require('./asset-index.cjs');
 
 class FavoritesBoard {
-  constructor({db, favoritesDir, trashDir, trashStore = null, now = () => new Date().toISOString()}) {
-    this.db = db; this.dir = favoritesDir; this.trash = trashDir; this.trashStore = trashStore; this.now = now;
+  constructor({db, favoritesDir, trashDir, trashStore = null, pool = null, now = () => new Date().toISOString()}) {
+    this.db = db; this.dir = favoritesDir; this.trash = trashDir; this.trashStore = trashStore; this.pool = pool; this.now = now;
   }
   async add(sourcePath, {assetId = null} = {}) {
     if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) throw new AppError(CODES.INVALID_PATH, `路径无效：${sourcePath}`);
@@ -20,16 +20,17 @@ class FavoritesBoard {
     try { fs.readSync(fd, head, 0, 32, 0); } finally { fs.closeSync(fd); }
     const format = detectFormat(head);
     if (!['png', 'jpeg', 'webp', 'gif'].includes(format)) throw new AppError(CODES.UNSUPPORTED, `不是支持的图片：${sourcePath}`);
-    const hash = await sha256File(sourcePath);
+    const hashOf = async f => (this.pool ? (await this.pool.run('sha256', {file: f})).sha256 : sha256File(f));
+    const hash = await hashOf(sourcePath);
     const dup = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
     if (dup) return {...this.view(dup), duplicate: true};
     const ext = {png: '.png', jpeg: '.jpg', webp: '.webp', gif: '.gif'}[format];
     const month = this.now().slice(0, 7);
     const stored = path.join(this.dir, month, `${hash.slice(0, 16)}${ext}`);
     fs.mkdirSync(path.dirname(stored), {recursive: true});
-    if (!fs.existsSync(stored)) fs.copyFileSync(sourcePath, stored, fs.constants.COPYFILE_EXCL);
-    if ((await sha256File(stored)) !== hash) { fs.rmSync(stored, {force: true}); throw new AppError(CODES.INTEGRITY, '收藏副本校验失败。'); }
-    const buf = fs.readFileSync(stored, {flag: 'r'}).subarray(0, 65536);
+    if (!fs.existsSync(stored)) { if (this.pool) await this.pool.run('copyFile', {src: sourcePath, dest: stored, excl: true}); else fs.copyFileSync(sourcePath, stored, fs.constants.COPYFILE_EXCL); }
+    if ((await hashOf(stored)) !== hash) { fs.rmSync(stored, {force: true}); throw new AppError(CODES.INTEGRITY, '收藏副本校验失败。'); }
+    const buf = Buffer.alloc(65536); { const fd = fs.openSync(stored, 'r'); try { const n = fs.readSync(fd, buf, 0, buf.length, 0); buf.fill(0, n); } finally { fs.closeSync(fd); } } // 只读文件头
     const dim = imageSize(buf) ?? {};
     const id = crypto.randomUUID();
     this.db.run('INSERT INTO favorites (id, asset_id, source_path, stored_path, content_hash, width, height, created_at) VALUES (?,?,?,?,?,?,?,?)',

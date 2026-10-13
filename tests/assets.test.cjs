@@ -251,3 +251,23 @@ test('assets.* API：方法齐全并能端到端运行', async t => {
   await assert.rejects(m['assets.openLocation']('nope'), e => e.code === 'NOT_FOUND');
   m.dispose();
 });
+
+/* ---------- C08：单个任务输出关联与收藏复制走 worker ---------- */
+test('C08：任务输出关联（异步）与收藏复制在 worker 中读取/复制/校验，主进程只写数据库', async t => {
+  const {out, data, db} = await setup(); t.after(() => db.close());
+  const {WorkerPool} = require('../desktop/core/worker-pool.cjs');
+  const real = new WorkerPool({size: 2}); t.after(() => real.close());
+  const runs = []; const pool = {run: (k, a, o) => { runs.push(k); return real.run(k, a, o); }};
+  const index = new AssetIndex({db, roots: [{id: 'o', path: out}], thumbsDir: path.join(data, 'thumbs'), pool});
+  fs.mkdirSync(path.join(out, 'sub'), {recursive: true});
+  fs.writeFileSync(path.join(out, 'sub', 'ComfyUI_00002_.png'), await comfyPng());
+  db.run(`INSERT INTO tasks (id, kind, state, workflow_id, snapshot_ref, request_id, client_id, seq, created_at, updated_at) VALUES ('t2','draw','succeeded','wf','s','r2','c',2,'x','x')`);
+  let ticks = 0; const iv = setInterval(() => ticks++, 1);
+  const res = await index.linkTaskOutputsAsync({id: 't2', outputs: [{kind: 'image', nodeId: '9', filename: 'ComfyUI_00002_.png', subfolder: 'sub', type: 'output'}]}, {outputRoots: {output: out}});
+  clearInterval(iv);
+  assert.equal(res[0].status, 'linked'); assert.equal(index.get(res[0].assetId).generation.seed, '123456789');
+  assert.ok(runs.includes('imageMeta'), '元数据在 worker 中读取'); assert.ok(ticks >= 0);
+  const board = new FavoritesBoard({db, favoritesDir: path.join(data, 'favorites'), trashDir: path.join(data, 'trash'), pool});
+  const f = await board.add(path.join(out, 'sub', 'ComfyUI_00002_.png'));
+  assert.equal(f.duplicate, false); assert.ok(runs.includes('copyFile') && runs.filter(k => k === 'sha256').length >= 2, '复制与校验在 worker 中');
+});

@@ -198,6 +198,20 @@ class AssetIndex {
     return job;
   }
 
+  /** C08：异步版本——图片元数据在 worker 中读取（主进程只写数据库）；读取期间文件变化则不写入，下次扫描再处理。 */
+  async linkTaskOutputsAsync(task, {outputRoots, isCurrent = () => true}) {
+    const results = [];
+    for (const out of task.outputs ?? []) {
+      if (out.kind !== 'image' && out.kind !== 'video') continue;
+      const r = resolveComfyOutput(out, outputRoots, this.platform);
+      if (r.status !== 'resolved') { results.push({...r, output: out}); continue; }
+      if (!fs.existsSync(r.path)) { results.push({status: 'missing', reason: '文件已不在记录的位置（可能被移动或删除）', path: r.path, output: out}); continue; }
+      const rec = await this.indexFileAsync(r.path, {taskId: task.id, source: 'task', extra: {task: {taskId: task.id, nodeId: out.nodeId, type: out.type, subfolder: out.subfolder, filename: out.filename}}});
+      if (!isCurrent()) { results.push({status: 'deferred', reason: '应用正在维护/恢复，结果未写入', path: r.path, output: out}); continue; }
+      results.push({status: 'linked', path: r.path, assetId: rec?.id ?? null, output: out});
+    }
+    return results;
+  }
   /** A02：把任务 history 输出解析为真实文件并关联。不能确认合法根目录时返回 unresolved 及原因。 */
   linkTaskOutputs(task, {outputRoots}) {
     const results = [];
