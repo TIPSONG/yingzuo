@@ -18,5 +18,5 @@
 | --- | --- | --- | --- |
 | R14 | 回收区登记/列表/恢复/清理计划（只限本应用登记条目，保护在用备份/引用） | desktop/maintenance/trash-store.cjs（新增）| 进行中 |
 | R17 | worker 执行层（sha256/大图读取上限，可取消） | desktop/core/worker-pool.cjs、desktop/core/workers/*（新增）| 待做 |
-| R19 | 批量纯规划校验（全量校验后才返回计划，第 N 项无效不提交任何项） | shared/batch-plan.cjs（新增）| 待做 |
+| R19 | 批量纯规划校验（全量校验后才返回计划，第 N 项无效不提交任何项） | shared/batch-plan.cjs（新增）| 纯函数完成（tests/batch-plan.test.cjs）；**接入钩子**：task-service 批量入口先调 planBatch，ok 时在同一 DB 事务中登记整组（queue-service 需提供 enqueueGroup）；正式 UI 参数变化入口未做（UI 在主线范围）|
 | R20 | 稳定 workflowId + SaveImageAdvanced 适配纯函数 | shared/output-plan.cjs（新增）| 纯函数完成（tests/output-plan.test.cjs）；**接入钩子**：task-service 中 `workflowId: c.tabId` 改为 `stableWorkflowId(...)`，applyOutputPrefix 改用/合并 planSavePrefix(objectInfo) |
