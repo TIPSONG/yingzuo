@@ -152,6 +152,7 @@ async function requestQuit() {
   return quitInProgress;
 }
 
+// 单实例锁已在 entry.cjs 中先于迁移取得；这里保留检查以兼容直接加载 main.cjs
 if(!app.requestSingleInstanceLock())app.quit();
 else {
   app.on('second-instance',()=>showWindow());
@@ -194,6 +195,13 @@ else {
       editor.autosaveQueued=true;editor.enqueue(async()=>{if(!editor.active())return;const transport=editor.currentSnapshot()?.connected;await editor.capture();if(editor.persistedWorkspace!==JSON.stringify(editor.workspace)){editor.persist();editor.notify({message:'草稿已自动保存。'});}else if(transport!==editor.lastSnapshot?.connected)editor.notify({message:editor.lastSnapshot?.connected?'WebSocket 已重新连接。':'WebSocket 已断开，当前画布和草稿仍保留。'});}).catch(error=>editor.notify({error:`自动保存失败：${error.message}`})).finally(()=>editor.autosaveQueued=false);
     },2500);timer.unref();
     api.start();
+    // R21：CI 业务初始化检查（仅在设置 YZ_INIT_CHECK 时；须同时用 YINGZUO_DATA_ROOT 指向隔离目录）
+    if (typeof process !== "undefined" && process.env?.YZ_INIT_CHECK) {
+      const isolated = dataRoot.mode === 'override';
+      const result = {ok: isolated && !!taskService && !!templateService && !!onlineService && Object.keys(api.methods).length > 50, dataRootMode: dataRoot.mode, taskService: !!taskService, templateService: !!templateService, onlineService: !!onlineService, methods: Object.keys(api.methods).length, workbench: window.webContents.getURL(), at: new Date().toISOString()};
+      fs.writeFileSync(process.env.YZ_INIT_CHECK, JSON.stringify(result, null, 2));
+      explicitQuit = true; app.exit(result.ok ? 0 : 1);
+    }
   }).catch(error=>{dialog.showErrorBox('映作启动失败',error.message);app.quit();});
   app.on('before-quit', event => { if (!explicitQuit) { event.preventDefault(); requestQuit(); } });
   app.on('window-all-closed',()=>{ if (explicitQuit) app.quit(); });

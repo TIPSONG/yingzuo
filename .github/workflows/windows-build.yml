@@ -43,6 +43,21 @@ jobs:
           $sql = $r.checks | Where-Object name -eq 'sqlite'
           if ($sql.detail.driver -ne 'better-sqlite3') { throw "打包版应使用 better-sqlite3，实际：$($sql.detail.driver)" }
           Copy-Item $out dist/smoke-result.json
+      - name: Business init check (isolated data root)
+        shell: pwsh
+        run: |
+          $unpacked = Get-ChildItem dist -Directory | Where-Object Name -like 'win-unpacked*' | Select-Object -First 1
+          $exe = Get-ChildItem $unpacked.FullName -Filter *.exe | Where-Object Name -notlike 'Uninstall*' | Select-Object -First 1
+          $root = Join-Path $env:RUNNER_TEMP 'yz-init-data'; New-Item -ItemType Directory -Force $root | Out-Null
+          $out = Join-Path $env:RUNNER_TEMP 'yz-init.json'
+          $env:YINGZUO_DATA_ROOT = $root; $env:YZ_INIT_CHECK = $out
+          $p = Start-Process -FilePath $exe.FullName -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw '业务初始化检查超时' }
+          if (-not (Test-Path $out)) { throw "业务初始化没有写出结果（退出码 $($p.ExitCode)）" }
+          Get-Content $out
+          $r = Get-Content $out -Raw | ConvertFrom-Json
+          if (-not $r.ok) { throw '业务初始化检查失败' }
+          Copy-Item $out dist/init-result.json
       - uses: actions/upload-artifact@v4
         with:
           name: yingzuo-windows
@@ -51,4 +66,5 @@ jobs:
             dist/artifacts.json
             dist/SHA256SUMS.txt
             dist/smoke-result.json
+            dist/init-result.json
           retention-days: 14
