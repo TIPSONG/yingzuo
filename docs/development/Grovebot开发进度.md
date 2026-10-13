@@ -37,9 +37,9 @@
 | D09 | P1 | 取消后退出 15 秒超时当作可退出 | 程序完成 | 0fd23ab | quit-flow.test（4 项） | 退出流程抽到 desktop/services/quit-flow.cjs |
 | D10 | P1 | 目标中断未探测，可能中断下一项 | 程序完成 | 0fd23ab | queue.test D10 两项 | GET /api/jobs 探测；支持时用 /api/jobs/{id}/cancel（服务端原子）；旧后端发送前再核对，仍非原子 |
 | D11 | P1 | 服务归属与停止确认不严格 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
-| D12 | P1 | 模型移动未与任务/维护互斥 | 实现中 | 3f86e50 | maint-service.test R08/D12 | 已做：环境锁、暂停租约、持锁后再核对本应用任务与外部 ComfyUI、跨盘 journal、成功后才删源。未做：启动时按 journal 继续/清理中断的跨盘移动 |
-| D13 | P2 | 分享 JPEG 元数据未遍历完整容器 | 未开始 |  |  |  |
-| D14 | P2 | 206 续传未核对旧文件身份 | 未开始 |  |  |  |
+| D12 | P1 | 模型移动未与任务/维护互斥 | 程序完成 | c2effab | maint-service.test R08/D12、R06 启动核对 | 环境锁+暂停租约+持锁后再核对；跨盘 journal 与启动核对。外部客户端是否加载模型只能以外部 ComfyUI 运行与否保守判断 |
+| D13 | P2 | 分享 JPEG 元数据未遍历完整容器 | 程序完成 | 50c8fa9 | review2 image-meta-jpeg.test（6 项） | 由 feat/grovebot-review2 完成并已合并；方向非 1 时拒绝无损剥离（不做像素旋转） |
+| D14 | P2 | 206 续传未核对旧文件身份 | 程序完成 | 50c8fa9 | review2 downloader-resume.test（7 项） | 由 feat/grovebot-review2 完成并已合并 |
 | D15 | P1 | 任务快照未隔离敏感输入 | 程序完成 | 5729991 | task-service.test R18 两项；review2 的 secret-fields.test | 合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理 |
 
 ### 后续程序任务
@@ -51,7 +51,7 @@
 | PR11-R03 | P1 | 补丁冲突不记为成功更新 | 程序完成 | dad09fb | maint-service.test U06 冲突阻止、R03 未跟踪文件 | 默认策略：冲突在切换前阻止（环境不变）；未提供 needs-resolution 停留模式；Python 模块检查需计划提供 checkModules |
 | PR11-R04 | P1 | 服务归属与停止闭环 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
 | PR11-R05 | P1 | 取消、退出和精确中断 | 程序完成 | 0fd23ab | quit-flow.test、queue.test D10 | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
-| PR11-R06 | P1 | 模型移动与环境操作共用锁 | 实现中 | 3f86e50 | maint-service.test R08/D12 | 已做：环境锁、暂停租约、持锁后再核对本应用任务与外部 ComfyUI、跨盘 journal、成功后才删源。未做：启动时按 journal 继续/清理中断的跨盘移动 |
+| PR11-R06 | P1 | 模型移动与环境操作共用锁 | 程序完成 | c2effab | maint-service.test R08/D12、R06 启动核对 | 环境锁+暂停租约+持锁后再核对；跨盘 journal 与启动核对。外部客户端是否加载模型只能以外部 ComfyUI 运行与否保守判断 |
 | PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 实现中 | fdbe85a | tests/fixtures/qwen21-gemma-api.json 脱敏夹具 | Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定 |
 | PR11-R08 | P1 | Gemma 原文连线与采用结果 | 程序完成 | fdbe85a | bindings-real.test | 读取图中 context_length/release_vram/disable_thinking/model/URL；上下文以节点值为准；重新润色改 cache_buster |
 | PR11-R09 | P1 | 异步 UI 固定发起标签和版本 | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
@@ -60,8 +60,8 @@
 | PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 实现中 | bf765ab | queue.test R12/D08；task-service.test R12 未知重试确认 | 已做：ready、独立 follower、恢复期间新建任务等待、unknown 重试需确认。未做：意图快照与实际提交快照（上传后文件引用、最终参数）分开存储 |
 | PR11-R13 | P1 | 环境备份与应用数据备份分开 | 程序完成 | 1a66ac2 | app-backup.test | 资源页“应用数据备份”；恢复在 entry.cjs 中、main.cjs 打开数据库前执行；收藏 manifest 在数据库中。真实空间需求预估未做（按实际复制） |
 | PR11-R14 | P2 | 回收区与备份空间管理 | 程序完成 | ca3792f | maint-service.test R07/R14；review2 trash-store.test | 只管理本应用登记条目；永久清理需确认、逐项再核对；未完成恢复使用的条目受保护 |
-| PR11-R15 | P2 | 206 续传与来源身份 | 未开始 |  |  |  |
-| PR11-R16 | P2 | 分享 JPEG 完整解析和方向策略 | 未开始 |  |  |  |
+| PR11-R15 | P2 | 206 续传与来源身份 | 程序完成 | 50c8fa9 | review2 downloader-resume.test（7 项） | 由 feat/grovebot-review2 完成并已合并 |
+| PR11-R16 | P2 | 分享 JPEG 完整解析和方向策略 | 程序完成 | 50c8fa9 | review2 image-meta-jpeg.test（6 项） | 由 feat/grovebot-review2 完成并已合并；方向非 1 时拒绝无损剥离（不做像素旋转） |
 | PR11-R17 | P2 | 大文件工作移出主进程 | 实现中 | 3f86e50 | review2 worker-pool.test；maint-service.test 走 worker 哈希 | resources.hash 与模型移动校验已用 WorkerPool；资源扫描批量哈希、缩略图、备份复制仍在主进程 |
 | PR11-R18 | P1 | 敏感输入引用与快照脱敏 | 程序完成 | 5729991 | task-service.test R18 两项；review2 的 secret-fields.test | 合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理 |
 | PR11-R19 | P2 | 批量参数变化与原子规划 | 实现中 | eebced9 | task-service.test R19；review2 batch-plan.test | 后端已接：planBatch 全量校验 + queue.enqueueGroup 单事务。正式 UI 的参数变化（variations）输入未做 |

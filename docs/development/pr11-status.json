@@ -102,22 +102,28 @@
       "id": "D12",
       "level": "P1",
       "name": "模型移动未与任务/维护互斥",
-      "status": "实现中",
-      "commit": "3f86e50",
-      "tests": "maint-service.test R08/D12",
-      "note": "已做：环境锁、暂停租约、持锁后再核对本应用任务与外部 ComfyUI、跨盘 journal、成功后才删源。未做：启动时按 journal 继续/清理中断的跨盘移动"
+      "status": "程序完成",
+      "commit": "c2effab",
+      "tests": "maint-service.test R08/D12、R06 启动核对",
+      "note": "环境锁+暂停租约+持锁后再核对；跨盘 journal 与启动核对。外部客户端是否加载模型只能以外部 ComfyUI 运行与否保守判断"
     },
     {
       "id": "D13",
       "level": "P2",
       "name": "分享 JPEG 元数据未遍历完整容器",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "50c8fa9",
+      "tests": "review2 image-meta-jpeg.test（6 项）",
+      "note": "由 feat/grovebot-review2 完成并已合并；方向非 1 时拒绝无损剥离（不做像素旋转）"
     },
     {
       "id": "D14",
       "level": "P2",
       "name": "206 续传未核对旧文件身份",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "50c8fa9",
+      "tests": "review2 downloader-resume.test（7 项）",
+      "note": "由 feat/grovebot-review2 完成并已合并"
     },
     {
       "id": "D15",
@@ -177,10 +183,10 @@
       "id": "PR11-R06",
       "level": "P1",
       "name": "模型移动与环境操作共用锁",
-      "status": "实现中",
-      "commit": "3f86e50",
-      "tests": "maint-service.test R08/D12",
-      "note": "已做：环境锁、暂停租约、持锁后再核对本应用任务与外部 ComfyUI、跨盘 journal、成功后才删源。未做：启动时按 journal 继续/清理中断的跨盘移动"
+      "status": "程序完成",
+      "commit": "c2effab",
+      "tests": "maint-service.test R08/D12、R06 启动核对",
+      "note": "环境锁+暂停租约+持锁后再核对；跨盘 journal 与启动核对。外部客户端是否加载模型只能以外部 ComfyUI 运行与否保守判断"
     },
     {
       "id": "PR11-R07",
@@ -258,13 +264,19 @@
       "id": "PR11-R15",
       "level": "P2",
       "name": "206 续传与来源身份",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "50c8fa9",
+      "tests": "review2 downloader-resume.test（7 项）",
+      "note": "由 feat/grovebot-review2 完成并已合并"
     },
     {
       "id": "PR11-R16",
       "level": "P2",
       "name": "分享 JPEG 完整解析和方向策略",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "50c8fa9",
+      "tests": "review2 image-meta-jpeg.test（6 项）",
+      "note": "由 feat/grovebot-review2 完成并已合并；方向非 1 时拒绝无损剥离（不做像素旋转）"
     },
     {
       "id": "PR11-R17",
