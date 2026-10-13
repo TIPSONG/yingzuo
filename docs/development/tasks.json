@@ -558,31 +558,37 @@
   "id": "T05",
   "name": "实时诊断清单",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/diagnostics-service.cjs"
+  ],
+  "checks": "tests/diagnostics.test.cjs",
+  "note": "实时诊断：object_info/模型目录/LM Studio 合并，单独采集时间，离线缓存标注；插件版本号需 R01（maint 分支）提供，当前只列插件模块与节点数"
  },
  {
   "id": "T06",
   "name": "替代建议",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/diagnostics-service.cjs"
+  ],
+  "checks": "tests/diagnostics.test.cjs",
+  "note": "沿用 compatibility.js 规则，按用途/格式/加载器/架构给候选；未知保持待核实"
  },
  {
   "id": "T07",
   "name": "修复与撤销",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/diagnostics-service.cjs"
+  ],
+  "checks": "tests/diagnostics.test.cjs",
+  "note": "单字段事务（版本号校验）→替换标签图→自动复查；撤销（被改动则拒绝）；导出修复副本。改连线类建议只给说明不提供直接应用"
  },
  {
   "id": "T08",

@@ -348,6 +348,17 @@ const commands = {
   },
   /** T02：读取指定标签当前图（先从编辑器抓取最新快照）。 */
   tabGraph: async tabId=>{await capture();const tab=workspace.tabs.find(t=>t.id===(tabId??workspace.activeId));if(!tab)throw new Error('请先打开工作流。');return {tabId:tab.id,title:tab.title,templateId:tab.templateId??null,graph:structuredClone(tab.graph)};},
+  /** T07：用修复后的图替换标签内容（版本号校验；当前标签会重新载入编辑器）。 */
+  replaceGraph: async (tabId,graph,expectedRevision)=>{
+    await capture();
+    const tab=workspace.tabs.find(t=>t.id===tabId);if(!tab)throw new Error('找不到该工作副本。');
+    if(expectedRevision!==undefined&&expectedRevision!==(tab.revision??0))throw new Error('该标签已被修改（版本不一致），已拒绝写入，请重新检查。');
+    const before=structuredClone(tab.graph),beforeRev=tab.revision;
+    Store.setGraph(tab,structuredClone(graph));
+    try{persist();if(tab.id===workspace.activeId&&connected){lastSnapshot=null;loadedId=null;await loadActive();}layout();}
+    catch(error){tab.graph=before;tab.revision=beforeRev;try{persist();}catch{}throw error;}
+    notify({});return {state:state(),revision:tab.revision};
+  },
   showEditor: async()=>{currentView='editor';layout();return {state:state(),snapshot:currentSnapshot()};},
 };
 return {

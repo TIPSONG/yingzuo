@@ -17,8 +17,10 @@ const {createLocks} = require('./core/locks.cjs');
 const {AppError, CODES, toIpcError} = require('./core/errors.cjs');
 const {createApi} = require('./services/api.cjs');
 const {Database} = require('./repositories/database.cjs');
+const {ComfyHttpClient} = require('./adapters/comfy-http.cjs');
 const {createTaskService} = require('./services/task-service.cjs');
 const {createTemplateService} = require('./services/template-service.cjs');
+const {createDiagnosticsService} = require('./services/diagnostics-service.cjs');
 const ROOT = path.resolve(__dirname, '..');
 const LEGACY_LOCAL = path.join(ROOT, '.local');
 const WORKBENCH = 'yingzuo://app/desktop/workbench.html';
@@ -79,7 +81,8 @@ try {
   taskService = createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window});
   templateService = createTemplateService({db, layout, editor, taskService, dialog, getWindow: () => window, builtins: templates});
 } catch (error) { logger.error('任务数据库不可用，运行功能停用', {error: error.message}); }
-const api = createApi({taskService, extraMethods: templateService?.methods, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
+const diagnostics = createDiagnosticsService({editor, client: () => new ComfyHttpClient(configRepo.config.comfy.url, {fetchImpl: fetch}), fetchImpl: fetch, configRepo, layout, dialog, getWindow: () => window});
+const api = createApi({taskService, extraMethods: {...templateService?.methods, ...diagnostics.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
 
 function assertSender(event) {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== WORKBENCH) throw new Error('拒绝未知页面请求。');

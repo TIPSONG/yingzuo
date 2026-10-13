@@ -79,4 +79,24 @@ q('#tpl-form').addEventListener('click', async () => {
   });
   if (result) call(yz.templates.saveForm(tplId, tab.id, fields.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))), '表单已保存为模板新版本。').catch(swallow);
 });
+/* ---------- T05–T07 诊断与修复 ---------- */
+const SRC = {objectInfo: 'ComfyUI 节点', models: 'ComfyUI 模型目录', lmstudio: 'LM Studio'};
+async function diagnose(refresh) {
+  const tab = activeTab(); if (!tab) { toast('请先打开工作流。', true); return; }
+  let r; try { r = await call(yz.templates.diagnose(tab.id, {refresh})); } catch (e) { swallow(e); return; }
+  let canUndo = false;
+  for (;;) {
+    const src = Object.entries(r.catalog.sources).map(([k, v]) => `${SRC[k]}：${v.ok ? `实时 · ${new Date(v.collectedAt).toLocaleTimeString()}` : v.cached ? `离线，使用缓存（${v.collectedAt ? new Date(v.collectedAt).toLocaleString() : '时间未知'}）` : `不可用（${esc(v.error)}）`}`).join('<br>');
+    const issues = r.issues.map(i => `<div class="row" style="display:block"><strong>${i.severity === 'error' ? '⛔' : '⚠'} ${esc(i.title)}</strong> <small>${esc(i.nodeTitle ?? '')} #${esc(i.nodeId ?? '')}${i.scope ? ` · ${esc(i.scope)}` : ''}${i.field ? ` · ${esc(i.field)}` : ''}</small><br><small>${esc(i.reason)} ${esc(i.advice ?? '')}</small>${i.value ? `<br><small>当前值：${esc(i.value)}</small>` : ''}${(i.candidates ?? []).map(c => `<div><small>→ ${esc(c.value)}（${esc(c.label)}；${esc(c.reason)}）</small>${c.canApply ? ` <button data-fix="${esc(i.key)}" data-cand="${esc(c.id)}">应用此替换</button>` : ''}</div>`).join('')}</div>`).join('') || '<p>没有发现问题。</p>';
+    const act = await modal(`<h3>诊断 · ${esc(tab.title)}</h3><p class="muted">${src}</p><p>检查 ${r.nodeCount} 个节点、${r.checkedModels} 个模型引用：${r.errors} 个错误，${r.reviews} 个待核实。</p><div class="list" style="max-height:50vh;overflow:auto">${issues}</div><div class="actions"><button data-x="refresh">重新采集</button>${canUndo ? '<button data-x="undo">撤销上次修复</button>' : ''}<button data-x="export">导出修复副本</button><button data-x="close" class="primary">关闭</button></div>`, (back, done) => back.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; if (b.dataset.fix) done({fix: b.dataset.fix, cand: b.dataset.cand}); else if (b.dataset.x) done({x: b.dataset.x}); }));
+    try {
+      if (act.fix) { const cur = (current.tabs.find(x => x.id === tab.id) || {}).revision; const res = await call(yz.templates.applyFix(tab.id, act.fix, act.cand, cur), d => `已修改 ${d.applied.field}：${d.applied.before} → ${d.applied.after}`); r = res.recheck; canUndo = true; continue; }
+      if (act.x === 'undo') { const res = await call(yz.templates.undoFix(tab.id), '已撤销。'); r = res.recheck; canUndo = res.canUndo; continue; }
+      if (act.x === 'refresh') { r = await call(yz.templates.diagnose(tab.id, {refresh: true})); continue; }
+      if (act.x === 'export') { await call(yz.templates.exportFixed(tab.id), d => d.cancelled ? '已取消。' : `已导出：${d.path}`); continue; }
+    } catch (e) { swallow(e); continue; }
+    return;
+  }
+}
+q('#diag').addEventListener('click', () => diagnose(true));
 })();

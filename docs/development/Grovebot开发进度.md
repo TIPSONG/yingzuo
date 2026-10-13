@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 38 / 实现中 2 / 阻塞 0 / 未开始 42（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 41 / 实现中 2 / 阻塞 0 / 未开始 39（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -82,9 +82,9 @@
 | T02 | 保存与历史 | 程序完成 |  |  | tests/templates.test.cjs | 版本只追加、恢复生成新版本、另存、导出（含 .yingzuo-form.json）；原模板文件只读 |  |
 | T03 | 表单编辑器 | 程序完成 |  | shared/form-schema.cjs | tests/templates.test.cjs | 表单设置弹窗：名称/分组/顺序/范围/添加/移除；与 ParameterBinding schema 共用。参数表单页仍用 P0 画布读取，不读模板 schema |  |
 | T04 | 映射失效处理 | 程序完成 |  |  | tests/templates.test.cjs | 删除/改类/缺字段/改连线判失效，候选仅同类型同字段，服务端再校验 |  |
-| T05 | 实时诊断清单 | 未开始 |  |  |  |  |  |
-| T06 | 替代建议 | 未开始 |  |  |  |  |  |
-| T07 | 修复与撤销 | 未开始 |  |  |  |  |  |
+| T05 | 实时诊断清单 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 实时诊断：object_info/模型目录/LM Studio 合并，单独采集时间，离线缓存标注；插件版本号需 R01（maint 分支）提供，当前只列插件模块与节点数 |  |
+| T06 | 替代建议 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 沿用 compatibility.js 规则，按用途/格式/加载器/架构给候选；未知保持待核实 |  |
+| T07 | 修复与撤销 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 单字段事务（版本号校验）→替换标签图→自动复查；撤销（被改动则拒绝）；导出修复副本。改连线类建议只给说明不提供直接应用 |  |
 | R01 | 目录扫描 | 未开始 |  |  |  |  |  |
 | R02 | 资源详情 | 未开始 |  |  |  |  |  |
 | R03 | 引用索引 | 未开始 |  |  |  |  |  |
