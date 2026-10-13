@@ -15,7 +15,7 @@ const {collectEnvironmentRecord} = require('./environment-record.cjs');
 
 function createApi(ctx) {
   const {electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow, fetch: fetchImpl, root} = ctx;
-  const credentials = new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
+  const credentials = ctx.credentials ?? new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
   const comfy = new ComfyProcessManager({registryFile: path.join(layout.root, 'services.json'), logsDir: layout.logs, probe: url => probeComfy(url, {fetchImpl})});
   const lmFor = () => new LmStudioAdapter({cliPath: configRepo.config.lmstudio.cli, registryFile: path.join(layout.root, 'lmstudio.json')});
   let lastStatus = null;

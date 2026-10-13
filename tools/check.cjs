@@ -20,7 +20,7 @@ const groups = /const GROUPS = (\{[\s\S]*?\n\});/.exec(preload);
 if (!groups) problems.push('preload.cjs 中找不到 GROUPS');
 else {
   const declared = Function(`return ${groups[1]}`)();
-  const apiSource = fs.readFileSync(path.join(root, 'desktop', 'services', 'api.cjs'), 'utf8') + fs.readdirSync(path.join(root, 'desktop', 'services')).map(f => fs.readFileSync(path.join(root, 'desktop', 'services', f), 'utf8')).join('\n');
+  const apiSource = fs.readFileSync(path.join(root, 'desktop', 'services', 'api.cjs'), 'utf8') + fs.readdirSync(path.join(root, 'desktop', 'services'), {recursive: true}).filter(f => f.endsWith('.cjs')).map(f => fs.readFileSync(path.join(root, 'desktop', 'services', f), 'utf8')).join('\n');
   for (const [group, names] of Object.entries(declared)) for (const name of names) if (!apiSource.includes(`'${group}.${name}'`)) problems.push(`preload 公开了 ${group}.${name}，但主进程没有实现`);
   for (const banned of ['exec', 'readFile', 'writeFile', 'spawn', 'shell']) if (Object.values(declared).flat().includes(banned)) problems.push(`preload 不得公开通用接口 ${banned}`);
 }

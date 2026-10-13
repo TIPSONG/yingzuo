@@ -21,6 +21,8 @@ const {ComfyHttpClient} = require('./adapters/comfy-http.cjs');
 const {createTaskService} = require('./services/task-service.cjs');
 const {createTemplateService} = require('./services/template-service.cjs');
 const {createDiagnosticsService} = require('./services/diagnostics-service.cjs');
+const {createOnlineService} = require('./services/online/online-service.cjs');
+const {CredentialStore} = require('./core/credentials.cjs');
 const ROOT = path.resolve(__dirname, '..');
 const LEGACY_LOCAL = path.join(ROOT, '.local');
 const WORKBENCH = 'yingzuo://app/desktop/workbench.html';
@@ -75,14 +77,16 @@ const editor = createEditorSession({
   getWindow: () => window, timers: {setTimeout, clearTimeout}, fetch, AbortSignal,
 });
 // ---------- 任务（Q01–Q10） ----------
-let taskService = null, templateService = null;
+let taskService = null, templateService = null, onlineService = null;
+const credentials = new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
 try {
   const db = Database.open(layout.database);
   taskService = createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window});
   templateService = createTemplateService({db, layout, editor, taskService, dialog, getWindow: () => window, builtins: templates});
+  onlineService = createOnlineService({db, configRepo, layout, credentials, fetchImpl: fetch, events, logger, templateRepo: templateService.repo, dialog, getWindow: () => window});
 } catch (error) { logger.error('任务数据库不可用，运行功能停用', {error: error.message}); }
 const diagnostics = createDiagnosticsService({editor, client: () => new ComfyHttpClient(configRepo.config.comfy.url, {fetchImpl: fetch}), fetchImpl: fetch, configRepo, layout, dialog, getWindow: () => window});
-const api = createApi({taskService, extraMethods: {...templateService?.methods, ...diagnostics.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
+const api = createApi({taskService, credentials, extraMethods: {...templateService?.methods, ...diagnostics.methods, ...onlineService?.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
 
 function assertSender(event) {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== WORKBENCH) throw new Error('拒绝未知页面请求。');
@@ -149,6 +153,7 @@ else {
     window=new BrowserWindow({width:1500,height:980,minWidth:1050,minHeight:700,backgroundColor:'#131514',title:'映作',icon:path.join(ROOT,'assets','icon-256.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
     editor.attachWindow(window);
     taskService?.start();
+    onlineService?.start();
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',(event,url)=>{if((event.url??url)!==WORKBENCH)event.preventDefault();});
     ipcMain.handle('yingzuo:p0',async(event,message)=>{
