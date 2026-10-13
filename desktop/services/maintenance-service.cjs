@@ -84,7 +84,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       startService: async () => { await comfy.ensureRunning(configRepo.config); },
       queue: taskService ? {pauseSubmissions: r => taskService.hooks.pauseSubmissions(r), waitForIdle: o => taskService.hooks.waitForIdle(o)} : null,
       onHold: h => holdAfterFailure(h),
-      backup: async p => { const r = await createBackup({backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`}); return {dir: r.dir}; },
+      backup: async p => { const r = await createBackup({backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile}); return {dir: r.dir}; },
       restore: async dir => { const j = await restore.prepare(dir); return restore.run(j.id); },
       onEvent: e => { journal.push(e); record(id, {phase: ['plan', 'disk', 'services', 'lock', 'pause', 'stop'].includes(e.phase) ? 'plan' : e.phase === 'backup' ? 'backup' : e.phase === 'staging' ? 'staging' : e.phase === 'apply' ? 'apply' : e.phase === 'check' ? 'healthcheck' : e.phase === 'done' ? 'done' : e.phase === 'restore' ? 'restore' : e.phase === 'restore-check' ? (e.state === 'done' ? 'restored' : 'failed') : 'failed', journal}); events.emit('maintenance.progress', id, e); },
     });
@@ -163,7 +163,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     },
     'maintenance.pendingRestores': async () => restore.pending(),
     // ----- R13：应用数据备份（与环境备份分开；恢复在下次启动、打开数据库之前执行） -----
-    'maintenance.appBackup': async () => { const r = await appBackup.createAppBackup({layout}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
+    'maintenance.appBackup': async () => { const r = await appBackup.createAppBackup({layout, hashImpl: hashFile}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
     'maintenance.appBackups': async () => ({backups: appBackup.listAppBackups(layout), lastRestore: globalThis.__yzAppRestore ?? null}),
     'maintenance.scheduleAppRestore': async dir => appBackup.scheduleAppRestore(layout, dir),
     'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id)),

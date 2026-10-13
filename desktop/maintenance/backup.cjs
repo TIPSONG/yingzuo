@@ -50,7 +50,7 @@ function backupSqlite(src, dest, {driver} = {}) {
  * @param {{id:string,path:string,kind?:string}[]} o.sources  要备份的目录或文件（原绝对路径）
  * @param {{id:string,path:string}[]} [o.databases] SQLite 数据库
  */
-async function createBackup({backupRoot, manifest, sources = [], databases = [], id, excludeDirs = DEFAULT_EXCLUDE_DIRS, excludeExt = WEIGHT_EXTENSIONS, driver, token, now = () => new Date().toISOString()}) {
+async function createBackup({backupRoot, manifest, sources = [], databases = [], id, excludeDirs = DEFAULT_EXCLUDE_DIRS, excludeExt = WEIGHT_EXTENSIONS, driver, token, hashImpl = sha256File, now = () => new Date().toISOString()}) {
   if (!sources.length && !databases.length) throw new AppError(CODES.INVALID_ARGUMENT, '备份内容为空。');
   const backupId = id ?? `bk-${now().replace(/[:.]/g, '-')}`;
   const dir = path.join(backupRoot, backupId);
@@ -78,14 +78,14 @@ async function createBackup({backupRoot, manifest, sources = [], databases = [],
         else {
           const src = path.join(abs, e.rel), dst = path.join(destBase, e.rel);
           fs.copyFileSync(src, dst);
-          const sha = await sha256File(dst), size = fs.statSync(dst).size;
+          const sha = await hashImpl(dst), size = fs.statSync(dst).size;
           entry.files.push({rel: e.rel, size, sha256: sha}); entry.bytes += size;
         }
       }
     } else {
       fs.copyFileSync(abs, destBase);
       const size = fs.statSync(destBase).size;
-      entry.files.push({rel: '', size, sha256: await sha256File(destBase)}); entry.bytes = size;
+      entry.files.push({rel: '', size, sha256: await hashImpl(destBase)}); entry.bytes = size;
     }
     record.sources.push(entry);
   }
@@ -94,7 +94,7 @@ async function createBackup({backupRoot, manifest, sources = [], databases = [],
     seen.add(d.id);
     const dst = path.join(staging, 'db', d.id + '.sqlite');
     backupSqlite(path.resolve(d.path), dst, {driver});
-    record.databases.push({id: d.id, originalPath: path.resolve(d.path), file: path.relative(staging, dst), size: fs.statSync(dst).size, sha256: await sha256File(dst), method: 'VACUUM INTO'});
+    record.databases.push({id: d.id, originalPath: path.resolve(d.path), file: path.relative(staging, dst), size: fs.statSync(dst).size, sha256: await hashImpl(dst), method: 'VACUUM INTO'});
   }
   record.prerequisites = {
     basePython: manifest?.external?.basePython ?? null,

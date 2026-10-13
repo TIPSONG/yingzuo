@@ -21,11 +21,11 @@ function sourcesOf(layout) {
   for (const [id, f] of FILES) { const p = path.join(layout.root, f); if (fs.existsSync(p)) out.push({id, path: p, kind: 'app-data'}); }
   return out;
 }
-async function createAppBackup({layout, driver, now} = {}) {
+async function createAppBackup({layout, driver, now, hashImpl} = {}) {
   const sources = sourcesOf(layout);
   const databases = fs.existsSync(layout.database) ? [{id: 'app-db', path: layout.database}] : [];
   // 应用数据不按扩展名/目录名排除（参考图、收藏都是用户数据）
-  return createBackup({backupRoot: appBackupRoot(layout), sources, databases, excludeDirs: new Set(), excludeExt: [], driver, ...(now ? {now} : {}), manifest: {scope: 'app-data', excludes: ['credentials.json（系统加密，单独保存）', '模型（外部资源）']}});
+  return createBackup({backupRoot: appBackupRoot(layout), sources, databases, excludeDirs: new Set(), excludeExt: [], driver, ...(hashImpl ? {hashImpl} : {}), ...(now ? {now} : {}), manifest: {scope: 'app-data', excludes: ['credentials.json（系统加密，单独保存）', '模型（外部资源）']}});
 }
 function listAppBackups(layout) {
   const root = appBackupRoot(layout); if (!fs.existsSync(root)) return [];
