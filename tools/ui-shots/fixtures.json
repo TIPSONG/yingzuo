@@ -1,0 +1,160 @@
+{
+  "settings.get": {
+    "config": {
+      "ui": {
+        "theme": "dark",
+        "skin": "default"
+      },
+      "comfy": {
+        "root": "D:\\ComfyUI",
+        "python": "D:\\ComfyUI\\.venv\\Scripts\\python.exe",
+        "url": "http://127.0.0.1:8188/",
+        "extraArgs": [],
+        "startTimeoutSec": 120,
+        "workflowsDir": "",
+        "outputDir": "",
+        "inputDir": ""
+      },
+      "lmstudio": {
+        "url": "http://127.0.0.1:1234/v1",
+        "cli": ""
+      },
+      "gemma": {
+        "patchFile": "",
+        "contextLength": 8192
+      },
+      "paths": {
+        "templates": "",
+        "favorites": "",
+        "downloads": "",
+        "backups": "",
+        "extraOutputDirs": []
+      },
+      "tray": {
+        "closeToTray": true
+      },
+      "downloads": {
+        "concurrency": 2
+      },
+      "queue": {
+        "maxBatch": 100
+      },
+      "defaults": {
+        "templateId": "text"
+      },
+      "updates": {
+        "checkFrequency": "weekly",
+        "channel": "stable"
+      }
+    },
+    "issues": [],
+    "dataRoot": {
+      "root": "D:\\映作\\data",
+      "mode": "portable"
+    },
+    "locations": {
+      "data": "D:\\映作\\data",
+      "logs": "D:\\映作\\data\\logs",
+      "templates": "D:\\映作\\data\\templates",
+      "output": "D:\\ComfyUI\\output"
+    },
+    "credentials": {
+      "available": true,
+      "configured": {
+        "huggingface": true,
+        "civitai": false
+      }
+    }
+  },
+  "services.status": {
+    "comfy": {
+      "summary": "ready",
+      "label": "已就绪",
+      "ownership": "owned",
+      "version": "0.3.60"
+    },
+    "lmstudio": {
+      "summary": "api-ready",
+      "label": "API 已就绪",
+      "gemma": {
+        "id": "gemma-4-12b"
+      }
+    },
+    "gpu": {
+      "name": "NVIDIA GeForce RTX 4090",
+      "vramTotal": 25769803776,
+      "vramFree": 17179869184
+    }
+  },
+  "tasks.list": {
+    "tasks": [
+      {
+        "id": "t-3",
+        "seq": 12,
+        "kind": "generate",
+        "state": "running",
+        "workflowId": "夜景城市",
+        "groupId": "g1",
+        "createdAt": "2026-10-13T12:01:00Z",
+        "progress": {
+          "value": 9,
+          "max": 20
+        }
+      },
+      {
+        "id": "t-2",
+        "seq": 13,
+        "kind": "generate",
+        "state": "queued",
+        "workflowId": "夜景城市",
+        "groupId": "g1",
+        "createdAt": "2026-10-13T12:01:00Z"
+      },
+      {
+        "id": "t-1",
+        "seq": 11,
+        "kind": "enhance",
+        "state": "succeeded",
+        "workflowId": "人像修图",
+        "createdAt": "2026-10-13T11:40:00Z"
+      }
+    ],
+    "queue": {
+      "paused": false,
+      "running": 1,
+      "pending": 1
+    }
+  },
+  "templates.list": {
+    "templates": [
+      {
+        "id": "text",
+        "name": "文生图（基础）",
+        "folder": "",
+        "tags": [
+          "SDXL"
+        ],
+        "updatedAt": "2026-10-12T08:00:00Z"
+      },
+      {
+        "id": "edit",
+        "name": "多图编辑",
+        "folder": "",
+        "tags": [
+          "Qwen"
+        ],
+        "updatedAt": "2026-10-11T08:00:00Z"
+      },
+      {
+        "id": "gemma-text",
+        "name": "Gemma 润色文生图",
+        "folder": "",
+        "tags": [
+          "Gemma"
+        ],
+        "updatedAt": "2026-10-10T08:00:00Z"
+      }
+    ],
+    "folders": []
+  }
+}
