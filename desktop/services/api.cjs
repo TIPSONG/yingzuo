@@ -19,7 +19,7 @@ function createApi(ctx) {
   const comfy = new ComfyProcessManager({registryFile: path.join(layout.root, 'services.json'), logsDir: layout.logs, probe: url => probeComfy(url, {fetchImpl})});
   const lmFor = () => new LmStudioAdapter({cliPath: configRepo.config.lmstudio.cli, registryFile: path.join(layout.root, 'lmstudio.json')});
   let lastStatus = null;
-  const hooks = {activeTasks: () => [], waitForIdle: async () => {}, cancelActive: async () => {}, pauseSubmissions: () => {}, resumeSubmissions: () => {}};
+  const hooks = ctx.taskService?.hooks ?? {activeTasks: () => [], waitForIdle: async () => {}, cancelActive: async () => {}, pauseSubmissions: () => {}, resumeSubmissions: () => {}};
 
   async function serviceStatus() {
     const config = configRepo.config;
@@ -125,6 +125,7 @@ function createApi(ctx) {
       return {stored: target, tabs: tabs.length, needReselect};
     },
   };
+  if (ctx.taskService) Object.assign(methods, ctx.taskService.methods);
   async function dispatch(message) {
     const command = validateCommand(message);
     const fn = methods[command.method];

@@ -13,6 +13,7 @@ api.onStatus = callback => {
 const GROUPS = {
   services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
   settings: ['get','update','pickPath','setCredential','removeCredential'],
+  tasks: ['preview','run','previewBatch','runBatch','enhance','enhanceResult','list','get','cancel','retry','recheck','pause','resume','pickReference'],
   maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts'],
 };
 let counter = 0;

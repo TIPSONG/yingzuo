@@ -326,6 +326,20 @@ const commands = {
     await capture();tab.title=Store.safeName(title);persist();notify({});
     return {state:state(),snapshot:currentSnapshot()};
   },
+  // E09：编译指定标签。后台标签先切换过去编译，再切回原标签；编译结果与当时的 UI 图、修订号一起返回。
+  compileTab: async tabId=>{
+    const id=tabId??workspace.activeId;const tab=workspace.tabs.find(t=>t.id===id);
+    if(!tab)throw new Error('请先打开工作流。');
+    if(!connected)throw new Error('ComfyUI 编辑器未连接，无法编译。');
+    const previous=workspace.activeId;
+    if(previous!==id)await activate(id);
+    try{
+      await capture();
+      const result=await execute(Bridge.compileSource({expectedName:expectedName()}));
+      if(!result?.ok)throw Object.assign(new Error(result?.error?.message??result?.message??'编译失败。'),{code:result?.error?.code??result?.code});
+      return {tabId:id,title:tab.title,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
+    }finally{if(previous&&previous!==id&&workspace.tabs.some(t=>t.id===previous))await activate(previous).catch(()=>{});}
+  },
   showEditor: async()=>{currentView='editor';layout();return {state:state(),snapshot:currentSnapshot()};},
 };
 return {

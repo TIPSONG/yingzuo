@@ -16,6 +16,8 @@ const {EventBus} = require('./core/events.cjs');
 const {createLocks} = require('./core/locks.cjs');
 const {AppError, CODES, toIpcError} = require('./core/errors.cjs');
 const {createApi} = require('./services/api.cjs');
+const {Database} = require('./repositories/database.cjs');
+const {createTaskService} = require('./services/task-service.cjs');
 const ROOT = path.resolve(__dirname, '..');
 const LEGACY_LOCAL = path.join(ROOT, '.local');
 const WORKBENCH = 'yingzuo://app/desktop/workbench.html';
@@ -69,7 +71,13 @@ const editor = createEditorSession({
   electron: {WebContentsView, dialog, session}, Store, Bridge, paths: layout, log, serveResource, templates, comfyUrlProvider,
   getWindow: () => window, timers: {setTimeout, clearTimeout}, fetch, AbortSignal,
 });
-const api = createApi({electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
+// ---------- 任务（Q01–Q10） ----------
+let taskService = null;
+try {
+  const db = Database.open(layout.database);
+  taskService = createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window});
+} catch (error) { logger.error('任务数据库不可用，运行功能停用', {error: error.message}); }
+const api = createApi({taskService, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
 
 function assertSender(event) {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== WORKBENCH) throw new Error('拒绝未知页面请求。');
@@ -100,6 +108,7 @@ function refreshTrayMenu(status = api.lastServiceSummary?.()) {
     {label: '退出映作', click: () => requestQuit()},
   ]));
 }
+events.subscribe(event => { if (event.type === 'settings.changed') taskService?.connectSocket(); });
 events.subscribe(event => { if (event.type === 'services.status') refreshTrayMenu(event.data.summary); });
 
 // ---------- 退出（S07） ----------
@@ -114,13 +123,14 @@ async function requestQuit() {
       await editor.enqueue(async()=>{if(editor.startupError){await editor.capture();if(editor.workspace.tabs.length)Store.writeWorkspace(path.join(layout.root,`recovered-workspace-${Date.now()}.json`),editor.workspace);}else await editor.saveCurrent();});
     } catch (error) {
       editor.quitting = false;
+      api.hooks.resumeSubmissions();
       editor.notify({error:`保存未完成，窗口已保留：${error.message}`});
       dialog.showErrorBox('草稿尚未保存',`${error.message}\n窗口已保留，请重试保存或导出工作流后再退出。`);
       return false;
     }
     await api.shutdownOwnedServices();
     explicitQuit = true;
-    editor.closeViews(); tray?.destroy?.(); window?.destroy(); app.quit();
+    taskService?.stop(); editor.closeViews(); tray?.destroy?.(); window?.destroy(); app.quit();
     return true;
   })().finally(() => { quitInProgress = null; });
   return quitInProgress;
@@ -133,6 +143,7 @@ else {
     protocol.handle('yingzuo',serveResource);
     window=new BrowserWindow({width:1500,height:980,minWidth:1050,minHeight:700,backgroundColor:'#131514',title:'映作',icon:path.join(ROOT,'assets','icon-256.png'),autoHideMenuBar:true,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
     editor.attachWindow(window);
+    taskService?.start();
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',(event,url)=>{if((event.url??url)!==WORKBENCH)event.preventDefault();});
     ipcMain.handle('yingzuo:p0',async(event,message)=>{
