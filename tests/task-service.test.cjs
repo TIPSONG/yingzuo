@@ -21,9 +21,9 @@ const prompt = () => ({
 const info = {LMStudioPromptEnhancer: {input: {required: {}}, output: ['STRING']}, CLIPTextEncode: {input: {required: {}}, output: ['C']}, EmptySD3LatentImage: {input: {required: {}}, output: ['L']}, KSampler: {input: {required: {}}, output: ['L']}, SaveImage: {input: {required: {}}, output: [], output_node: true}, PreviewAny: {input: {required: {}}, output: [], output_node: true}};
 
 function setup(t) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-ts-')); t.after(() => fs.rmSync(d, {recursive: true, force: true}));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-ts-')); t.after(() => { try { db.close(); } catch { /* 已关闭 */ } fs.rmSync(d, {recursive: true, force: true}); }); // Windows：先关库再删目录
   const layout = ensureLayout(d);
-  const db = Database.open(layout.database); t.after(() => db.close());
+  const db = Database.open(layout.database);
   const submitted = [], history = {};
   const json = v => new Response(JSON.stringify(v), {status: 200, headers: {'content-type': 'application/json'}});
   const fetchImpl = async (url, init = {}) => {

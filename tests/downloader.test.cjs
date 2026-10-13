@@ -24,8 +24,8 @@ function server(t, state) {
   return new Promise(r => srv.listen(0, '127.0.0.1', () => { t.after(() => srv.close()); r(`http://127.0.0.1:${srv.address().port}/f.bin`); }));
 }
 function setup(t, url, extra = {}) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-dl-')); t.after(() => fs.rmSync(d, {recursive: true, force: true}));
-  const db = Database.open(path.join(d, 'y.sqlite')); t.after(() => db.close());
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-dl-')); t.after(() => { try { db.close(); } catch { /* 已关闭 */ } fs.rmSync(d, {recursive: true, force: true}); }); // Windows：先关库再删目录
+  const db = Database.open(path.join(d, 'y.sqlite'));
   const resolveCalls = [];
   const m = new DownloadManager({db, resolve: async ref => { resolveCalls.push(ref); return {url, headers: {authorization: 'Bearer secret-token'}}; }, sleep: async () => {}, ...extra});
   return {d, db, m, resolveCalls};

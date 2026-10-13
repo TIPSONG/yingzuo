@@ -11,8 +11,8 @@ const F = require('../shared/form-schema.cjs');
 const B = require('../shared/bindings.cjs');
 
 function repo(t) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-tpl-')); t.after(() => fs.rmSync(d, {recursive: true, force: true}));
-  const db = Database.open(path.join(d, 'y.sqlite')); t.after(() => db.close());
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-tpl-')); t.after(() => { try { db.close(); } catch { /* 已关闭 */ } fs.rmSync(d, {recursive: true, force: true}); }); // Windows：先关库再删目录
+  const db = Database.open(path.join(d, 'y.sqlite'));
   let n = 0; return {r: new TemplateRepository(db, path.join(d, 'templates'), {now: () => new Date(Date.UTC(2026, 0, 1, 0, 0, n++)).toISOString()}), d};
 }
 const graph = (title = 'a') => ({nodes: [{id: 1, type: 'KSampler', title}], links: []});

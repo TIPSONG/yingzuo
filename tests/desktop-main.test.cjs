@@ -20,7 +20,9 @@ const deferred = () => {let resolve;const promise=new Promise(r=>resolve=r);retu
 
 async function fixture(t,initial=workspace(),options={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'yingzuo-main-'));
-  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const openedDbs=[];
+  // Windows 上打开的 SQLite 文件不能删除：先关闭主进程打开的数据库再清理临时目录。
+  t.after(()=>{for(const db of openedDbs){try{db.close();}catch{}}fs.rmSync(root,{recursive:true,force:true});});
   fs.mkdirSync(path.join(root,'desktop'),{recursive:true});
   fs.mkdirSync(path.join(root,'.local','data'),{recursive:true});
   const file=path.join(root,'.local','data','workspace.json');
@@ -86,7 +88,9 @@ async function fixture(t,initial=workspace(),options={}) {
   bridge.setModeSource=(mode,expectedName)=>JSON.stringify({op:'mode',payload:{mode,expectedName}});
   const store={...Store,writeWorkspace(target,data){state.writeCount++;if(state.writeHook)state.writeHook(target,data,state.writeCount);return Store.writeWorkspace(target,data);}};
   const desktopDir=path.join(__dirname,'..','desktop');
-  const requireMock=name=>name==='electron'?electron:name==='./workspace-store.cjs'?store:name==='./comfy-bridge-source.cjs'?bridge:name.startsWith('./')?require(path.join(desktopDir,name)):require(name);
+  const realDb=require(path.join(desktopDir,'repositories','database.cjs'));
+  const dbMock={...realDb,Database:{open:(...a)=>{const db=realDb.Database.open(...a);openedDbs.push(db);return db;}}};
+  const requireMock=name=>name==='./repositories/database.cjs'?dbMock:name==='electron'?electron:name==='./workspace-store.cjs'?store:name==='./comfy-bridge-source.cjs'?bridge:name.startsWith('./')?require(path.join(desktopDir,name)):require(name);
   vm.runInNewContext(source,{require:requireMock,__dirname:path.join(root,'desktop'),URL,Response,AbortSignal,structuredClone,fetch:async url=>state.fetchHook?state.fetchHook(url):({ok:true,json:async()=>({system:{},devices:[]})}),setTimeout(fn,ms){const id={};state.timers.set(id,{fn,ms});if(ms===500)queueMicrotask(()=>{if(state.timers.delete(id))fn();});return id;},clearTimeout:id=>state.timers.delete(id),setInterval(fn){state.intervals.push(fn);return {unref(){}};}},{filename:'desktop/main.cjs'});
   await tick();
   assert.equal(state.errors.length,0,'mock application starts successfully');

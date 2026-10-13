@@ -15,8 +15,8 @@ const {AppError} = require('../desktop/core/errors.cjs');
 const {parseHistoryEntry, parseQueue, nodeErrorList} = require('../desktop/adapters/comfy-http.cjs');
 
 function setup(t, opts = {}) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-q-')); t.after(() => fs.rmSync(d, {recursive: true, force: true}));
-  const db = Database.open(path.join(d, 'y.sqlite')); t.after(() => db.close());
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-q-')); t.after(() => { try { db.close(); } catch { /* 已关闭 */ } fs.rmSync(d, {recursive: true, force: true}); }); // Windows：先关库再删目录
+  const db = Database.open(path.join(d, 'y.sqlite'));
   const events = new EventBus();
   const tasks = new TaskRepository(db, new SnapshotStore(path.join(d, 'task-snapshots')), {events});
   const fake = new FakeComfy(opts);
