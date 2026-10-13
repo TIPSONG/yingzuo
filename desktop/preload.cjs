@@ -13,6 +13,7 @@ api.onStatus = callback => {
 const GROUPS = {
   services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
   settings: ['get','update','pickPath','setCredential','removeCredential'],
+  assets: ['scan','watch','list','recent','get','thumbnail','linkTask','previewPrefix','openFile','revealFile','openLocation','shareSupport','exportOriginal','exportShare','favorite','unfavorite','favorites','favoriteLayout'],
   maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts'],
 };
 let counter = 0;

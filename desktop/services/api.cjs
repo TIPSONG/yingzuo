@@ -12,6 +12,7 @@ const {probeComfy, probeLmStudio, findModel} = require('./service-probe.cjs');
 const {ComfyProcessManager} = require('./comfy-process.cjs');
 const {LmStudioAdapter} = require('./lmstudio.cjs');
 const {collectEnvironmentRecord} = require('./environment-record.cjs');
+const {createAssetsMethods} = require('./assets-api.cjs');
 
 function createApi(ctx) {
   const {electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow, fetch: fetchImpl, root} = ctx;
@@ -54,6 +55,8 @@ function createApi(ctx) {
   const pickable = new Set(['comfy.root', 'comfy.python', 'comfy.workflowsDir', 'comfy.outputDir', 'comfy.inputDir', 'lmstudio.cli', 'paths.templates', 'paths.favorites', 'paths.downloads', 'paths.backups', 'gemma.patchFile']);
 
   const methods = {
+    // ----- assets（A01–A08，见 assets-api.cjs）-----
+    ...createAssetsMethods({electron, layout, configRepo, getWindow, logger}),
     // ----- services -----
     'services.status': serviceStatus,
     'services.startComfy': () => locks.environment.run(async () => {
