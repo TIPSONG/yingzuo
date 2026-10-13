@@ -58,7 +58,10 @@
       "id": "D07",
       "level": "P1",
       "name": "补丁冲突仍记成功",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "dad09fb",
+      "tests": "maint-service.test U06 冲突阻止、R03 未跟踪文件",
+      "note": "默认策略：冲突在切换前阻止（环境不变）；未提供 needs-resolution 停留模式；Python 模块检查需计划提供 checkModules"
     },
     {
       "id": "D08",
@@ -145,7 +148,10 @@
       "id": "PR11-R03",
       "level": "P1",
       "name": "补丁冲突不记为成功更新",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "dad09fb",
+      "tests": "maint-service.test U06 冲突阻止、R03 未跟踪文件",
+      "note": "默认策略：冲突在切换前阻止（环境不变）；未提供 needs-resolution 停留模式；Python 模块检查需计划提供 checkModules"
     },
     {
       "id": "PR11-R04",

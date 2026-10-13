@@ -32,7 +32,7 @@
 | D04 | P1 | 自定义表单未进入正式创作 | 实现中 | 40fc5b1 | task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签 | “运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单 |
 | D05 | P1 | 维护失败仍启动服务、继续队列 | 程序完成 | ea187ce | maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时 | 队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放 |
 | D06 | P1 | 继续恢复绕开运行保护 | 程序完成 | 0fd23ab | maint-service.test D06 | 资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示 |
-| D07 | P1 | 补丁冲突仍记成功 | 未开始 |  |  |  |
+| D07 | P1 | 补丁冲突仍记成功 | 程序完成 | dad09fb | maint-service.test U06 冲突阻止、R03 未跟踪文件 | 默认策略：冲突在切换前阻止（环境不变）；未提供 needs-resolution 停留模式；Python 模块检查需计划提供 checkModules |
 | D08 | P1 | 启动恢复没有持续跟踪存量任务 | 未开始 |  |  |  |
 | D09 | P1 | 取消后退出 15 秒超时当作可退出 | 程序完成 | 0fd23ab | quit-flow.test（4 项） | 退出流程抽到 desktop/services/quit-flow.cjs |
 | D10 | P1 | 目标中断未探测，可能中断下一项 | 程序完成 | 0fd23ab | queue.test D10 两项 | GET /api/jobs 探测；支持时用 /api/jobs/{id}/cancel（服务端原子）；旧后端发送前再核对，仍非原子 |
@@ -48,7 +48,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | PR11-R01 | P1 | 维护状态与暂停租约 | 程序完成 | ea187ce | maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时 | 队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放 |
 | PR11-R02 | P1 | 首次/继续恢复走同一保护入口 | 程序完成 | 0fd23ab | maint-service.test D06 | 资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示 |
-| PR11-R03 | P1 | 补丁冲突不记为成功更新 | 未开始 |  |  |  |
+| PR11-R03 | P1 | 补丁冲突不记为成功更新 | 程序完成 | dad09fb | maint-service.test U06 冲突阻止、R03 未跟踪文件 | 默认策略：冲突在切换前阻止（环境不变）；未提供 needs-resolution 停留模式；Python 模块检查需计划提供 checkModules |
 | PR11-R04 | P1 | 服务归属与停止闭环 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
 | PR11-R05 | P1 | 取消、退出和精确中断 | 程序完成 | 0fd23ab | quit-flow.test、queue.test D10 | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
 | PR11-R06 | P1 | 模型移动与环境操作共用锁 | 实现中 | 3f86e50 | maint-service.test R08/D12 | 已做：环境锁、暂停租约、持锁后再核对本应用任务与外部 ComfyUI、跨盘 journal、成功后才删源。未做：启动时按 journal 继续/清理中断的跨盘移动 |
