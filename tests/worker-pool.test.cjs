@@ -107,7 +107,7 @@ test('C08：取消后清理 AbortSignal 监听；被终止任务的登记临时�
   sig.addEventListener = (...a) => { added++; return add(...a); }; sig.removeEventListener = (...a) => { removed++; return rem(...a); };
   const p = pool.run('sleep', {ms: 5000}, {signal: sig, temps: [tmpf]});
   await new Promise(r => setTimeout(r, 30)); ac.abort();
-  await assert.rejects(p, {code: 'CANCELLED'});
+  await assert.rejects(p, {code: 'CANCELLED'}); await pool.cleaned(); // RV10：清理发生在 worker 真实退出之后
   assert.equal(added, removed, '监听已移除'); assert.ok(!fs.existsSync(tmpf), '临时文件已清理');
   const ok = await pool.run('sleep', {ms: 1}, {signal: new AbortController().signal}); assert.deepEqual(ok, {slept: 1});
   assert.equal(pool.activeCount, 0);

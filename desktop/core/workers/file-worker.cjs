@@ -38,9 +38,9 @@ async function thumbnail({src, tmp, size, format = 'webp', maxPixels = 268402689
   return {bytes: fs.statSync(tmp).size};
 }
 /** S09：大文件复制（流式，带进度）；目标先写临时名，完成后改名；excl 时目标已存在即失败。 */
-async function copyFile({src, dest, excl = true}, progress) {
+async function copyFile({src, dest, excl = true, tmp: given}, progress) {
   if (excl && fs.existsSync(dest)) throw Object.assign(new Error(`目标已存在：${dest}`), {code: 'EEXIST'});
-  const tmp = `${dest}.yz-copy-${process.pid}-${Date.now()}`, total = fs.statSync(src).size;
+  const tmp = given ?? `${dest}.yz-copy-${process.pid}-${Date.now()}`, total = fs.statSync(src).size;
   let done = 0, last = 0;
   try {
     await new Promise((resolve, reject) => {

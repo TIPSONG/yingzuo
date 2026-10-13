@@ -40,6 +40,8 @@ const TEMPLATE_NAMES = [
 // ---------- 数据根、迁移、配置、日志（F04/F05/F07/S01） ----------
 const dataRoot = resolveDataRoot({isPackaged: !!app.isPackaged, exePath: app.isPackaged ? process.execPath : null, userData: app.isPackaged ? app.getPath('userData') : null, devRoot: ROOT});
 const layout = ensureLayout(dataRoot.root);
+// RV10：worker 临时文件登记；启动时只清理上次登记且未提交的临时产物
+try { const r = require('./core/worker-pool.cjs').configureShared({journalFile: require('node:path').join(layout.root, 'worker-temps.json')}); if (r.pending.length) console.warn('仍有未能清理的临时文件', r.pending); } catch (e) { console.warn('临时文件登记恢复失败', e.message); }
 layout.exports = path.join(layout.root, 'exports');
 layout.closed = layout['closed-workflows'];
 const logger = new Logger(layout.logs);
