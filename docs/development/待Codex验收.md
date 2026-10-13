@@ -94,10 +94,25 @@
 | B04 | — | 核对 artifacts.json 与 SHA256SUMS.txt 与产物一致；安装包未签名（SmartScreen 提示属预期） |  |
 
 
-## PR11 审阅修复（第四轮，进行中）
-逐项状态见 Grovebot开发进度.md 的 PR11 区块（`node tools/pr11.cjs render`）。可验收：
-- D01/D02/PR11-R07(部分)/R08：tests/bindings-real.test.cjs + tests/fixtures/qwen21-gemma-api.json。
-- D03/PR11-R09：tests/ui-tasks.test.cjs、task-service.test 中 PR11-R09。
-- D05/PR11-R01：maint.test「恢复失败不启动服务」、task-service.test「暂停租约」。
-- D04/PR11-R10（部分）：task-service.test D04、ui-tasks.test D04。
-未完成项不在此列，不要按完成验收。
+## PR11 审阅修复（第四轮）
+逐项状态见 Grovebot开发进度.md 的 PR11 区块（`node tools/pr11.cjs render`）。以下需要在 Windows + 真实 ComfyUI/LM Studio 上人工验收（人工结果栏留空）：
+
+| 项 | 验收要点 | 自动测试 | 人工结果 |
+| --- | --- | --- | --- |
+| D01/D02/R07/R08 | 本机五个真实模板：识别提示词/负面/尺寸（ResolutionSelector 只读）；Gemma 原文来自 PrimitiveStringMultiline；仅润色→采用→生成；用真实 object_info 核对 SaveImageAdvanced 前缀键名 | bindings-real.test | |
+| D03/R09 | 润色/批量等待期间切换、修改、关闭标签 | ui-tasks.test | |
+| D04/R10 | 模板保存自定义表单后点“运行”按表单弹窗；失效字段显示原因；批量可带表单值（后端） | task-service.test D04 | |
+| D05/D06/R01/R02 | 模拟恢复失败：任务保持暂停、ComfyUI 不自动启动、维护页提示；继续恢复同样检查外部服务 | maint.test、maint-service.test | |
+| D07/R03 | 带 Gemma 补丁的插件更新到冲突版本：更新被阻止，环境不变 | maint-service.test U06/R03 | |
+| D08/R12 | 运行中退出再打开：任务自动跟踪到完成并入库；未知任务重试需确认 | queue.test、task-service.test | |
+| D09/D10/R05 | 取消后退出：超时提示三选项；新版 ComfyUI 走 /api/jobs/{id}/cancel | quit-flow.test、queue.test | |
+| D11/R04 | 外部启动/重启 LM Studio 不被停止；非默认端口；ComfyUI 停止失败如实报错 | services.test | |
+| D12/R06 | 维护中移动模型被拒；跨盘移动中断后重启核对 | maint-service.test | |
+| R11 | 参考图选择重启后仍在；复制标签带参考图；素材删除后运行提示 | task-service.test R11 | |
+| R13 | 应用数据备份→登记恢复→重启后数据回到备份、现场保留 | app-backup.test | |
+| R14 | 回收区列表/恢复/永久清理确认 | maint-service.test、trash-store.test | |
+| D15/R18 | 工作流含 lmstudio_api_key 时任务快照无明文，提交正常（需系统加密可用） | task-service.test R18 | |
+| R19/R20 | 批量参数变化含无效值时整组不入队；输出目录按模板身份稳定 | task-service.test | |
+| R21 | 第二次启动只聚焦已有窗口；CI 业务初始化检查 | entry.test、Windows CI | |
+
+仍为实现中（不要按完成验收）：D04/R10 左侧参数面板与润色未走表单；R11 导出素材 manifest；R17 缩略图未走 worker。

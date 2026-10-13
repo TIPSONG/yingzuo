@@ -188,11 +188,11 @@
   "id": "E07",
   "name": "五图表单",
   "batch": 2,
-  "status": "程序完成",
+  "status": "有限支持",
   "commit": "",
   "files": [],
   "checks": "tests/bindings.test.cjs",
-  "note": "按节点类型+连线推断（提示词/负面/seed/步数/cfg/尺寸/模型/参考图/Gemma），已连线只读；五个真实模板需 Codex 核对"
+  "note": "按节点类型+连线推断；Qwen2.1/Gemma 按源码与官方模板夹具适配（PR11-R07），五个本机真实模板未用真实 object_info 编译核对"
  },
  {
   "id": "E08",
@@ -202,7 +202,7 @@
   "commit": "",
   "files": [],
   "checks": "tests/bindings.test.cjs E08",
-  "note": "data/references 内容寻址；运行栏“参考图…”按 LoadImage 节点选择/移除，按标签保存，运行前上传并写回服务器返回名，重启后重跑自动补传；需真实 ComfyUI 验收"
+  "note": "内容寻址素材；关系持久化到 reference-relations.json（PR11-R11），旧 localStorage 迁移，复制标签复制关系，素材丢失拒绝提交。导出未带素材 manifest"
  },
  {
   "id": "E09",
@@ -268,13 +268,13 @@
   "id": "S04",
   "name": "LM Studio 适配",
   "batch": 1,
-  "status": "程序完成",
+  "status": "有限支持",
   "commit": "",
   "files": [
    "desktop/services/lmstudio.cjs"
   ],
   "checks": "services.test.cjs（CLI 替身）",
-  "note": "lms ps --json 输出格式按文档假设，需 Codex 实机核对"
+  "note": "lms ps --json 输出格式按文档假设；服务归属限本次会话+端口+就绪确认（PR11-R04）"
  },
  {
   "id": "S05",
@@ -300,7 +300,7 @@
    "assets/tray-16.png"
   ],
   "checks": "",
-  "note": "托盘菜单与单实例；Windows 托盘需实机"
+  "note": "单实例锁先于数据迁移（entry.cjs，PR11-R21）；托盘需 Windows 实机"
  },
  {
   "id": "S07",
@@ -313,7 +313,7 @@
    "desktop/services/api.cjs"
   ],
   "checks": "tests/task-service.test.cjs S07",
-  "note": "退出对话框：等待/取消后退出/返回；暂停提交；真实 Windows 退出需验收"
+  "note": "退出：等待/取消后退出/返回；取消超时不当作成功（D09，quit-flow.cjs）；按任务取消接口优先（D10）"
  },
  {
   "id": "S08",
@@ -430,7 +430,7 @@
   "commit": "",
   "files": [],
   "checks": "tests/queue.test.cjs、task-service",
-  "note": "批量弹窗（提示词×次数×seed，上限100）、暂停/继续、重启后未提交默认暂停"
+  "note": "批量：提示词×次数×seed×参数变化，全量校验后单事务整组登记（PR11-R19）；重启恢复 ready + 存量任务独立跟踪（PR11-R12）"
  },
  {
   "id": "A01",
@@ -520,14 +520,14 @@
   "id": "T01",
   "name": "模板仓库",
   "batch": 3,
-  "status": "程序完成",
+  "status": "有限支持",
   "commit": "",
   "files": [
    "desktop/repositories/template-repo.cjs",
    "desktop/ui/templates.js"
   ],
   "checks": "tests/templates.test.cjs",
-  "note": "导入/搜索/文件夹/标签/收藏/内置五模板只读导入；缩略图仅仓库方法 setThumbnail，界面未接（无缩略图生成来源）"
+  "note": "模板仓库功能可用；缩略图只有仓库方法，界面未生成/显示"
  },
  {
   "id": "T02",
@@ -543,13 +543,13 @@
   "id": "T03",
   "name": "表单编辑器",
   "batch": 3,
-  "status": "程序完成",
+  "status": "实现中",
   "commit": "",
   "files": [
    "shared/form-schema.cjs"
   ],
   "checks": "tests/templates.test.cjs",
-  "note": "表单设置弹窗：名称/分组/顺序/范围/添加/移除；与 ParameterBinding schema 共用。参数表单页仍用 P0 画布读取，不读模板 schema"
+  "note": "表单编辑器可保存；正式运行（运行按钮弹窗）与批量后端按表单写入（D04）。左侧参数面板仍枚举全部 widget，润色流程未走表单"
  },
  {
   "id": "T04",
@@ -669,13 +669,13 @@
   "id": "R06",
   "name": "Manager 适配",
   "batch": 4,
-  "status": "程序完成",
+  "status": "有限支持",
   "commit": "27e15c4",
   "files": [
    "desktop/services/online/dependency-plan.cjs"
   ],
   "checks": "dependency.test：Manager 探测",
-  "note": "只读探测 Manager/cm-cli；因各版本 CLI/HTTP 不一致不做猜测调用，插件操作统一走受限 Git 事务（规格允许的后备）；不安装另一个 Manager"
+  "note": "Manager/cm-cli 只读探测；插件操作统一走受限 Git 事务"
  },
  {
   "id": "R07",
@@ -778,13 +778,13 @@
   "id": "O07",
   "name": "在线模板导入",
   "batch": 4,
-  "status": "程序完成",
+  "status": "有限支持",
   "commit": "",
   "files": [
    "desktop/services/online"
   ],
   "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
-  "note": "HF/GitHub/https JSON 链接 → 校验 UI 格式 → 存模板（作者/许可/revision）+本地缓存；不安装不执行"
+  "note": "只支持按链接导入在线模板（HF/GitHub/https JSON）；没有在线模板浏览与源索引"
  },
  {
   "id": "O08",
@@ -864,7 +864,7 @@
    "desktop/maintenance/plugin-ops.cjs"
   ],
   "checks": "maint-service.test：补丁重放成功/冲突列入待处理",
-  "note": "ComfyUI/插件按指定 revision 更新；本地改动（Gemma 补丁）存补丁文件并 3-way 重放，冲突保留补丁列入待处理；requirements 变化才 pip"
+  "note": "按 revision 更新；本地补丁先在目标版本临时索引预检，不能重放或未跟踪文件冲突则阻止更新（PR11-R03）"
  },
  {
   "id": "U07",

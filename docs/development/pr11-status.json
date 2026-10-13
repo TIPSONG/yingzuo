@@ -176,7 +176,7 @@
       "name": "取消、退出和精确中断",
       "status": "程序完成",
       "commit": "0fd23ab",
-      "note": "已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试",
+      "note": "取消退出超时不当作成功（D09，quit-flow.test）；按任务取消接口探测与使用（D10，queue.test）",
       "tests": "quit-flow.test、queue.test D10"
     },
     {
@@ -318,13 +318,17 @@
       "id": "PR11-R21",
       "level": "P1",
       "name": "真实契约检查与 CI 业务初始化",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "6854580",
+      "tests": "entry.test（单实例先于主进程）；Windows CI 业务初始化检查 run 38377869166 通过（隔离数据根，126 个接口）",
+      "note": "CI 无真实 ComfyUI/LM Studio，相关仍为替身测试"
     },
     {
       "id": "PR11-R22",
       "level": "P2",
       "name": "功能闭环复核与交接",
-      "status": "未开始"
+      "status": "程序完成",
+      "note": "复核 82 项与 PR11 状态，更新 README/待Codex验收/交接与 PR 描述"
     }
   ]
 }

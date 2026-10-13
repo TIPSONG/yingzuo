@@ -50,7 +50,7 @@
 | PR11-R02 | P1 | 首次/继续恢复走同一保护入口 | 程序完成 | 0fd23ab | maint-service.test D06 | 资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示 |
 | PR11-R03 | P1 | 补丁冲突不记为成功更新 | 程序完成 | dad09fb | maint-service.test U06 冲突阻止、R03 未跟踪文件 | 默认策略：冲突在切换前阻止（环境不变）；未提供 needs-resolution 停留模式；Python 模块检查需计划提供 checkModules |
 | PR11-R04 | P1 | 服务归属与停止闭环 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
-| PR11-R05 | P1 | 取消、退出和精确中断 | 程序完成 | 0fd23ab | quit-flow.test、queue.test D10 | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
+| PR11-R05 | P1 | 取消、退出和精确中断 | 程序完成 | 0fd23ab | quit-flow.test、queue.test D10 | 取消退出超时不当作成功（D09，quit-flow.test）；按任务取消接口探测与使用（D10，queue.test） |
 | PR11-R06 | P1 | 模型移动与环境操作共用锁 | 程序完成 | c2effab | maint-service.test R08/D12、R06 启动核对 | 环境锁+暂停租约+持锁后再核对；跨盘 journal 与启动核对。外部客户端是否加载模型只能以外部 ComfyUI 运行与否保守判断 |
 | PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 程序完成 | b689b9d | bindings-real.test（10 项）+ 夹具 tests/fixtures/qwen21-gemma-api.json | 夹具是脱敏构造，不是真实 ComfyUI 编译结果；SaveImageAdvanced 动态子项在 API 中的键名需 Codex 用真实 object_info 只读确认 |
 | PR11-R08 | P1 | Gemma 原文连线与采用结果 | 程序完成 | fdbe85a | bindings-real.test | 读取图中 context_length/release_vram/disable_thinking/model/URL；上下文以节点值为准；重新润色改 cache_buster |
@@ -66,14 +66,14 @@
 | PR11-R18 | P1 | 敏感输入引用与快照脱敏 | 程序完成 | 5729991 | task-service.test R18 两项；review2 的 secret-fields.test | 合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理 |
 | PR11-R19 | P2 | 批量参数变化与原子规划 | 程序完成 | 8e62ff0 | task-service.test R19；review2 batch-plan.test | 采样器/调度器变化只按文本校验，未对照 object_info 可选项 |
 | PR11-R20 | P2 | 稳定输出身份与真实保存节点适配 | 程序完成 | eebced9 | task-service.test A03/R20；review2 output-plan.test | 无模板时用结构指纹；SaveImageAdvanced 仅在 object_info 确认 STRING 前缀字段时改写 |
-| PR11-R21 | P1 | 真实契约检查与 CI 业务初始化 | 未开始 |  |  |  |
-| PR11-R22 | P2 | 功能闭环复核与交接 | 未开始 |  |  |  |
+| PR11-R21 | P1 | 真实契约检查与 CI 业务初始化 | 程序完成 | 6854580 | entry.test（单实例先于主进程）；Windows CI 业务初始化检查 run 38377869166 通过（隔离数据根，126 个接口） | CI 无真实 ComfyUI/LM Studio，相关仍为替身测试 |
+| PR11-R22 | P2 | 功能闭环复核与交接 | 程序完成 |  |  | 复核 82 项与 PR11 状态，更新 README/待Codex验收/交接与 PR 描述 |
 
 <!-- /PR11 -->
 
 <!-- TABLE -->
 
-统计：程序完成 82 / 实现中 0 / 阻塞 0 / 未开始 0（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 76 / 实现中 1 / 阻塞 0 / 未开始 0（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -96,18 +96,18 @@
 | S01 | 统一配置 | 程序完成 |  | desktop/repositories/config-repo.cjs | foundation.test.cjs |  |  |
 | S02 | 服务探测 | 程序完成 |  | desktop/services/service-probe.cjs | services.test.cjs（本机 HTTP 替身） | 真实 ComfyUI/LM Studio 需 Codex |  |
 | S03 | 按需启动 ComfyUI | 程序完成 |  | desktop/services/comfy-process.cjs<br>desktop/services/process-utils.cjs | services.test.cjs | Windows 进程身份查询用 PowerShell Get-CimInstance，未在 Windows 实跑 |  |
-| S04 | LM Studio 适配 | 程序完成 |  | desktop/services/lmstudio.cjs | services.test.cjs（CLI 替身） | lms ps --json 输出格式按文档假设，需 Codex 实机核对 |  |
+| S04 | LM Studio 适配 | 有限支持 |  | desktop/services/lmstudio.cjs | services.test.cjs（CLI 替身） | lms ps --json 输出格式按文档假设；服务归属限本次会话+端口+就绪确认（PR11-R04） |  |
 | S05 | 停止与显存 | 程序完成 |  | desktop/services/comfy-process.cjs<br>desktop/services/api.cjs | services.test.cjs：PID 复用不误停 |  |  |
-| S06 | 托盘与单实例 | 程序完成 |  | desktop/main.cjs<br>assets/tray-16.png |  | 托盘菜单与单实例；Windows 托盘需实机 |  |
-| S07 | 正确退出 | 程序完成 |  | desktop/main.cjs<br>desktop/services/api.cjs | tests/task-service.test.cjs S07 | 退出对话框：等待/取消后退出/返回；暂停提交；真实 Windows 退出需验收 |  |
+| S06 | 托盘与单实例 | 程序完成 |  | desktop/main.cjs<br>assets/tray-16.png |  | 单实例锁先于数据迁移（entry.cjs，PR11-R21）；托盘需 Windows 实机 |  |
+| S07 | 正确退出 | 程序完成 |  | desktop/main.cjs<br>desktop/services/api.cjs | tests/task-service.test.cjs S07 | 退出：等待/取消后退出/返回；取消超时不当作成功（D09，quit-flow.cjs）；按任务取消接口优先（D10） |  |
 | S08 | 状态与设置页面接入 | 程序完成 |  | desktop/ui/shell.js |  | 首页服务卡、设置页、日志页接真实接口 |  |
 
 ### 批次 2
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| E07 | 五图表单 | 程序完成 |  |  | tests/bindings.test.cjs | 按节点类型+连线推断（提示词/负面/seed/步数/cfg/尺寸/模型/参考图/Gemma），已连线只读；五个真实模板需 Codex 核对 |  |
-| E08 | 参考图管线 | 程序完成 |  |  | tests/bindings.test.cjs E08 | data/references 内容寻址；运行栏“参考图…”按 LoadImage 节点选择/移除，按标签保存，运行前上传并写回服务器返回名，重启后重跑自动补传；需真实 ComfyUI 验收 |  |
+| E07 | 五图表单 | 有限支持 |  |  | tests/bindings.test.cjs | 按节点类型+连线推断；Qwen2.1/Gemma 按源码与官方模板夹具适配（PR11-R07），五个本机真实模板未用真实 object_info 编译核对 |  |
+| E08 | 参考图管线 | 程序完成 |  |  | tests/bindings.test.cjs E08 | 内容寻址素材；关系持久化到 reference-relations.json（PR11-R11），旧 localStorage 迁移，复制标签复制关系，素材丢失拒绝提交。导出未带素材 manifest |  |
 | E09 | 编译与定位 | 程序完成 |  |  | tests/bindings.test.cjs E09 | compileTab：后台标签切换→graphToPrompt→切回；本地检查 object_info |  |
 | E10 | 原生视图行为 | 程序完成 | 27e15c4 | desktop/services/editor-session.cjs<br>desktop/ui/tasks.js | desktop-main.test：快捷键映射 | 弹窗/离开创作页隐藏原生视图；原生视图内 Ctrl+Enter 走映作队列、Ctrl +/-/0 缩放；图片下载保存到 exports 并提示；图片选择用 Comfy 原生文件框；需 Windows 实测 |  |
 | Q01 | 任务持久化 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
@@ -132,9 +132,9 @@
 | A06 | 原图导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A07 | 分享副本导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A08 | 收藏板 | 程序完成 | 5c7e40a | desktop/ui/assets.js | favorites 单测（assets 分支） | 收藏板按 arrangeAlbum 等高行排列，取消收藏移到回收区；CSP 下位置用 CSSOM 设置 |  |
-| T01 | 模板仓库 | 程序完成 |  | desktop/repositories/template-repo.cjs<br>desktop/ui/templates.js | tests/templates.test.cjs | 导入/搜索/文件夹/标签/收藏/内置五模板只读导入；缩略图仅仓库方法 setThumbnail，界面未接（无缩略图生成来源） |  |
+| T01 | 模板仓库 | 有限支持 |  | desktop/repositories/template-repo.cjs<br>desktop/ui/templates.js | tests/templates.test.cjs | 模板仓库功能可用；缩略图只有仓库方法，界面未生成/显示 |  |
 | T02 | 保存与历史 | 程序完成 |  |  | tests/templates.test.cjs | 版本只追加、恢复生成新版本、另存、导出（含 .yingzuo-form.json）；原模板文件只读 |  |
-| T03 | 表单编辑器 | 程序完成 |  | shared/form-schema.cjs | tests/templates.test.cjs | 表单设置弹窗：名称/分组/顺序/范围/添加/移除；与 ParameterBinding schema 共用。参数表单页仍用 P0 画布读取，不读模板 schema |  |
+| T03 | 表单编辑器 | 实现中 |  | shared/form-schema.cjs | tests/templates.test.cjs | 表单编辑器可保存；正式运行（运行按钮弹窗）与批量后端按表单写入（D04）。左侧参数面板仍枚举全部 widget，润色流程未走表单 |  |
 | T04 | 映射失效处理 | 程序完成 |  |  | tests/templates.test.cjs | 删除/改类/缺字段/改连线判失效，候选仅同类型同字段，服务端再校验 |  |
 | T05 | 实时诊断清单 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 实时诊断：object_info/模型目录/LM Studio 合并，单独采集时间，离线缓存标注；插件版本号需 R01（maint 分支）提供，当前只列插件模块与节点数 |  |
 | T06 | 替代建议 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 沿用 compatibility.js 规则，按用途/格式/加载器/架构给候选；未知保持待核实 |  |
@@ -154,7 +154,7 @@
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | T08 | 依赖补齐计划 | 程序完成 |  | desktop/services/online/dependency-plan.cjs | tests/dependency.test.cjs | 缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺节点给手动处理说明（插件安装待 R07） |  |
-| R06 | Manager 适配 | 程序完成 | 27e15c4 | desktop/services/online/dependency-plan.cjs | dependency.test：Manager 探测 | 只读探测 Manager/cm-cli；因各版本 CLI/HTTP 不一致不做猜测调用，插件操作统一走受限 Git 事务（规格允许的后备）；不安装另一个 Manager |  |
+| R06 | Manager 适配 | 有限支持 | 27e15c4 | desktop/services/online/dependency-plan.cjs | dependency.test：Manager 探测 | Manager/cm-cli 只读探测；插件操作统一走受限 Git 事务 |  |
 | R07 | 插件操作事务 | 程序完成 | b9e2351 | desktop/maintenance/plugin-ops.cjs<br>desktop/services/maintenance-service.cjs | maint-service.test：https 限制、安装→移除到回收区 | 仅 https 无账号 Git 地址；staging 克隆固定 revision；可选 pip（Python 环境纳入备份）；移除前列出使用者并需确认，移到回收区 |  |
 | R08 | 模型位置管理 | 程序完成 | b9e2351 | desktop/services/maintenance-service.cjs | maint-service.test：非登记目录拒绝、移动成功 | 只在同用途已登记目录间移动（相对名不变）；跨盘复制+sha256 校验后切换；有任务运行时拒绝；LM Studio 模型不在范围 |  |
 | O01 | 来源接口 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 统一 search/detail/listFiles/resolveDownload/parseLink，内存 TTL 缓存、AbortSignal 取消、429/5xx 退避；联网失败只影响在线页 |  |
@@ -163,16 +163,16 @@
 | O04 | 下载规划 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 按用途选 ComfyUI models 子目录或自选目录、空间（保留 1GB）、重名与 .part 提示、Windows 文件名校验 |  |
 | O05 | 通用下载器 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 流式 .part、Range/If-Range 续传、并发、取消、退避重试、大小与 sha256、原子改名；本机 HTTP 服务测试 |  |
 | O06 | 下载恢复 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 启动时中断任务置暂停并按 .part 大小续传；源变化从头下载；每次重新解析 URL，令牌不入库 |  |
-| O07 | 在线模板导入 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | HF/GitHub/https JSON 链接 → 校验 UI 格式 → 存模板（作者/许可/revision）+本地缓存；不安装不执行 |  |
+| O07 | 在线模板导入 | 有限支持 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 只支持按链接导入在线模板（HF/GitHub/https JSON）；没有在线模板浏览与源索引 |  |
 | O08 | 联合补齐 | 程序完成 | 27e15c4 | desktop/ui/online.js<br>desktop/services/maintenance-service.cjs | maint-service.test（安装路径） | 模型逐项下载+插件按用户填写的 Git 地址逐个经事务安装，逐项报告；装后重新生成计划；插件需重启 ComfyUI 后才被识别 |  |
 
 ### 批次 5
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Q10 | 批量与重启恢复 | 程序完成 |  |  | tests/queue.test.cjs、task-service | 批量弹窗（提示词×次数×seed，上限100）、暂停/继续、重启后未提交默认暂停 |  |
+| Q10 | 批量与重启恢复 | 程序完成 |  |  | tests/queue.test.cjs、task-service | 批量：提示词×次数×seed×参数变化，全量校验后单事务整组登记（PR11-R19）；重启恢复 ready + 存量任务独立跟踪（PR11-R12） |  |
 | U05 | 更新检测与页面 | 程序完成 | 5c7e40a | desktop/services/update-check.cjs<br>desktop/ui/updates.js | update-check.test：频率与渠道 | 渠道 stable/beta（beta 含预发布）、频率 manual/daily/weekly 后台只检测只提示；定时检查不 git fetch |  |
-| U06 | Comfy／插件更新 | 程序完成 | b9e2351 | desktop/maintenance/plugin-ops.cjs | maint-service.test：补丁重放成功/冲突列入待处理 | ComfyUI/插件按指定 revision 更新；本地改动（Gemma 补丁）存补丁文件并 3-way 重放，冲突保留补丁列入待处理；requirements 变化才 pip |  |
+| U06 | Comfy／插件更新 | 程序完成 | b9e2351 | desktop/maintenance/plugin-ops.cjs | maint-service.test：补丁重放成功/冲突列入待处理 | 按 revision 更新；本地补丁先在目标版本临时索引预检，不能重放或未跟踪文件冲突则阻止更新（PR11-R03） |  |
 | U07 | 更新记录与保留 | 程序完成 | b9e2351 | desktop/services/maintenance-service.cjs<br>desktop/ui/resources.js | maint-service.test：保留策略 | 备份列表/校验/恢复/继续未完成恢复/维护记录；保留最近 N 份且每来源保留最近完整备份，使用中不清理，清理=移到回收区 |  |
 | U08 | 应用版本维护 | 程序完成 |  |  | tests/update-check.test.cjs | 读取 GitHub Releases、显示变更、显式下载并按 SHA256SUMS 校验、打开目录手动安装；未签名、不配自动更新 feed。仓库私有时提示手动流程 |  |
 
