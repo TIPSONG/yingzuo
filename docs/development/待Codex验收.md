@@ -93,3 +93,11 @@
 | B03 | Windows | 下载 Actions 产物 yingzuo-windows：便携 exe 与 NSIS 安装包可双击运行；`映作.exe --yz-smoke=out.json` 输出 ok=true、驱动 better-sqlite3；中文路径下运行；安装版升级不覆盖 `%APPDATA%\映作\data` |  |
 | B04 | — | 核对 artifacts.json 与 SHA256SUMS.txt 与产物一致；安装包未签名（SmartScreen 提示属预期） |  |
 
+
+## PR11 审阅修复（第四轮，进行中）
+逐项状态见 Grovebot开发进度.md 的 PR11 区块（`node tools/pr11.cjs render`）。可验收：
+- D01/D02/PR11-R07(部分)/R08：tests/bindings-real.test.cjs + tests/fixtures/qwen21-gemma-api.json。
+- D03/PR11-R09：tests/ui-tasks.test.cjs、task-service.test 中 PR11-R09。
+- D05/PR11-R01：maint.test「恢复失败不启动服务」、task-service.test「暂停租约」。
+- D04/PR11-R10（部分）：task-service.test D04、ui-tasks.test D04。
+未完成项不在此列，不要按完成验收。
