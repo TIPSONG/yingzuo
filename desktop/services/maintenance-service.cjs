@@ -50,31 +50,60 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
   /* ---------- U04：事务执行 ---------- */
   async function services() {
     const running = await fetchImpl(new URL('system_stats', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => r.ok, () => false);
-    return [{id: 'comfy', running, owned: running ? await comfy.verifyOwned() : false, roots: configRepo.config.comfy.root ? [configRepo.config.comfy.root] : undefined}];
+    let owned = running ? await comfy.verifyOwned() : false, foreign = 0;
+    if (running && owned) {
+      // S02：本应用启动的后端里也可能有原生画布/其他客户端的任务；核对失败按“不能确认”处理
+      try {
+        const q = await fetchImpl(new URL('queue', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
+        const ids = [...(q.queue_running ?? []), ...(q.queue_pending ?? [])].map(i => i?.[1]).filter(Boolean);
+        foreign = ids.filter(id => !taskService?.tasks?.byPromptId?.(id)).length;
+      } catch { foreign = -1; }
+      if (foreign) owned = false;
+    }
+    return [{id: 'comfy', running, owned, foreignJobs: foreign, roots: configRepo.config.comfy.root ? [configRepo.config.comfy.root] : undefined}];
   }
   /* ---------- D05/D06/PR11-R01/R02：恢复失败后保持暂停；所有恢复走同一受保护路径 ---------- */
+  // S02：阻断持久化到 maintenance-holds.json；启动时在任何提交/服务操作前重建并重新取得暂停租约。
+  // 每条阻断绑定事务、备份与受影响目录；只有恢复了同一备份才解除对应阻断。
+  const holdsFile = path.join(layout.root, 'maintenance-holds.json');
   const holds = [];
-  function holdAfterFailure(h) { holds.push(h); logger?.error('维护恢复失败：保持任务暂停、不启动服务', {id: h.id}); events.emit('maintenance.hold', h.id, {stopped: h.stopped}); }
-  function releaseHolds() { for (const h of holds.splice(0)) if (typeof h.lease === 'function') h.lease(); }
-  async function guardedRestore(run) {
+  const persistHolds = () => { fs.mkdirSync(path.dirname(holdsFile), {recursive: true}); const tmp = `${holdsFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(holds.map(({lease, ...h}) => h), null, 2)); fs.renameSync(tmp, holdsFile); };
+  (function loadHolds() {
+    let saved = [];
+    try { if (fs.existsSync(holdsFile)) saved = JSON.parse(fs.readFileSync(holdsFile, 'utf8')); }
+    catch (e) { saved = [{id: 'unreadable', reason: `阻断记录损坏：${e.message}`, backupDir: null, roots: [], at: new Date().toISOString()}]; } // 读不出来也按阻断处理
+    for (const h of Array.isArray(saved) ? saved : []) holds.push({...h, lease: taskService?.hooks.pauseSubmissions(`hold:${h.id}`) ?? null});
+    if (holds.length) logger?.warn('上次维护恢复未完成：保持任务暂停、不自动启动服务', {holds: holds.map(h => h.id)});
+  })();
+  function holdAfterFailure(h) { holds.push({at: new Date().toISOString(), roots: [], backupDir: null, ...h}); persistHolds(); logger?.error('维护恢复失败：保持任务暂停、不启动服务', {id: h.id}); events.emit('maintenance.hold', h.id, {stopped: h.stopped}); }
+  /** 只解除与已恢复备份对应的阻断；backupDir 为空（未知来源）不解除任何阻断。 */
+  function releaseHoldsFor(backupDir) {
+    if (!backupDir) return 0;
+    const key = path.resolve(backupDir); let n = 0;
+    for (let i = holds.length - 1; i >= 0; i--) if (holds[i].backupDir && path.resolve(holds[i].backupDir) === key) { const [h] = holds.splice(i, 1); if (typeof h.lease === 'function') h.lease(); n++; }
+    persistHolds(); return n;
+  }
+  const gate = () => (holds.length ? new AppError(CODES.INVALID_STATE, '上一次维护恢复失败，环境处于不确定状态。请先在“维护”页完成恢复。', {details: {holds: holds.map(h => h.id)}}) : null);
+  async function guardedRestore(run, {backupDir = null} = {}) {
     const release = locks.environment.tryAcquire('restore'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用。');
     let lease = null, ok = false;
     try {
-      if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 仍在运行，请先关闭后再恢复。');
+      if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 仍在运行，或本应用启动的 ComfyUI 正在执行其他程序的任务，请先结束后再恢复。');
       lease = taskService?.hooks.pauseSubmissions('restore') ?? null;
       await taskService?.hooks.waitForIdle({timeoutMs: 600000});
       if (await comfy.verifyOwned()) await comfy.stop();
       const r = await run();
-      ok = true; releaseHolds();
+      ok = true; releaseHoldsFor(backupDir);
       return r;
     } finally {
       // 恢复未完成：保留租约（任务继续暂停），等待用户再次恢复
-      if (ok || !lease) lease?.(); else holdAfterFailure({id: 'restore', lease, stopped: []});
+      if (ok || !lease) lease?.(); else holdAfterFailure({id: `restore-${Date.now().toString(36)}`, lease, stopped: [], backupDir});
       release();
     }
   }
   async function runTransaction(plan) {
-    if (holds.length) throw new AppError(CODES.INVALID_STATE, '上一次维护恢复失败，环境处于不确定状态。请先在“维护”页完成恢复。');
+    if (gate()) throw gate();
+    let txBackupDir = null;
     const id = `mt-${crypto.randomBytes(5).toString('hex')}`;
     record(id, {scope: plan.kind ?? 'maintenance', phase: 'plan', target: {title: plan.title, target: plan.target}});
     const journal = [];
@@ -83,8 +112,8 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       stopService: async () => { await comfy.stop(); },
       startService: async () => { await comfy.ensureRunning(configRepo.config); },
       queue: taskService ? {pauseSubmissions: r => taskService.hooks.pauseSubmissions(r), waitForIdle: o => taskService.hooks.waitForIdle(o)} : null,
-      onHold: h => holdAfterFailure(h),
-      backup: async p => { const r = await createBackup({backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile}); return {dir: r.dir}; },
+      onHold: h => holdAfterFailure({...h, backupDir: txBackupDir, roots: plan.roots ?? []}),
+      backup: async p => { const r = await createBackup({backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile}); txBackupDir = r.dir; return {dir: r.dir}; },
       restore: async dir => { const j = await restore.prepare(dir); return restore.run(j.id); },
       onEvent: e => { journal.push(e); record(id, {phase: ['plan', 'disk', 'services', 'lock', 'pause', 'stop'].includes(e.phase) ? 'plan' : e.phase === 'backup' ? 'backup' : e.phase === 'staging' ? 'staging' : e.phase === 'apply' ? 'apply' : e.phase === 'check' ? 'healthcheck' : e.phase === 'done' ? 'done' : e.phase === 'restore' ? 'restore' : e.phase === 'restore-check' ? (e.state === 'done' ? 'restored' : 'failed') : 'failed', journal}); events.emit('maintenance.progress', id, e); },
     });
@@ -132,6 +161,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     if (!fs.existsSync(movesDir)) return [];
     const files = fs.readdirSync(movesDir).filter(n => n.endsWith('.json'));
     if (!files.length) return [];
+    if (gate()) return files.map(f => ({file: f, action: 'deferred', reason: '维护恢复未完成'}));
     const release = locks.environment.tryAcquire('model-move-recover');
     if (!release) return files.map(f => ({file: f, action: 'deferred', reason: '环境锁被占用'}));
     const lease = taskService?.hooks.pauseSubmissions('model-move-recover') ?? null;
@@ -194,15 +224,23 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     'maintenance.verifyBackup': async dir => { const b = listBackups().find(x => x.dir === dir); if (!b) throw new AppError(CODES.NOT_FOUND, '备份不存在。'); return verifyBackup(dir); },
     'maintenance.restoreBackup': async dir => {
       const b = listBackups().find(x => x.dir === dir); if (!b) throw new AppError(CODES.NOT_FOUND, '备份不存在。');
-      return guardedRestore(async () => { const j = await restore.prepare(dir); return restore.run(j.id); });
+      return guardedRestore(async () => { const j = await restore.prepare(dir); return restore.run(j.id); }, {backupDir: dir});
     },
     'maintenance.pendingRestores': async () => restore.pending(),
     // ----- R13：应用数据备份（与环境备份分开；恢复在下次启动、打开数据库之前执行） -----
     'maintenance.appBackup': async () => { const r = await appBackup.createAppBackup({layout, hashImpl: hashFile}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
     'maintenance.appBackups': async () => ({backups: appBackup.listAppBackups(layout), lastRestore: globalThis.__yzAppRestore ?? null}),
     'maintenance.scheduleAppRestore': async dir => appBackup.scheduleAppRestore(layout, dir),
-    'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id)),
-    'maintenance.holds': async () => holds.map(h => ({id: h.id, stopped: h.stopped})),
+    'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id), {backupDir: restore.pending().find(j => j.id === id)?.backupDir ?? null}),
+    'maintenance.holds': async () => holds.map(h => ({id: h.id, stopped: h.stopped, backupDir: h.backupDir ?? null, roots: h.roots ?? [], at: h.at ?? null, reason: h.reason ?? null})),
+    /** S02：来源不明（无对应备份）的阻断只能由用户明确确认后解除。 */
+    'maintenance.clearHold': async (id, {confirm = false} = {}) => {
+      const i = holds.findIndex(h => h.id === id); if (i < 0) throw new AppError(CODES.NOT_FOUND, '阻断不存在。');
+      if (holds[i].backupDir && confirm !== 'force') throw new AppError(CODES.INVALID_STATE, '该阻断有对应备份，请通过“恢复”或“继续恢复”解除。', {details: {backupDir: holds[i].backupDir}});
+      if (!confirm) throw new AppError(CODES.INVALID_STATE, '需要确认：已手动检查环境可用。', {details: {needsConfirm: true}});
+      const [h] = holds.splice(i, 1); if (typeof h.lease === 'function') h.lease(); persistHolds();
+      logger?.warn('用户确认解除维护阻断', {id}); return {released: id};
+    },
     'maintenance.transactions': async () => listTransactions(),
     'maintenance.pruneBackups': async () => { const list = planPrune(configRepo.config.maintenance?.keepBackups ?? 5); const moved = list.map(b => trash.move(b.dir, {kind: 'backup', note: b.createdAt})); return {moved: list.map(b => b.dir), to: trash.dir, items: moved.map(e => e.id)}; },
     // ----- R14：回收区（只管理本应用登记条目；永久清理需确认并逐项再核对） -----
@@ -254,6 +292,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       const free = (() => { try { const s = fs.statfsSync(targetRoot); return s.bavail * s.bsize; } catch { return null; } })();
       if (free !== null && free < it.size + 1024 ** 3) throw new AppError(CODES.DISK_SPACE, '目标磁盘空间不足。');
       // D12/PR11-R06：与维护/恢复共用环境锁；暂停提交后再核对任务，复制期间不会有新任务开始
+      if (gate()) throw gate();
       const release = locks.environment.tryAcquire('model-move'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用，请等维护完成后再移动。');
       const lease = taskService?.hooks.pauseSubmissions('model-move') ?? null;
       try {
@@ -282,6 +321,6 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       return {results, note: '插件安装后需重启 ComfyUI，再重新诊断。'};
     },
   };
-  return {methods, runTransaction, buildIndex, listBackups, planPrune, restore, recoverModelMoves};
+  return {methods, gate, runTransaction, buildIndex, listBackups, planPrune, restore, recoverModelMoves};
 }
 module.exports = {createMaintenanceService, nodeTypesOf};

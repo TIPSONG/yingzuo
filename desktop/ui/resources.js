@@ -84,7 +84,7 @@ async function pending() {
   const p = await call(yz.maintenance.pendingRestores());
   const holds = await call(yz.maintenance.holds()).catch(() => []);
   // D06：恢复失败后任务保持暂停、服务不自动启动，直到在这里完成恢复
-  q('#rs-pending').innerHTML = holds.map(h => `<div class="row"><span class="err">维护 ${esc(h.id)} 恢复失败：任务提交已暂停，ComfyUI 未自动启动${h.stopped?.length ? `（已停止：${h.stopped.map(esc).join('、')}）` : ''}。请继续下面未完成的恢复，或从备份恢复。</span></div>`).join('') + p.map(j => `<div class="row"><span class="err">未完成的恢复 ${esc(j.id)}（${esc(j.status)}）</span><button data-resume="${esc(j.id)}">继续恢复</button></div>`).join('');
+  q('#rs-pending').innerHTML = holds.map(h => `<div class="row"><span class="err">维护 ${esc(h.id)} 恢复失败：任务提交已暂停，ComfyUI 未自动启动${h.stopped?.length ? `（已停止：${h.stopped.map(esc).join('、')}）` : ''}。${h.backupDir ? `恢复备份 ${esc(h.backupDir)} 成功后自动解除。` : '没有对应备份，请手动检查环境后确认解除。'}</span>${h.backupDir ? '' : `<button data-clearhold="${esc(h.id)}">已检查，解除</button>`}</div>`).join('') + p.map(j => `<div class="row"><span class="err">未完成的恢复 ${esc(j.id)}（${esc(j.status)}）</span><button data-resume="${esc(j.id)}">继续恢复</button></div>`).join('');
 }
 q('#rs-maint').addEventListener('click', async e => {
   const b = e.target.closest('[data-b]'); if (!b) return;
@@ -93,6 +93,7 @@ q('#rs-maint').addEventListener('click', async e => {
     else if (await confirmBox('恢复备份', '<p>会暂停队列、停止本应用启动的 ComfyUI，并把备份内容恢复到原位置；当前内容会先保留为现场副本。外部启动的 ComfyUI 需先手动关闭。</p>')) { const r = await call(yz.maintenance.restoreBackup(b.dataset.d)); toast(`恢复${r.status === 'done' ? '完成' : `状态：${r.status}`}`); }
   } catch (er) { swallow(er); }
 });
+q('#rs-pending').addEventListener('click', async e => { const c = e.target.closest('[data-clearhold]'); if (c && window.confirm('确认已手动检查 ComfyUI 环境可正常使用？解除后任务将恢复提交。')) call(yz.maintenance.clearHold(c.dataset.clearhold, {confirm: true}), '已解除阻断。').then(pending, swallow); });
 q('#rs-pending').addEventListener('click', e => { const b = e.target.closest('[data-resume]'); if (b) call(yz.maintenance.resumeRestore(b.dataset.resume), '恢复已继续完成。').then(pending, swallow); });
 q('#rs-scan').addEventListener('click', () => doScan());
 q('#rs-models').addEventListener('click', e => { const b = e.target.closest('[data-detail]'); if (b) openDetail(b.dataset.detail).catch(swallow); });

@@ -39,7 +39,8 @@ function setup(opt = {}) {
   const events = {emit: () => {}};
   const locks = createLocks();
   const svc = createMaintenanceService({db, layout, configRepo, locks, events, comfy, taskService, editor, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
-  return {base, root, ext, svc, db, calls, paused, layout, locks};
+  const reopen = () => createMaintenanceService({db, layout, configRepo, locks, events, comfy, taskService, editor, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
+  return {base, root, ext, svc, db, calls, paused, layout, locks, reopen, taskService};
 }
 
 test('resources.scan/detail/references：引用来自草稿和任务快照', async () => {
@@ -243,4 +244,30 @@ test('S04：有任务运行时推迟核对，不动文件、journal 保留', asy
   journal('a', {src: s, dest: d, tmp: d + '.yz-moving', sha256: h('A')});
   const r = await svc.recoverModelMoves();
   assert.equal(r[0].action, 'deferred'); assert.ok(fs.existsSync(s)); assert.equal(fs.readdirSync(moves).length, 1);
+});
+
+test('S02：恢复阻断持久化——重启后仍暂停、拒绝维护/移动；无关备份恢复不解除；无备份阻断需确认解除', async () => {
+  const {svc, paused, reopen, layout} = setup();
+  await assert.rejects(svc.methods['maintenance.resumeRestore']('no-such'));
+  assert.ok(fs.existsSync(path.join(layout.root, 'maintenance-holds.json')));
+  paused.length = 0;
+  const svc2 = reopen();
+  assert.deepEqual(paused, ['p'], '重启时重新取得暂停租约');
+  assert.equal((await svc2.methods['maintenance.holds']()).length, 1);
+  assert.ok(svc2.gate());
+  await assert.rejects(svc2.methods['maintenance.createBackup'](), e => e.code === 'INVALID_STATE');
+  // 无关备份恢复（失败或成功）都不解除来源不明的阻断
+  await assert.rejects(svc2.methods['maintenance.restoreBackup']('/nope'), e => e.code === 'NOT_FOUND');
+  assert.ok(svc2.gate());
+  const h = (await svc2.methods['maintenance.holds']())[0];
+  await assert.rejects(svc2.methods['maintenance.clearHold'](h.id), e => e.details?.needsConfirm);
+  await svc2.methods['maintenance.clearHold'](h.id, {confirm: true});
+  assert.equal(svc2.gate(), null); assert.equal(paused.at(-1), 'r', '租约释放');
+  assert.equal((await reopen().methods['maintenance.holds']()).length, 0);
+});
+test('S02：本应用启动的 ComfyUI 中有其他客户端任务——视为不可停止，阻止维护', async () => {
+  const json = v => new Response(JSON.stringify(v), {status: 200});
+  const {svc} = setup({verifyOwned: async () => true, fetchImpl: async url => (String(url).endsWith('/queue') ? json({queue_running: [[1, 'p-native', {}, {}, []]], queue_pending: []}) : json({}))});
+  const r = await svc.methods['maintenance.createBackup']();
+  assert.equal(r.status, 'blocked'); assert.match(r.error.message, /外部服务/);
 });
