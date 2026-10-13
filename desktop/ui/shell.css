@@ -55,3 +55,11 @@ button.ghost{background:transparent}
 .modal h3{margin:0 0 10px;font-size:15px}
 .modal input{width:100%;background:#0f120f;border:1px solid var(--line);border-radius:7px;color:inherit;padding:8px;margin:6px 0 12px}
 .modal .actions{justify-content:flex-end}
+.run-bar{display:flex;gap:8px;align-items:center;margin-left:auto;margin-right:12px}
+.run-bar .muted{font-size:12px}
+.count{background:#3d5a2a;border-radius:9px;padding:0 6px;font-size:11px;margin-left:4px}
+.task{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.task .err{color:#e59a8a;font-size:12px;white-space:pre-wrap}
+.task .meta{font-size:12px;opacity:.7}
+.task progress{width:160px}
+.modal textarea{width:100%;min-height:120px;background:#0f120f;border:1px solid var(--line);border-radius:7px;color:inherit;padding:8px;margin:6px 0 12px}

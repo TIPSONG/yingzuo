@@ -13,6 +13,7 @@ function loadDriver(preferred) {
     try {
       if (name === 'better-sqlite3') {
         const Database = require('better-sqlite3');
+        new Database(':memory:').close(); // 原生模块延迟加载：在这里探测 ABI 是否匹配
         return {name, open: (file, {readonly}) => new Database(file, {readonly, fileMustExist: readonly})};
       }
       if (name === 'node:sqlite') {

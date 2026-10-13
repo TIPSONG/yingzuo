@@ -221,6 +221,7 @@ yz.events.subscribe(event => {
   if (event.type === 'services.comfy' && event.data.phase === 'failed') toast(`ComfyUI 启动失败：${event.data.error}`, true);
 });
 yz.maintenance.info().then(r => { if (r.ok) lastSequence = r.data.sequence; });
+window.yzShell = {toast, call, swallow, modal, esc, showPage, get page() { return page; }};
 loadSettings();
 showPage('home');
 })();

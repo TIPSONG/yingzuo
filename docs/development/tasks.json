@@ -188,31 +188,31 @@
   "id": "E07",
   "name": "五图表单",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/bindings.test.cjs",
+  "note": "按节点类型+连线推断（提示词/负面/seed/步数/cfg/尺寸/模型/参考图/Gemma），已连线只读；五个真实模板需 Codex 核对"
  },
  {
   "id": "E08",
   "name": "参考图管线",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/bindings.test.cjs E08",
+  "note": "data/references 内容寻址，提交前上传并写回服务器返回名；重跑自动补传。表单内选择参考图入口仅后端 tasks.pickReference，表单 UI 未接"
  },
  {
   "id": "E09",
   "name": "编译与定位",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/bindings.test.cjs E09",
+  "note": "compileTab：后台标签切换→graphToPrompt→切回；本地检查 object_info"
  },
  {
   "id": "E10",
@@ -303,14 +303,14 @@
   "id": "S07",
   "name": "正确退出",
   "batch": 1,
-  "status": "实现中",
+  "status": "程序完成",
   "commit": "",
   "files": [
    "desktop/main.cjs",
    "desktop/services/api.cjs"
   ],
-  "checks": "",
-  "note": "退出流程已接 hooks；等待 Q03 队列接入后完成"
+  "checks": "tests/task-service.test.cjs S07",
+  "note": "退出对话框：等待/取消后退出/返回；暂停提交；真实 Windows 退出需验收"
  },
  {
   "id": "S08",
@@ -378,11 +378,14 @@
   "id": "Q06",
   "name": "统一运行入口",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/ui/tasks.js",
+   "desktop/services/task-service.cjs"
+  ],
+  "checks": "tests/task-service.test.cjs；box 上 Electron 启动无报错",
+  "note": "运行栏/Ctrl+Enter/任务队列页；空图与本地检查不通过时拒绝并说明"
  },
  {
   "id": "Q07",
@@ -398,31 +401,33 @@
   "id": "Q08",
   "name": "手动润色与单独润色",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "shared/bindings.cjs"
+  ],
+  "checks": "tests/bindings.test.cjs、task-service",
+  "note": "仅润色子图+PreviewAny 读文本，采用后 enable_llm=false；润色节点真实类名/输入名需 Codex 用真实工作流验收"
  },
  {
   "id": "Q09",
   "name": "自动润色生成",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/bindings.test.cjs",
+  "note": "执行原图含 Gemma；8192 与 2 张参考图检查；显存提示"
  },
  {
   "id": "Q10",
   "name": "批量与重启恢复",
   "batch": 5,
-  "status": "实现中",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": "恢复与 FIFO 已实现并测试；批量 UI 未做"
+  "checks": "tests/queue.test.cjs、task-service",
+  "note": "批量弹窗（提示词×次数×seed，上限100）、暂停/继续、重启后未提交默认暂停"
  },
  {
   "id": "A01",

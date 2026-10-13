@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 26 / 实现中 3 / 阻塞 0 / 未开始 53（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 34 / 实现中 1 / 阻塞 0 / 未开始 47（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -45,26 +45,26 @@
 | S04 | LM Studio 适配 | 程序完成 |  | desktop/services/lmstudio.cjs | services.test.cjs（CLI 替身） | lms ps --json 输出格式按文档假设，需 Codex 实机核对 |  |
 | S05 | 停止与显存 | 程序完成 |  | desktop/services/comfy-process.cjs<br>desktop/services/api.cjs | services.test.cjs：PID 复用不误停 |  |  |
 | S06 | 托盘与单实例 | 程序完成 |  | desktop/main.cjs<br>assets/tray-16.png |  | 托盘菜单与单实例；Windows 托盘需实机 |  |
-| S07 | 正确退出 | 实现中 |  | desktop/main.cjs<br>desktop/services/api.cjs |  | 退出流程已接 hooks；等待 Q03 队列接入后完成 |  |
+| S07 | 正确退出 | 程序完成 |  | desktop/main.cjs<br>desktop/services/api.cjs | tests/task-service.test.cjs S07 | 退出对话框：等待/取消后退出/返回；暂停提交；真实 Windows 退出需验收 |  |
 | S08 | 状态与设置页面接入 | 程序完成 |  | desktop/ui/shell.js |  | 首页服务卡、设置页、日志页接真实接口 |  |
 
 ### 批次 2
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| E07 | 五图表单 | 未开始 |  |  |  |  |  |
-| E08 | 参考图管线 | 未开始 |  |  |  |  |  |
-| E09 | 编译与定位 | 未开始 |  |  |  |  |  |
+| E07 | 五图表单 | 程序完成 |  |  | tests/bindings.test.cjs | 按节点类型+连线推断（提示词/负面/seed/步数/cfg/尺寸/模型/参考图/Gemma），已连线只读；五个真实模板需 Codex 核对 |  |
+| E08 | 参考图管线 | 程序完成 |  |  | tests/bindings.test.cjs E08 | data/references 内容寻址，提交前上传并写回服务器返回名；重跑自动补传。表单内选择参考图入口仅后端 tasks.pickReference，表单 UI 未接 |  |
+| E09 | 编译与定位 | 程序完成 |  |  | tests/bindings.test.cjs E09 | compileTab：后台标签切换→graphToPrompt→切回；本地检查 object_info |  |
 | E10 | 原生视图行为 | 未开始 |  |  |  |  |  |
 | Q01 | 任务持久化 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q02 | Comfy HTTP/WS 客户端 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q03 | 单一串行调度器 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q04 | 提交与断连核对 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q05 | 真实状态与错误 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
-| Q06 | 统一运行入口 | 未开始 |  |  |  |  |  |
+| Q06 | 统一运行入口 | 程序完成 |  | desktop/ui/tasks.js<br>desktop/services/task-service.cjs | tests/task-service.test.cjs；box 上 Electron 启动无报错 | 运行栏/Ctrl+Enter/任务队列页；空图与本地检查不通过时拒绝并说明 |  |
 | Q07 | 取消与重试 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
-| Q08 | 手动润色与单独润色 | 未开始 |  |  |  |  |  |
-| Q09 | 自动润色生成 | 未开始 |  |  |  |  |  |
+| Q08 | 手动润色与单独润色 | 程序完成 |  | shared/bindings.cjs | tests/bindings.test.cjs、task-service | 仅润色子图+PreviewAny 读文本，采用后 enable_llm=false；润色节点真实类名/输入名需 Codex 用真实工作流验收 |  |
+| Q09 | 自动润色生成 | 程序完成 |  |  | tests/bindings.test.cjs | 执行原图含 Gemma；8192 与 2 张参考图检查；显存提示 |  |
 
 ### 批次 3
 
@@ -116,7 +116,7 @@
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Q10 | 批量与重启恢复 | 实现中 |  |  |  | 恢复与 FIFO 已实现并测试；批量 UI 未做 |  |
+| Q10 | 批量与重启恢复 | 程序完成 |  |  | tests/queue.test.cjs、task-service | 批量弹窗（提示词×次数×seed，上限100）、暂停/继续、重启后未提交默认暂停 |  |
 | U05 | 更新检测与页面 | 未开始 |  |  |  |  |  |
 | U06 | Comfy／插件更新 | 未开始 |  |  |  |  |  |
 | U07 | 更新记录与保留 | 未开始 |  |  |  |  |  |
