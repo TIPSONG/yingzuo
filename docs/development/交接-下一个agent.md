@@ -114,6 +114,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - NASA 朋克：暗色科技底 + 橙/琥珀/青强调、细网格、等宽提示文字。
 - 无边框：`BrowserWindow({frame:false})`；标题栏最小化 / 最大化·还原 / 关闭；`-webkit-app-region: drag`；preload `windowMinimize|Maximize|Close|IsMaximized` + `onWindowState`。
 - NASA 朋克可读性：底板/面板抬亮；主题·皮肤选中卡改为描边+浅色叠色（禁止实心填充盖住预览与文字）。
+- NASA 朋克按参考图重做：深海军星空底、粗橙+白、蓝橙黄任务章色条、干净飞行UI；选中卡仍为描边+浅叠色。
 - 截图：`/workspace/yingzuo-ui-shots/nasa-01-home.png`、`nasa-09-settings.png`（含三颗窗口按钮与皮肤卡）。
 - 测试：`npm run check` 339 / 338 通过 / 1 跳过。
 

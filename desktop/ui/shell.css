@@ -55,14 +55,25 @@
 .titlebar-btn:focus-visible { outline-offset: -2px; }
 .titlebar-btn-close:hover { background: #e81123; color: #fff; border-color: transparent; }
 [data-skin="nasa-punk"] .titlebar {
-  background: #0e141c;
-  border-bottom: 1px solid #ff9f1a66;
-  box-shadow: inset 0 -1px 0 #2ee6d633;
+  background: #0b1424;
+  border-bottom: 3px solid transparent;
+  border-image: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%) 1;
 }
-[data-skin="nasa-punk"] .titlebar-title { color: #ffe6c8; letter-spacing: 0.12em; font-family: "Cascadia Mono", Consolas, monospace; }
-[data-skin="nasa-punk"] .titlebar-sub { color: #5eead4; font-family: "Cascadia Mono", Consolas, monospace; letter-spacing: 0.18em; }
-[data-skin="nasa-punk"] .titlebar-btn:hover { background: #12202c; color: #5eead4; }
-[data-skin="nasa-punk"] .titlebar-btn-close:hover { background: #ff4d4d; color: #0a0000; }
+[data-skin="nasa-punk"] .titlebar-title {
+  color: #e85d04;
+  letter-spacing: 0.16em;
+  font-weight: 800;
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  text-transform: uppercase;
+}
+[data-skin="nasa-punk"] .titlebar-sub {
+  color: #ffffff;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.22em;
+  opacity: 0.9;
+}
+[data-skin="nasa-punk"] .titlebar-btn:hover { background: #1a2740; color: #ffffff; }
+[data-skin="nasa-punk"] .titlebar-btn-close:hover { background: #e85d04; color: #ffffff; }
 
 /* 页面壳：首页 / 导航 / 列表 / 表单 / 队列 / 对话框 / 空状态 */
 #pages { min-width: 0; min-height: 0; display: grid; overflow: hidden; background: var(--bg); color: var(--text); }
@@ -609,101 +620,109 @@ button.theme-option.active {
 .skin-option-default .theme-swatch span { background: #1b1e1c; border-color: #303530; }
 .skin-option-default .theme-swatch span:nth-child(2) { background: #2c3426; }
 .skin-option-default .theme-swatch span:nth-child(3) { background: #d1ed87; border-color: #a7c971; }
-.skin-option-nasa .theme-swatch span { background: #010204; border-color: #2ee6d655; }
-.skin-option-nasa .theme-swatch span:nth-child(2) { background: #070d14; }
-.skin-option-nasa .theme-swatch span:nth-child(3) { background: #ff9f1a; border-color: #2ee6d6; }
+.skin-option-nasa .theme-swatch span { background: #0b1424; border-color: #1e4d8c; }
+.skin-option-nasa .theme-swatch span:nth-child(2) { background: #162238; }
+.skin-option-nasa .theme-swatch span:nth-child(3) { background: #e85d04; border-color: #ffd60a; }
 
-/* NASA 朋克皮肤：近黑太空底 + 琥珀/青高对比 · 仪表盘感（仅 data-skin，不改其他皮肤令牌） */
+/* NASA 朋克：参考图 — 深海军星空底、粗橙+白、任务章蓝橙黄条、干净飞行UI（仅 data-skin） */
 [data-skin="nasa-punk"] {
-  --accent: #ff9f1a;
-  --ink: #05080c;
-  --ok: #2ee6d6;
-  --warn: #ffd166;
-  --bad: #ff5c5c;
-  --nav-active: #ff9f1a22;
-  --primary-hover: #ffb84d;
-  --count-bg: #ff9f1a;
-  --count-fg: #05080c;
-  --toast-bg: #ff9f1a;
-  --toast-fg: #05080c;
-  --toast-line: #ffd166;
-  --selection: #2ee6d640;
-  --focus: 2px solid #2ee6d6;
-  --notice-bg: #0a121c;
-  --notice-line: #ff9f1a66;
-  --notice-fg: #9ad4e0;
-  --hero-surface: #060c14;
-  --hero-line: #2ee6d655;
-  --mode-active: #0c1824;
-  --mode-active-fg: #2ee6d6;
-  --empty-line: #2ee6d644;
-  --radius: 4px;
+  --accent: #e85d04;
+  --ink: #0b1424;
+  --ok: #ffffff;
+  --warn: #ffd60a;
+  --bad: #ff4d4d;
+  --nav-active: #e85d0422;
+  --primary-hover: #ff7a1a;
+  --count-bg: #e85d04;
+  --count-fg: #ffffff;
+  --toast-bg: #e85d04;
+  --toast-fg: #ffffff;
+  --toast-line: #ffd60a;
+  --selection: #e85d0440;
+  --focus: 2px solid #ffffff;
+  --notice-bg: #122038;
+  --notice-line: #e85d0488;
+  --notice-fg: #ffffff;
+  --hero-surface: #122038;
+  --hero-line: #e85d0466;
+  --mode-active: #1a2e4a;
+  --mode-active-fg: #ffffff;
+  --empty-line: #e85d0455;
+  --radius: 6px;
+  --stripe-blue: #1e4d8c;
+  --stripe-orange: #e85d04;
+  --stripe-yellow: #ffd60a;
 }
 [data-skin="nasa-punk"][data-theme="dark"],
 [data-skin="nasa-punk"]:not([data-theme="light"]) {
-  /* 抬亮底板：太空感保留，面板可读 */
-  --bg: #121820;
-  --sidebar: #0e141c;
-  --panel: #1a2430;
-  --panel2: #1e2a38;
-  --hover: #263445;
-  --line: #3a5568;
-  --line-strong: #ff9f1a55;
-  --text: #f5f8fb;
-  --sub: #b0c6d4;
-  --muted: #849eae;
-  --input: #0f161e;
-  --deep: #0c1218;
-  --status-bg: #162028;
-  --status-fg: #2ee6d6;
-  --tab-bar: #0e141c;
-  --tab-active: #1a2836;
-  --mode-track: #0f161e;
-  --entry-hover: #243240;
-  --row-hover: #243240;
-  --empty-bg: #162028;
-  --form-card: #1a2430;
-  --form-card-line: #2ee6d655;
-  --field-line: #3a5568;
-  --field-fg: #f5f8fb;
-  --label-fg: #2ee6d6;
-  --foot-bg: #0e141c;
-  --foot-fg: #849eae;
-  --sidebar-line: #ff9f1a66;
-  --divider: #3a5568;
-  --modal-bg: #1a2430;
-  --modal-line: #ff9f1a77;
-  --scroll-thumb: #2ee6d666;
+  --bg: #0b1424;
+  --sidebar: #09101c;
+  --panel: #162238;
+  --panel2: #1a2a42;
+  --hover: #243652;
+  --line: #2e4a6a;
+  --line-strong: #e85d0466;
+  --text: #ffffff;
+  --sub: #c8d4e4;
+  --muted: #8fa3bc;
+  --input: #0e1828;
+  --deep: #071018;
+  --status-bg: #122038;
+  --status-fg: #ffffff;
+  --tab-bar: #09101c;
+  --tab-active: #1a2e4a;
+  --mode-track: #0e1828;
+  --entry-hover: #1e3250;
+  --row-hover: #1e3250;
+  --empty-bg: #122038;
+  --form-card: #162238;
+  --form-card-line: #e85d0455;
+  --field-line: #2e4a6a;
+  --field-fg: #ffffff;
+  --label-fg: #ffffff;
+  --foot-bg: #09101c;
+  --foot-fg: #8fa3bc;
+  --sidebar-line: #e85d0466;
+  --divider: #2e4a6a;
+  --modal-bg: #162238;
+  --modal-line: #e85d0488;
+  --scroll-thumb: #e85d0488;
   --warn-bg: #2a2210;
-  --warn-line: #ff9f1a99;
-  --bad-bg: #2a1414;
-  --bad-line: #ff5c5c99;
+  --warn-line: #ffd60a99;
+  --bad-bg: #2a1418;
+  --bad-line: #ff4d4d99;
 }
-/* 浅色模式仍可用皮肤强调色，但不强行改成近黑（避免破坏 light 令牌语义） */
 [data-skin="nasa-punk"][data-theme="light"] {
-  --accent: #e07010;
-  --ink: #fff8f0;
-  --ok: #0d9488;
-  --nav-active: #e0701020;
-  --primary-hover: #c45f0c;
-  --focus: 2px solid #0d9488;
-  --label-fg: #0d9488;
+  --accent: #d24f00;
+  --ink: #ffffff;
+  --bg: #eef2f8;
+  --sidebar: #e2e8f2;
+  --panel: #ffffff;
+  --text: #0b1424;
+  --sub: #3a4a60;
+  --muted: #6a7a90;
+  --line: #c5d0e0;
+  --nav-active: #d24f0020;
+  --primary-hover: #b84400;
+  --label-fg: #d24f00;
+  --focus: 2px solid #1e4d8c;
 }
 
-/* 网格 + 极淡扫描线（可读优先） */
+/* 深海军星空底（非纯黑） */
 [data-skin="nasa-punk"] body {
   background-color: var(--bg);
   background-image:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(46, 230, 214, 0.018) 2px,
-      rgba(46, 230, 214, 0.018) 3px
-    ),
-    linear-gradient(rgba(255, 159, 26, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(46, 230, 214, 0.04) 1px, transparent 1px);
-  background-size: 100% 3px, 28px 28px, 28px 28px;
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,0.55), transparent),
+    radial-gradient(1px 1px at 28% 62%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1.5px 1.5px at 44% 28%, rgba(255,255,255,0.5), transparent),
+    radial-gradient(1px 1px at 58% 78%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1.5px 1.5px at 72% 14%, rgba(255,255,255,0.45), transparent),
+    radial-gradient(1px 1px at 86% 48%, rgba(255,255,255,0.4), transparent),
+    radial-gradient(1px 1px at 18% 88%, rgba(255,255,255,0.3), transparent),
+    radial-gradient(1.5px 1.5px at 92% 72%, rgba(255,255,255,0.45), transparent),
+    radial-gradient(1px 1px at 36% 42%, rgba(255,255,255,0.35), transparent),
+    radial-gradient(1px 1px at 64% 56%, rgba(255,255,255,0.3), transparent),
+    linear-gradient(180deg, #0f1c32 0%, #0b1424 45%, #09101c 100%);
   background-attachment: fixed;
 }
 [data-skin="nasa-punk"] #pages,
@@ -711,36 +730,64 @@ button.theme-option.active {
 [data-skin="nasa-punk"] .app-shell {
   background-color: transparent;
 }
-[data-skin="nasa-punk"] #pages {
-  background-image:
-    linear-gradient(180deg, rgba(46, 230, 214, 0.03), transparent 120px);
+[data-skin="nasa-punk"] aside {
+  border-right: 1px solid #2e4a6a;
+  background: linear-gradient(180deg, #0d1628 0%, #09101c 100%);
+  box-shadow: inset -3px 0 0 var(--stripe-blue), inset -6px 0 0 var(--stripe-orange), inset -9px 0 0 var(--stripe-yellow);
+}
+[data-skin="nasa-punk"] .page-head {
+  border-bottom: 1px solid #2e4a6a;
+  background: linear-gradient(180deg, rgba(14, 24, 44, 0.92), rgba(11, 20, 36, 0.4));
+  box-shadow: inset 0 -3px 0 0 transparent;
+  position: relative;
+}
+[data-skin="nasa-punk"] .page-head::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--stripe-blue) 0 33%, var(--stripe-orange) 33% 66%, var(--stripe-yellow) 66% 100%);
 }
 
-/* 等宽分区标题 */
+/* 分区标题：宽字距白/橙，飞行UI */
 [data-skin="nasa-punk"] .eyebrow,
 [data-skin="nasa-punk"] .section-title,
 [data-skin="nasa-punk"] .settings legend,
 [data-skin="nasa-punk"] .entry .entry-kicker,
-[data-skin="nasa-punk"] .hint,
-[data-skin="nasa-punk"] footer,
 [data-skin="nasa-punk"] .page-head .eyebrow {
-  font-family: "Cascadia Mono", "Consolas", "Segoe UI Mono", ui-monospace, monospace;
-  letter-spacing: 0.14em;
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
+  font-weight: 700;
 }
 [data-skin="nasa-punk"] .eyebrow,
-[data-skin="nasa-punk"] .settings legend,
-[data-skin="nasa-punk"] .entry .entry-kicker {
-  color: #2ee6d6;
+[data-skin="nasa-punk"] .entry .entry-kicker,
+[data-skin="nasa-punk"] .settings legend {
+  color: #ffffff;
 }
 [data-skin="nasa-punk"] .section-title {
-  color: #ff9f1a;
-  border-left: 3px solid #2ee6d6;
-  padding-left: 10px;
+  color: #e85d04;
+  border-left: 4px solid #1e4d8c;
+  box-shadow: inset 4px 0 0 #e85d04, inset 8px 0 0 #ffd60a;
+  padding-left: 14px;
   margin-left: 0;
 }
+[data-skin="nasa-punk"] .hint,
+[data-skin="nasa-punk"] footer,
+[data-skin="nasa-punk"] .muted {
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+[data-skin="nasa-punk"] .brand {
+  color: #ffffff;
+}
+[data-skin="nasa-punk"] .brand small {
+  color: #ffffff;
+  letter-spacing: 0.2em;
+  opacity: 0.85;
+}
 
-/* 仪表盘式面板边框 */
+/* 干净面板：高对比、轻描边 */
 [data-skin="nasa-punk"] .card,
 [data-skin="nasa-punk"] .row,
 [data-skin="nasa-punk"] .entry,
@@ -749,83 +796,93 @@ button.theme-option.active {
 [data-skin="nasa-punk"] .task,
 [data-skin="nasa-punk"] .modal,
 [data-skin="nasa-punk"] .node-fields {
-  border: 1px solid #2ee6d644;
-  border-radius: 2px;
-  box-shadow:
-    inset 0 0 0 1px #ff9f1a22,
-    0 0 0 1px #000,
-    inset 0 1px 0 #2ee6d618;
-  background: linear-gradient(180deg, #223040 0%, #1a2430 100%);
+  border: 1px solid #2e4a6a;
+  border-radius: 6px;
+  background: rgba(22, 34, 56, 0.92);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04);
 }
 [data-skin="nasa-punk"][data-theme="light"] .card,
 [data-skin="nasa-punk"][data-theme="light"] .row,
 [data-skin="nasa-punk"][data-theme="light"] .entry,
 [data-skin="nasa-punk"][data-theme="light"] .settings fieldset {
   background: var(--panel);
-  box-shadow: inset 0 0 0 1px #e0701022;
+  box-shadow: none;
 }
 [data-skin="nasa-punk"] .entry:hover,
 [data-skin="nasa-punk"] .card:hover,
 [data-skin="nasa-punk"] .row:hover {
-  border-color: #ff9f1a99;
-  box-shadow:
-    inset 0 0 0 1px #2ee6d633,
-    0 0 18px #ff9f1a22;
+  border-color: #e85d04;
+  box-shadow: 0 0 0 1px rgba(232, 93, 4, 0.25);
 }
 
-/* 更厚的选中态 */
-[data-skin="nasa-punk"] nav .nav.active {
-  color: #ff9f1a;
-  background: #ff9f1a18;
-  border: 1px solid #ff9f1a88;
-  border-left: 4px solid #2ee6d6;
-  border-radius: 0;
-  box-shadow: inset 0 0 12px #2ee6d614;
-  font-family: "Cascadia Mono", Consolas, monospace;
-  letter-spacing: 0.06em;
+/* 导航选中：橙左边条 + 浅叠色 */
+[data-skin="nasa-punk"] nav .nav {
+  color: #c8d4e4;
+  border-radius: 4px;
 }
+[data-skin="nasa-punk"] nav .nav:hover {
+  color: #ffffff;
+  background: #1a2e4a;
+}
+[data-skin="nasa-punk"] nav .nav.active {
+  color: #ffffff;
+  background: rgba(232, 93, 4, 0.14);
+  border: 1px solid rgba(232, 93, 4, 0.55);
+  border-left: 4px solid #e85d04;
+  border-radius: 0 4px 4px 0;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* 主题/皮肤选中卡：仅描边+浅叠色，文字可读 */
 [data-skin="nasa-punk"] .theme-option.active,
 [data-skin="nasa-punk"] button.theme-option.active {
-  background: rgba(255, 159, 26, 0.12) !important;
-  color: #f5f8fb !important;
-  border: 2px solid #ff9f1a !important;
-  box-shadow: 0 0 0 1px #2ee6d6, inset 0 0 0 1px rgba(46, 230, 214, 0.25) !important;
+  background: rgba(232, 93, 4, 0.12) !important;
+  color: #ffffff !important;
+  border: 2px solid #e85d04 !important;
+  box-shadow: 0 0 0 1px rgba(255, 214, 10, 0.45) !important;
 }
 [data-skin="nasa-punk"] .theme-option.active small {
-  color: #ffe6c8 !important;
+  color: #ffffff !important;
   font-weight: 700;
 }
 [data-skin="nasa-punk"] button.active:not(.theme-option):not(.primary):not(.nav) {
-  border: 2px solid #ff9f1a;
-  box-shadow: 0 0 0 1px #2ee6d6;
+  border: 2px solid #e85d04;
+  background: rgba(232, 93, 4, 0.12);
+  color: #ffffff;
 }
+
+/* 主按钮：粗橙 + 白字 */
 [data-skin="nasa-punk"] button.primary {
-  background: #ff9f1a;
-  border: 2px solid #ffd166;
-  color: #05080c;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  box-shadow: 0 0 16px #ff9f1a55, inset 0 1px 0 #ffe0a8;
-  border-radius: 2px;
+  background: #e85d04;
+  border: 2px solid #ffd60a;
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  box-shadow: none;
 }
 [data-skin="nasa-punk"] button.primary:hover {
-  background: #ffb84d;
+  background: #ff7a1a;
   transform: none;
 }
 [data-skin="nasa-punk"] button:not(.primary):not(.nav):not(.titlebar-btn):not(.theme-option) {
-  border-radius: 2px;
-  border-color: #2ee6d655;
+  border-radius: 4px;
+  border-color: #2e4a6a;
+  color: #ffffff;
+  background: #122038;
 }
-[data-skin="nasa-punk"] button:not(.primary):not(.nav):not(.titlebar-btn):hover {
-  border-color: #ff9f1a;
-  color: #ff9f1a;
+[data-skin="nasa-punk"] button:not(.primary):not(.nav):not(.titlebar-btn):not(.theme-option):hover {
+  border-color: #e85d04;
+  color: #ffffff;
 }
 
-/* 状态 LED */
+/* 状态徽章：白/橙高对比 */
 [data-skin="nasa-punk"] .badge {
-  border-radius: 2px;
-  font-family: "Cascadia Mono", Consolas, monospace;
-  letter-spacing: 0.08em;
+  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   font-size: 9px;
   padding: 2px 8px 2px 14px;
@@ -844,19 +901,22 @@ button.theme-option.active {
   box-shadow: 0 0 6px currentColor;
 }
 [data-skin="nasa-punk"] .badge.ok {
-  background: #06241f;
-  border: 1px solid #2ee6d6;
-  color: #2ee6d6;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid #ffffff;
+  color: #ffffff;
 }
 [data-skin="nasa-punk"] .badge.warn {
-  background: #241a06;
-  border: 1px solid #ff9f1a;
-  color: #ff9f1a;
+  background: rgba(232, 93, 4, 0.15);
+  border: 1px solid #e85d04;
+  color: #ffd60a;
 }
 [data-skin="nasa-punk"] .badge.bad {
-  background: #240a0a;
-  border: 1px solid #ff5c5c;
-  color: #ff5c5c;
+  background: rgba(255, 77, 77, 0.12);
+  border: 1px solid #ff4d4d;
+  color: #ff4d4d;
+}
+[data-skin="nasa-punk"] .side-bottom strong {
+  color: #ffffff;
 }
 [data-skin="nasa-punk"] .side-bottom strong::before {
   content: "";
@@ -865,48 +925,41 @@ button.theme-option.active {
   height: 7px;
   border-radius: 50%;
   margin-right: 8px;
-  background: #ff5c5c;
-  box-shadow: 0 0 8px #ff5c5c;
+  background: #e85d04;
+  box-shadow: 0 0 8px #e85d04;
   vertical-align: middle;
 }
 [data-skin="nasa-punk"] .count {
-  border-radius: 2px;
-  border: 1px solid #2ee6d6;
-  box-shadow: 0 0 8px #ff9f1a55;
-}
-[data-skin="nasa-punk"] .page-head {
-  border-bottom: 1px solid #ff9f1a44;
-  background: linear-gradient(180deg, #050a10, transparent);
-}
-[data-skin="nasa-punk"] aside {
-  border-right: 1px solid #ff9f1a66;
-  background: linear-gradient(180deg, #121820 0%, #0e141c 100%);
-}
-[data-skin="nasa-punk"] .brand small {
-  color: #2ee6d6;
-  font-family: "Cascadia Mono", Consolas, monospace;
-  letter-spacing: 0.16em;
+  border-radius: 3px;
+  border: 1px solid #ffd60a;
+  background: #e85d04;
+  color: #ffffff;
 }
 [data-skin="nasa-punk"] #toast:not(.error) {
-  background: #ff9f1a;
-  color: #05080c;
-  border: 2px solid #ffd166;
-  border-radius: 2px;
-  font-family: "Cascadia Mono", Consolas, monospace;
-  letter-spacing: 0.04em;
-  box-shadow: 0 0 20px #ff9f1a66;
+  background: #e85d04;
+  color: #ffffff;
+  border: 2px solid #ffd60a;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 [data-skin="nasa-punk"] .tab.active {
-  border-bottom: 3px solid #ff9f1a;
-  box-shadow: inset 0 -1px 0 #2ee6d6;
+  border-bottom: 3px solid #e85d04;
+  color: #ffffff;
 }
 [data-skin="nasa-punk"] .mode-buttons {
-  border: 1px solid #2ee6d655;
-  border-radius: 2px;
-  background: #0f161e;
+  border: 1px solid #2e4a6a;
+  border-radius: 4px;
+  background: #0e1828;
 }
 [data-skin="nasa-punk"] .mode-buttons button.active {
-  background: #0c1824;
-  color: #2ee6d6;
-  border: 1px solid #ff9f1a !important;
+  background: rgba(232, 93, 4, 0.18);
+  color: #ffffff;
+  border: 1px solid #e85d04 !important;
+}
+/* 任务章色条装饰：外观 fieldset 顶边 */
+[data-skin="nasa-punk"] .settings fieldset:has(.setting-theme) {
+  border-top: 3px solid transparent;
+  border-image: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%) 1;
+  padding-top: 14px;
 }
