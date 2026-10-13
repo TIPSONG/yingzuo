@@ -26,9 +26,9 @@
 
 | 编号 | 级别 | 名称 | 状态 | 提交 | 回归检查 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
-| D01 | P1 | 真实 Qwen 提示词绑定（TextEncodeQwenImage21） | 未开始 |  |  |  |
-| D02 | P1 | Gemma 原文连线被当成没有可写输入 | 未开始 |  |  |  |
-| D03 | P1 | 异步流程重读当前标签，A 的结果用到 B | 未开始 |  |  |  |
+| D01 | P1 | 真实 Qwen 提示词绑定（TextEncodeQwenImage21） | 程序完成 | fdbe85a | bindings-real.test：Qwen21 两输出槽、SamplerCustomAdvanced、未适配编码器 | 按 ComfyUI nodes_qwen.py 定义适配；旧 CLIP 图继续可用 |
+| D02 | P1 | Gemma 原文连线被当成没有可写输入 | 程序完成 | fdbe85a | bindings-real.test：连线原文、仅润色替换原文、采用结果、cache_buster | 原文来源沿连线追踪到 PrimitiveStringMultiline.value；采用时提交副本插入 yz_adopted_text 节点并 enable_llm=false |
+| D03 | P1 | 异步流程重读当前标签，A 的结果用到 B | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
 | D04 | P1 | 自定义表单未进入正式创作 | 未开始 |  |  |  |
 | D05 | P1 | 维护失败仍启动服务、继续队列 | 未开始 |  |  |  |
 | D06 | P1 | 继续恢复绕开运行保护 | 未开始 |  |  |  |
@@ -52,9 +52,9 @@
 | PR11-R04 | P1 | 服务归属与停止闭环 | 未开始 |  |  |  |
 | PR11-R05 | P1 | 取消、退出和精确中断 | 未开始 |  |  |  |
 | PR11-R06 | P1 | 模型移动与环境操作共用锁 | 未开始 |  |  |  |
-| PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 未开始 |  |  |  |
-| PR11-R08 | P1 | Gemma 原文连线与采用结果 | 未开始 |  |  |  |
-| PR11-R09 | P1 | 异步 UI 固定发起标签和版本 | 未开始 |  |  |  |
+| PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 实现中 | fdbe85a | tests/fixtures/qwen21-gemma-api.json 脱敏夹具 | Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定 |
+| PR11-R08 | P1 | Gemma 原文连线与采用结果 | 程序完成 | fdbe85a | bindings-real.test | 读取图中 context_length/release_vram/disable_thinking/model/URL；上下文以节点值为准；重新润色改 cache_buster |
+| PR11-R09 | P1 | 异步 UI 固定发起标签和版本 | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
 | PR11-R10 | P1 | 自定义表单进入创作和运行 | 未开始 |  |  |  |
 | PR11-R11 | P1 | 参考图关系进工作区仓库 | 未开始 |  |  |  |
 | PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 未开始 |  |  |  |
