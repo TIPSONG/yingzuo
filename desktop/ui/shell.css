@@ -70,20 +70,24 @@
   z-index: 5;
   isolation: isolate;
   background: var(--sidebar);
-  /* 控制列：禁止任何会切过图标的线 */
+  /* 控制列：禁止任何会切过图标的线；底缘用不透明垫条盖住与 #pages 的接缝 */
   border: 0 !important;
   border-bottom: 0 !important;
   border-top: 0 !important;
   border-right: 0 !important;
-  border-left: 1px solid var(--sidebar-line, var(--line)); /* 仅与左列分隔 */
+  border-left: 1px solid var(--sidebar-line, var(--line));
   box-shadow: none !important;
   outline: none;
-  padding: 0;
+  padding: 0 0 2px; /* 底部 2px 实心垫，与背景同色 */
   margin: 0;
+  box-sizing: border-box;
+}
+.titlebar-controls::after {
+  content: none; /* 垫条用 padding + 背景，不再画线 */
 }
 .titlebar-btn {
   width: 48px;
-  height: 40px; /* 与 titlebar 同高，底边在图标下方之外 */
+  height: 38px; /* 略矮于列，底部留给垫条 */
   border: 0 !important;
   border-radius: 0;
   box-shadow: none !important;
@@ -92,12 +96,19 @@
   color: var(--sub);
   font-size: 14px;
   line-height: 1;
-  padding: 0;
+  /* 字形上移：底侧留白，任何接缝线都在图标下方空白区 */
+  padding: 0 0 10px;
   margin: 0;
   display: grid;
   place-items: center;
+  align-content: center;
   position: relative;
   z-index: 6;
+  box-sizing: border-box;
+}
+.titlebar-btn > span {
+  display: block;
+  transform: translateY(-2px); /* 再略抬高字形 */
 }
 .titlebar-btn:hover { background: var(--hover); color: var(--text); transform: none; }
 .titlebar-btn:focus-visible { outline: var(--focus); outline-offset: -2px; }
@@ -124,13 +135,15 @@
   border-left: 1px solid #2e4a6a !important;
   border-bottom: 0 !important;
   box-shadow: none !important;
+  padding-bottom: 2px;
 }
 [data-skin="nasa-punk"] .titlebar-btn {
   background: #0b1424;
   color: #c8d4e4;
   border: 0 !important;
   box-shadow: none !important;
-  height: 40px;
+  height: 38px;
+  padding-bottom: 10px;
 }
 [data-skin="nasa-punk"] .titlebar-title {
   color: #e85d04;
@@ -155,6 +168,13 @@
   box-shadow: none !important;
 }
 [data-theme="light"] .titlebar-btn:hover { background: var(--hover); }
+
+/* 标题栏下方内容区：控制列正下方不得出现顶边线 */
+.app-shell,
+#pages {
+  border-top: 0 !important;
+  box-shadow: none;
+}
 
 /* 页面壳：首页 / 导航 / 列表 / 表单 / 队列 / 对话框 / 空状态 */
 #pages { min-width: 0; min-height: 0; display: grid; overflow: hidden; background: var(--bg); color: var(--text); }
