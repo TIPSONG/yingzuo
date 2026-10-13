@@ -10,6 +10,7 @@ const {ComfyHttpClient, ComfySocket} = require('../adapters/comfy-http.cjs');
 const {checkPrompt} = require('../../shared/prompt-check.cjs');
 const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
+const SF = require('../../shared/secret-fields.cjs');
 const {applyOutputPrefix} = require('./output-prefix.cjs');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
@@ -50,7 +51,7 @@ async function uploadReferences(prompt, references, client, refStore) {
   return next;
 }
 
-function createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow, onTerminal = null}) {
+function createTaskService({credentials = null, db, layout, configRepo, events, locks, logger, editor, fetchImpl, WebSocketImpl, clientId = crypto.randomUUID(), dialog, getWindow, onTerminal = null}) {
   const tasks = new TaskRepository(db, new SnapshotStore(layout['task-snapshots']), {events});
   const refs = new ReferenceStore(layout.references);
   let clientCache = null;
@@ -67,7 +68,7 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
   }
   const queue = new QueueService({
     tasks, client, gpuLock: locks.gpu, events, logger, clientId,
-    prepare: async (_task, snapshot, c) => uploadReferences(snapshot.apiPrompt, snapshot.references, c, refs),
+    prepare: async (_task, snapshot, c) => uploadReferences(await resolveSecrets(snapshot.apiPrompt), snapshot.references, c, refs),
     // A01/A02：终态时把任务输出关联进作品库（失败只记日志，不影响任务状态）
     onTerminal: task => { if (!onTerminal || task.state !== 'succeeded') return; Promise.resolve().then(() => onTerminal(task)).catch(e => logger?.warn('作品关联失败', {id: task.id, error: e.message})); },
   });
@@ -100,6 +101,24 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
   function assertRunnable(issues) { const e = blocking(issues); if (e.length) throw new AppError(CODES.INVALID_ARGUMENT, `提交前检查未通过：${e[0].message}`, {details: {issues: e}}); }
   function snapshotFor(c, apiPrompt, extra = {}) { return {uiGraph: c.uiGraph, apiPrompt, tabId: c.tabId, title: c.title, references: extra.references ?? [], params: extra.params ?? {}, ...extra.meta}; }
 
+  /* ---------- R18/D15：快照不存敏感输入明文；提交前在内存中还原 ---------- */
+  function redactSnapshot(snapshot) {
+    const r = SF.redactForStorage({prompt: snapshot.apiPrompt, objectInfo});
+    if (!r.refs.length) return snapshot;
+    if (!credentials?.available?.()) throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, '工作流含敏感输入（如 API Key），但系统加密存储不可用；为避免明文写入任务快照，未创建任务。');
+    const values = new Map(); let prompt = JSON.stringify(r.prompt);
+    for (const {credentialRef} of r.refs) {
+      const secret = r.secrets.get(credentialRef);
+      const name = `node-secret:${crypto.createHash('sha256').update(secret).digest('hex').slice(0, 16)}`;
+      credentials.set(name, secret); values.set(secret, name);
+      prompt = prompt.split(JSON.stringify(SF.PLACEHOLDER_PREFIX + credentialRef)).join(JSON.stringify(SF.PLACEHOLDER_PREFIX + name));
+    }
+    const {apiPrompt: _p, ...rest} = snapshot;
+    return {...SF.redactValues(rest, values), apiPrompt: JSON.parse(prompt), secretRefs: [...values.values()]};
+  }
+  const resolveSecrets = prompt => SF.resolveSecrets(prompt, async name => credentials?.get(name) ?? null).catch(e => { throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, e.message, {details: {missing: e.missing}}); });
+  const enqueue = spec => queue.enqueue({...spec, snapshot: redactSnapshot(spec.snapshot)});
+
   /* ---------- D04/PR11-R10：模板自定义表单进入正式运行 ---------- */
   let formProvider = null;
   const formOf = c => (c.templateId && formProvider ? formProvider(c.templateId) : null);
@@ -130,7 +149,7 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
-      return queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
+      return enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : {})}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
@@ -144,7 +163,7 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       for (const item of items) {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
         const p = withPrefix(B.applyValues(c.apiPrompt, c.bindings, values), c, spec.prefixMode);
-        created.push(queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: spec.references, params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})}));
+        created.push(enqueue({workflowId: c.tabId, inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: spec.references, params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})}));
       }
       return {groupId, tasks: created};
     },
@@ -160,7 +179,7 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       let sub;
       try { sub = B.extractEnhanceOnly(prompt, enh.nodeId, {objectInfo: info, rerun}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       assertRunnable([...checkPrompt(sub.prompt, {objectInfo: info}), ...B.checkEnhancerRun(sub.prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages})]);
-      return queue.enqueue({kind: 'enhance', workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: references.filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
+      return enqueue({kind: 'enhance', workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: references.filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
     },
     'tasks.enhanceResult': async id => {
       const t = tasks.get(id); if (!t || t.kind !== 'enhance') throw new AppError(CODES.NOT_FOUND, '不是润色任务。');

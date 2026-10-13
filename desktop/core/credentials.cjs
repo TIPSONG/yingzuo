@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const {writeJsonAtomic} = require('./fs-atomic.cjs');
 const {AppError, CODES} = require('./errors.cjs');
 const ALLOWED = new Set(['huggingface', 'civitai']);
+// R18/D15：工作流节点中的敏感输入（如 lmstudio_api_key），按明文哈希命名，快照里只存引用。
+const NODE_SECRET = /^node-secret:[0-9a-f]{16}$/;
 class CredentialStore {
   constructor(file, safeStorage) { this.file = file; this.safeStorage = safeStorage; }
   available() {
@@ -16,7 +18,7 @@ class CredentialStore {
   }
   read() { try { return JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch { return {version: 1, items: {}}; } }
   set(name, secret) {
-    if (!ALLOWED.has(name)) throw new AppError(CODES.INVALID_ARGUMENT, '未知的凭据名称。');
+    if (!ALLOWED.has(name) && !NODE_SECRET.test(name)) throw new AppError(CODES.INVALID_ARGUMENT, '未知的凭据名称。');
     if (typeof secret !== 'string' || !secret.trim() || secret.length > 4096) throw new AppError(CODES.INVALID_ARGUMENT, '凭据内容无效。');
     if (!this.available()) throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, '系统加密存储不可用，为避免明文保存，未保存该凭据。');
     const data = this.read();

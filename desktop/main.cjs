@@ -84,7 +84,7 @@ let taskService = null, templateService = null, onlineService = null, appDb = nu
 const credentials = new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
 try {
   const db = appDb = Database.open(layout.database);
-  taskService = createTaskService({db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window, onTerminal: task => api.methods['assets.linkTask'](task.id)});
+  taskService = createTaskService({credentials, db, layout, configRepo, events, locks, logger, editor, fetchImpl: fetch, WebSocketImpl: globalThis.WebSocket, dialog, getWindow: () => window, onTerminal: task => api.methods['assets.linkTask'](task.id)});
   templateService = createTemplateService({db, layout, editor, taskService, dialog, getWindow: () => window, builtins: templates});
   taskService.setFormProvider(id => { try { const v = templateService.repo.current(id); return v ? {versionId: v.versionId ?? null, fields: v.formSchema ?? null} : null; } catch { return null; } });
   onlineService = createOnlineService({db, configRepo, layout, credentials, fetchImpl: fetch, events, logger, templateRepo: templateService.repo, dialog, getWindow: () => window});

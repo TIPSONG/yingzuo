@@ -37,7 +37,7 @@ function setup(t, extra = {}) {
   const editor = {enqueue: f => f(), commands: {compileTab: async id => ({tabId: id ?? 'tab1', title: 'T', revision: 3, uiGraph: {nodes: []}, apiPrompt: prompt()})}};
   const configRepo = {config: {comfy: {url: 'http://127.0.0.1:8188'}, gemma: {contextLength: 8192, maxReferenceImages: 2}}};
   Object.assign(configRepo.config, extra.config ?? {});
-  const svc = createTaskService({db, layout, configRepo, events: new EventBus(), locks: createLocks(), editor, fetchImpl, WebSocketImpl: null, onTerminal: extra.onTerminal});
+  const svc = createTaskService({credentials: extra.credentials ?? null, db, layout, configRepo, events: new EventBus(), locks: createLocks(), editor, fetchImpl, WebSocketImpl: null, onTerminal: extra.onTerminal});
   svc.queue.pollMs = 1; svc.queue.sleep = () => new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 300 && (svc.queue.pumping || svc.queue.running); i++) await new Promise(r => setTimeout(r, 1)); };
   return {svc, submitted, settle, editor};
@@ -138,4 +138,26 @@ test('D04/PR11-R10：模板自定义表单进入正式运行——按表单映�
   await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {1: 2}}), /映射失效/);
   svc.setFormProvider(() => null);
   await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 3}}), e => e.code === 'INVALID_STATE');
+});
+
+test('R18/D15：敏感输入不以明文写入任务快照；提交时从凭据存储还原；凭据缺失时不提交', async t => {
+  const store = new Map();
+  const credentials = {available: () => true, set: (n, v) => store.set(n, v), get: n => store.get(n) ?? null};
+  const {svc, submitted, settle, editor} = setup(t, {credentials});
+  const KEY = 'sk-fictional-test-0000';
+  editor.commands.compileTab = async id => { const p = prompt(); p[3].inputs.lmstudio_api_key = KEY; return {tabId: id, title: 'T', revision: 3, uiGraph: {nodes: [{id: 3, widgets_values: ['猫', KEY]}]}, apiPrompt: p}; };
+  const task = await svc.methods['tasks.run']('tab1', {}); await settle();
+  const snap = svc.tasks.snapshotOf(svc.tasks.get(task.id));
+  assert.ok(!JSON.stringify(snap).includes(KEY), '快照不含明文');
+  assert.match(snap.apiPrompt[3].inputs.lmstudio_api_key, /^__yz_credential__:node-secret:[0-9a-f]{16}$/);
+  assert.equal(submitted[0].prompt[3].inputs.lmstudio_api_key, KEY, '提交时还原');
+  store.clear();
+  const t2 = svc.queue.enqueue({workflowId: 'tab1', snapshot: snap}); await settle();
+  assert.equal(submitted.length, 1, '凭据缺失不提交');
+  assert.equal(svc.tasks.get(t2.id).state, 'failed');
+});
+test('R18/D15：系统加密不可用时拒绝创建含敏感输入的任务', async t => {
+  const {svc, editor} = setup(t, {credentials: {available: () => false}});
+  editor.commands.compileTab = async id => { const p = prompt(); p[3].inputs.lmstudio_api_key = 'sk-fictional'; return {tabId: id, title: 'T', revision: 3, uiGraph: {}, apiPrompt: p}; };
+  await assert.rejects(svc.methods['tasks.run']('tab1', {}), e => e.code === 'CREDENTIAL_UNAVAILABLE');
 });
