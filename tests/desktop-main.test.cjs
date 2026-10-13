@@ -261,3 +261,14 @@ test('foreign recovery retries also archive edits made while the disk was unavai
   f.nativeGraph=graph('newer foreign edit');fs.unlinkSync(archive);assert.equal((await f.send('connect')).ok,true);
   const prompts=fs.readdirSync(archive).map(file=>JSON.parse(fs.readFileSync(path.join(archive,file),'utf8')).nodes[0].widgets_values[0]).sort();assert.deepEqual(prompts,['first foreign edit','newer foreign edit']);assert.equal(f.read().tabs[0].graph.nodes[0].widgets_values[0],'a');
 });
+
+test('E10：原生视图快捷键映射', () => {
+  const {shortcutFor} = require('../desktop/services/editor-session.cjs');
+  assert.equal(shortcutFor({type: 'keyDown', control: true, key: 'Enter'}), 'run');
+  assert.equal(shortcutFor({type: 'keyDown', meta: true, key: '='}), 'in');
+  assert.equal(shortcutFor({type: 'keyDown', control: true, key: '-'}), 'out');
+  assert.equal(shortcutFor({type: 'keyDown', control: true, key: '0'}), 'reset');
+  assert.equal(shortcutFor({type: 'keyUp', control: true, key: 'Enter'}), null);
+  assert.equal(shortcutFor({type: 'keyDown', key: 'Enter'}), null);
+  assert.equal(shortcutFor({type: 'keyDown', control: true, alt: true, key: '0'}), null);
+});

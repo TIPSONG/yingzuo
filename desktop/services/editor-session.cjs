@@ -5,6 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {randomUUID} = require('node:crypto');
 const ImportPipeline = require('../../shared/import-pipeline.cjs');
+function shortcutFor(input) {
+  if (input.type !== 'keyDown' || !(input.control || input.meta) || input.alt) return null;
+  if (input.key === 'Enter') return 'run';
+  if (input.key === '=' || input.key === '+') return 'in';
+  if (input.key === '-') return 'out';
+  if (input.key === '0') return 'reset';
+  return null;
+}
 function createEditorSession(env) {
 const {electron:{WebContentsView, dialog, session}, Store, Bridge, paths, log, getWindow, serveResource, timers:{setTimeout, clearTimeout}, fetch, AbortSignal, templates, comfyUrlProvider, partition = 'persist:yingzuo-p0-comfy'} = env;
 let window = null;
@@ -155,6 +163,15 @@ async function connect() {
       comfyView = new WebContentsView({webPreferences:{session:ses,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,backgroundThrottling:false}});
       window.contentView.addChildView(comfyView); comfyView.setVisible(false);
       protectView(comfyView,isComfyPage,()=>{editorCrashed=true;disconnectEditor();notify({error:'编辑器进程已退出，已保存的草稿保留。请重新连接。'});});
+      // E10：原生视图获得焦点时快捷键不经过工作台页面，这里统一拦截。
+      // Ctrl+Enter 交给映作队列（避免 ComfyUI 自己绕过队列提交）；Ctrl +/-/0 调整界面缩放。
+      comfyView.webContents.on('before-input-event',(event,input)=>{
+        const r=shortcutFor(input); if(!r)return;
+        event.preventDefault();
+        if(r==='run'){notify({shortcut:'run'});return;}
+        const wc=comfyView.webContents; const z=r==='reset'?1:Math.min(2,Math.max(0.5,Math.round((wc.getZoomFactor()+(r==='in'?0.1:-0.1))*10)/10));
+        wc.setZoomFactor(z); notify({message:`编辑器缩放 ${Math.round(z*100)}%`});
+      });
       comfyView.webContents.on('did-start-navigation',(event,_url,isInPlace,isMainFrame)=>{
         if ((event.isMainFrame??isMainFrame) && !(event.isSameDocument??isInPlace)) {disconnectEditor();notify({message:'编辑器页面正在重新载入，请等待连接完成。'});}
       });
@@ -378,4 +395,4 @@ return {
   setOverlay(value) { overlay = !!value; layout(); },
 };
 }
-module.exports = {createEditorSession};
+module.exports = {shortcutFor, createEditorSession};

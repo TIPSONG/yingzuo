@@ -48,6 +48,8 @@ async function runCurrent(options = {}) {
   } catch (e) { const issues = e.details?.issues; swallow(e); return null; }
 }
 q('#run-task').addEventListener('click', () => runCurrent());
+// E10：焦点在原生 ComfyUI 视图时，主进程转发 Ctrl+Enter
+window.yingzuoDesktop?.onStatus?.(d => { if (d?.shortcut === 'run' && S.page === 'create') { if (canRun()) runCurrent(); else toast('请先连接 ComfyUI 并打开工作流。', true); } });
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && S.page === 'create' && canRun()) { e.preventDefault(); runCurrent(); } });
 
 /* ---------- Q10 批量 ---------- */
