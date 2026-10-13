@@ -142,3 +142,34 @@ test('编辑器适配器：revision 或原生身份不符即拒绝写入；能�
   assert.ok(caps.limits.some(l => l.feature === 'compile')); assert.ok(caps.limits.some(l => l.feature === 'version' && /1\.60\.0/.test(l.message)));
   assert.equal(describeCapabilities({loadGraph: false}).usable, false);
 });
+
+test('D11/PR11-R04：Comfy 停止——kill 失败或进程仍存活时报错并保留登记；强停前再核对身份；缺启动时间不算 owned', async t => {
+  const {m, ids, alive} = manager(t);
+  m.killImpl = async () => false;
+  m.writeRegistry({version: 1, services: {comfy: {pid: 5000, executable: '/py/python', startTime: 's'}}});
+  alive.add(5000); ids.set(5000, {pid: 5000, executable: '/py/python', startTime: 's'});
+  await assert.rejects(m.stop(), e => e.details?.stopFailed);
+  assert.equal(m.record.pid, 5000, '失败保留登记');
+  const forced = [];
+  m.killImpl = async (pid, o) => { forced.push(!!o.force); ids.set(5000, {pid: 5000, executable: '/py/python', startTime: 'reused'}); return true; };
+  await assert.rejects(m.stop({graceMs: 20}), e => e.code === 'NOT_OWNED');
+  assert.deepEqual(forced, [false], '身份变化后不强停');
+  m.writeRegistry({version: 1, services: {comfy: {pid: 5001, executable: '/py/python', startTime: null}}});
+  alive.add(5001); ids.set(5001, {pid: 5001, executable: '/py/python', startTime: 'x'});
+  assert.equal(await m.verifyOwned(), false);
+});
+test('D11/PR11-R04：LM Studio 归属只在本会话、绑定端口、API 就绪后才登记', async t => {
+  const d = tmp(t); const calls = [];
+  const runImpl = async (exe, args) => { calls.push(args.join(' ')); return {code: 0, stdout: args[0] === '--help' ? 'Commands:\n  server\n' : '', stderr: ''}; };
+  const reg = path.join(d, 'lm.json');
+  const a = new LmStudioAdapter({cliPath: '/x/lms', registryFile: reg, runImpl, exists: () => true, session: 's1'}); await a.detect();
+  await assert.rejects(a.startServer({apiReachable: false, port: 4321, waitReady: async () => false}), /未就绪/);
+  assert.equal(a.registry().serverOwned, false);
+  assert.ok(calls.includes('server start --port 4321'));
+  await a.startServer({apiReachable: false, port: 4321, waitReady: async () => true});
+  await assert.rejects(a.stopServer({port: 1234}), e => e.code === 'NOT_OWNED');
+  await a.startServer({apiReachable: false, port: 4321, waitReady: async () => true});
+  const b = new LmStudioAdapter({cliPath: '/x/lms', registryFile: reg, runImpl, exists: () => true, session: 's2'}); await b.detect();
+  await assert.rejects(b.stopServer({port: 4321}), e => e.code === 'NOT_OWNED', '应用重启后旧标记不授权停止');
+  assert.ok(!calls.includes('server stop'));
+});

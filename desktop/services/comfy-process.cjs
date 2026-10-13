@@ -82,7 +82,8 @@ class ComfyProcessManager {
     if (!this.aliveImpl(rec.pid)) return false;
     const now = await this.identityImpl(rec.pid, {platform: this.platform});
     if (!now) return false;
-    if (rec.startTime && now.startTime !== rec.startTime) return false;
+    // D11：登记缺少启动时间时无法排除 PID 复用，保守按外部处理
+    if (!rec.startTime || now.startTime !== rec.startTime) return false;
     if (!samePath(now.executable, rec.executable, this.platform)) return false;
     return true;
   }
@@ -94,10 +95,16 @@ class ComfyProcessManager {
       throw new AppError(CODES.NOT_OWNED, '当前 ComfyUI 不是本应用启动的实例（或无法核实），为安全起见不停止。');
     }
     const {pid} = this.record;
-    await this.killImpl(pid, {platform: this.platform});
-    const until = this.now() + graceMs;
-    while (this.now() < until && this.aliveImpl(pid)) await this.sleep(250);
-    if (this.aliveImpl(pid)) await this.killImpl(pid, {platform: this.platform, force: true});
+    const waitExit = async ms => { const until = this.now() + ms; while (this.now() < until && this.aliveImpl(pid)) await this.sleep(250); return !this.aliveImpl(pid); };
+    // D11/PR11-R04：检查 kill 结果并等待真实退出；强停前再次核对身份；失败时保留登记并如实报错
+    let sent = false; try { sent = await this.killImpl(pid, {platform: this.platform}); } catch { sent = false; }
+    let gone = await waitExit(sent ? graceMs : 0);
+    if (!gone) {
+      if (!(await this.verifyOwned())) throw new AppError(CODES.NOT_OWNED, '强制停止前核对身份失败（进程可能已被替换），未强制停止。');
+      let forced = false; try { forced = await this.killImpl(pid, {platform: this.platform, force: true}); } catch { forced = false; }
+      gone = await waitExit(forced ? 5000 : 0);
+    }
+    if (!gone) throw new AppError(CODES.SERVICE_UNAVAILABLE, `ComfyUI 进程 ${pid} 仍在运行，停止失败。文件可能仍被占用，请手动关闭后重试。`, {details: {pid, stopFailed: true}});
     const reg = this.readRegistry(); delete reg.services.comfy; this.writeRegistry(reg);
     this.child = null;
     return {stopped: true, pid};

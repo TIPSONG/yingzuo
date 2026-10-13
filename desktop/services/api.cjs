@@ -84,10 +84,13 @@ function createApi(ctx) {
       const lm = lmFor(); const cli = await lm.detect();
       if (!cli.available) throw new AppError(CODES.NOT_FOUND, `${cli.error} 也可以手动打开 LM Studio，在 Developer 页面启动 Server。`);
       const status = lastStatus ?? await serviceStatus();
-      const result = await lm.startServer({apiReachable: !!status.lmstudio?.api?.ok});
+      const url = new URL(configRepo.config.lmstudio.url ?? 'http://127.0.0.1:1234');
+      const port = Number(url.port) || null;
+      const waitReady = async () => { for (let i = 0; i < 30; i++) { try { const r = await fetchImpl(new URL('models', url.href.replace(/\/?$/, '/')), {signal: AbortSignal.timeout(2000)}); if (r.ok) return true; } catch { /* 未就绪 */ } await new Promise(r => setTimeout(r, 1000)); } return false; };
+      const result = await lm.startServer({apiReachable: !!status.lmstudio?.api?.ok, port, waitReady});
       await serviceStatus(); return result;
     },
-    'services.stopLmServer': async () => { const lm = lmFor(); await lm.detect(); const r = await lm.stopServer(); await serviceStatus(); return r; },
+    'services.stopLmServer': async () => { const lm = lmFor(); await lm.detect(); const r = await lm.stopServer({port: Number(new URL(configRepo.config.lmstudio.url ?? 'http://127.0.0.1:1234').port) || null}); await serviceStatus(); return r; },
     'services.logs': async () => ({comfy: comfy.logTail(), app: logger.tail(200)}),
     // ----- settings -----
     'settings.get': async () => ({...configRepo.snapshot(), dataRoot, locations: knownLocations(), credentials: credentials.status()}),

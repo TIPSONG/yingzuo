@@ -20,9 +20,11 @@ function parseCommands(helpText) {
   }
   return [...commands];
 }
+// 每次应用启动一个会话标识：服务归属不跨应用重启
+const APP_SESSION = require('node:crypto').randomUUID();
 class LmStudioAdapter {
-  constructor({cliPath, registryFile, runImpl = run, exists = p => fs.existsSync(p)}) {
-    this.cliPath = expandCliPath(cliPath); this.registryFile = registryFile; this.runImpl = runImpl; this.exists = exists; this.caps = null;
+  constructor({cliPath, registryFile, runImpl = run, exists = p => fs.existsSync(p), session = APP_SESSION}) {
+    this.session = session; this.cliPath = expandCliPath(cliPath); this.registryFile = registryFile; this.runImpl = runImpl; this.exists = exists; this.caps = null;
   }
   async detect() {
     if (!this.cliPath) return {available: false, error: '未配置 lms CLI 路径。'};
@@ -48,17 +50,21 @@ class LmStudioAdapter {
   registry() { try { return JSON.parse(fs.readFileSync(this.registryFile, 'utf8')); } catch { return {version: 1, serverOwned: false, ownedInstances: []}; } }
   saveRegistry(r) { writeJsonAtomic(this.registryFile, r); }
   /** 按需启动 API 服务；若原本已在运行，ownership=external。 */
-  async startServer({apiReachable}) {
+  /** D11/PR11-R04：归属只在本次应用会话内有效，并绑定配置端口；实际 API 就绪后才登记 owned。 */
+  async startServer({apiReachable, port = null, waitReady = null}) {
     if (apiReachable) return {ownership: 'external', started: false};
     if (!this.caps?.canStartServer) throw new AppError(CODES.UNSUPPORTED, '该 lms 版本不能启动服务；请手动打开 LM Studio 并在 Developer 页面启动 Server。');
-    const r = await this.runImpl(this.cliPath, ['server', 'start'], {timeoutMs: 60000});
+    const r = await this.runImpl(this.cliPath, ['server', 'start', ...(port ? ['--port', String(port)] : [])], {timeoutMs: 60000});
     if (r.code !== 0) throw new AppError(CODES.SERVICE_UNAVAILABLE, `lms server start 失败：${(r.stderr || r.stdout).trim().slice(0, 400)}`);
-    const reg = this.registry(); reg.serverOwned = true; reg.serverStartedAt = new Date().toISOString(); this.saveRegistry(reg);
+    if (waitReady && !(await waitReady())) throw new AppError(CODES.SERVICE_UNAVAILABLE, `已执行 lms server start，但配置地址${port ? `（端口 ${port}）` : ''}上的 API 未就绪；不记为本应用启动。`);
+    const reg = this.registry(); Object.assign(reg, {serverOwned: true, session: this.session, port, serverStartedAt: new Date().toISOString()}); this.saveRegistry(reg);
     return {ownership: 'owned', started: true};
   }
-  async stopServer() {
+  async stopServer({port = null} = {}) {
     const reg = this.registry();
-    if (!reg.serverOwned) throw new AppError(CODES.NOT_OWNED, 'LM Studio 服务不是本应用启动的，保持运行。');
+    const owned = reg.serverOwned && reg.session === this.session && (port === null || reg.port === null || reg.port === port);
+    if (reg.serverOwned && !owned) { reg.serverOwned = false; this.saveRegistry(reg); }
+    if (!owned) throw new AppError(CODES.NOT_OWNED, 'LM Studio 服务不是本应用启动的，保持运行。');
     const r = await this.runImpl(this.cliPath, ['server', 'stop'], {timeoutMs: 30000});
     if (r.code !== 0) throw new AppError(CODES.SERVICE_UNAVAILABLE, `lms server stop 失败：${(r.stderr || r.stdout).trim().slice(0, 400)}`);
     reg.serverOwned = false; this.saveRegistry(reg);
