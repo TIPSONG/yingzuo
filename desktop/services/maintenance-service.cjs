@@ -1,5 +1,6 @@
 'use strict';
 const {TrashStore} = require('../maintenance/trash-store.cjs');
+const {WorkerPool} = require('../core/worker-pool.cjs');
 // 接入 maint 分支模块：maintenance.*（U01–U07）与 resources.*（R01–R08）。
 // 所有改动环境的操作都走 MaintenanceTransaction（环境锁 createLocks().environment、暂停队列并等待空闲、
 // 只停止本应用拥有的服务、备份、staging、apply、检查，失败自动恢复），结果写入 env_transactions 表（U07）。
@@ -112,6 +113,9 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
   async function objectInfo() { try { const r = await fetchImpl(new URL('object_info', configRepo.config.comfy.url), {signal: AbortSignal.timeout(10000)}); return r.ok ? r.json() : null; } catch { return null; } }
 
   const trash = new TrashStore({trashDir: layout.trash});
+  // R17：大文件 sha256 在 worker 中计算，不阻塞主进程
+  const pool = new WorkerPool({size: 2});
+  const hashFile = async p => (await pool.run('sha256', {file: p})).sha256;
   const trashProtected = e => (restore.pending().some(j => path.resolve(j.backupDir) === path.resolve(e.stored)) ? '未完成的恢复正在使用' : null);
   /* ---------- U07：备份保留 ---------- */
   function listBackups() {
@@ -153,7 +157,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     'resources.scan': async () => { lastScan = scanModels({folderMap: folderMap()}); return {count: lastScan.items.length, duplicates: lastScan.duplicates, folders: lastScan.folders, items: lastScan.items.map(i => ({id: i.id, folder: i.folder, name: i.name, size: i.size, format: i.format, symlink: i.symlink}))}; },
     'resources.detail': async id => { const it = findItem(id); const d = describeResource(it, notes.get(id)); const idx = buildIndex(); return {...d, references: idx.referencesTo(it)}; },
     'resources.setNote': async (id, patch) => { findItem(id); return notes.set(id, patch ?? {}); },
-    'resources.hash': async id => { const it = findItem(id); it.sha256 = await sha256File(it.path); return {id, sha256: it.sha256}; },
+    'resources.hash': async id => { const it = findItem(id); it.sha256 = await hashFile(it.path); return {id, sha256: it.sha256}; },
     'resources.references': async () => { const idx = buildIndex(); return lastScan ? idx.diagnose(lastScan.items) : {missing: [], relocated: [], ok: true, note: '请先扫描资源。'}; },
     'resources.impact': async (id, action = 'remove') => buildIndex().impact(findItem(id), action),
     'resources.quickUse': async (id, tabId, opts = {}) => {
@@ -189,16 +193,26 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       if (fs.existsSync(dest)) throw new AppError(CODES.CONFLICT, `目标已有同名文件：${dest}`);
       const free = (() => { try { const s = fs.statfsSync(targetRoot); return s.bavail * s.bsize; } catch { return null; } })();
       if (free !== null && free < it.size + 1024 ** 3) throw new AppError(CODES.DISK_SPACE, '目标磁盘空间不足。');
-      if (taskService?.hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '有任务运行中，模型可能正被使用，请稍后再移动。');
-      fs.mkdirSync(path.dirname(dest), {recursive: true});
-      try { fs.renameSync(it.path, dest); return {moved: dest, method: 'rename', referencesChanged: false}; }
-      catch (e) { if (e.code !== 'EXDEV') throw e; }
-      const tmp = `${dest}.yz-moving`;
-      const srcHash = await sha256File(it.path);
-      fs.copyFileSync(it.path, tmp, fs.constants.COPYFILE_EXCL);
-      if (await sha256File(tmp) !== srcHash) { fs.rmSync(tmp, {force: true}); throw new AppError(CODES.CORRUPT_DATA, '复制后校验不一致，已放弃移动，原文件未动。'); }
-      fs.renameSync(tmp, dest); fs.rmSync(it.path);
-      return {moved: dest, method: 'copy-verify', sha256: srcHash, referencesChanged: false};
+      // D12/PR11-R06：与维护/恢复共用环境锁；暂停提交后再核对任务，复制期间不会有新任务开始
+      const release = locks.environment.tryAcquire('model-move'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用，请等维护完成后再移动。');
+      const lease = taskService?.hooks.pauseSubmissions('model-move') ?? null;
+      try {
+        if (taskService?.hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '有任务运行中，模型可能正被使用，请稍后再移动。');
+        if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 正在运行，可能正在使用该模型；请先关闭后再移动。');
+        fs.mkdirSync(path.dirname(dest), {recursive: true});
+        try { fs.renameSync(it.path, dest); lastScan = null; return {moved: dest, method: 'rename', referencesChanged: false}; }
+        catch (e) { if (e.code !== 'EXDEV') throw e; }
+        const tmp = `${dest}.yz-moving`, journal = `${tmp}.json`;
+        const srcHash = await hashFile(it.path);
+        fs.writeFileSync(journal, JSON.stringify({src: it.path, dest, sha256: srcHash, at: new Date().toISOString()}));
+        try {
+          fs.copyFileSync(it.path, tmp, fs.constants.COPYFILE_EXCL);
+          if (await hashFile(tmp) !== srcHash) throw new AppError(CODES.CORRUPT_DATA, '复制后校验不一致，已放弃移动，原文件未动。');
+          fs.renameSync(tmp, dest);
+        } catch (e) { fs.rmSync(tmp, {force: true}); fs.rmSync(journal, {force: true}); throw e; }
+        fs.rmSync(it.path); fs.rmSync(journal, {force: true}); lastScan = null;
+        return {moved: dest, method: 'copy-verify', sha256: srcHash, referencesChanged: false};
+      } finally { lease?.(); release(); }
     },
     // ----- O08 插件部分：依赖计划中的插件按 Git 地址安装 -----
     'templates.installMissingPlugins': async items => {

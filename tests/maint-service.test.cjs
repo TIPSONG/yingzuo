@@ -37,8 +37,9 @@ function setup(opt = {}) {
   const taskService = {hooks: {pauseSubmissions: () => { paused.push('p'); return () => paused.push('r'); }, waitForIdle: async () => {}, activeTasks: () => []}, tasks: {list: () => [{id: 't1', seq: 1}], snapshotOf: () => ({apiPrompt: {1: {class_type: 'LoraLoader', inputs: {lora_name: 'style.safetensors'}}}})}};
   const editor = {workspace: {tabs: [{id: 'd1', title: '草稿一', graph: {nodes: [{id: 1, type: 'NodeA', widgets_values: ['style.safetensors']}]}}]}};
   const events = {emit: () => {}};
-  const svc = createMaintenanceService({db, layout, configRepo, locks: createLocks(), events, comfy, taskService, editor, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
-  return {base, root, ext, svc, db, calls, paused, layout};
+  const locks = createLocks();
+  const svc = createMaintenanceService({db, layout, configRepo, locks, events, comfy, taskService, editor, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
+  return {base, root, ext, svc, db, calls, paused, layout, locks};
 }
 
 test('resources.scan/detail/references：引用来自草稿和任务快照', async () => {
@@ -134,12 +135,18 @@ test('U06 更新：本地补丁可重放则保留；冲突则列入待处理且�
 });
 
 test('R08 只能移动到同用途已登记目录；跨目录移动后原文件不在', async () => {
-  const {svc, ext, root} = setup();
+  const {svc, ext, root, locks, paused} = setup();
   const s = await svc.methods['resources.scan']();
   const lora = s.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras');
   await assert.rejects(svc.methods['resources.moveModel'](lora.id, os.tmpdir()), /已登记/);
+  const hold = locks.environment.tryAcquire('维护');
+  await assert.rejects(svc.methods['resources.moveModel'](lora.id, path.join(ext, 'loras')), e => e.code === 'LOCKED');
+  assert.ok(fs.existsSync(path.join(root, 'models', 'loras', 'style.safetensors')), 'D12：维护持锁时不移动');
+  hold();
   const r = await svc.methods['resources.moveModel'](lora.id, path.join(ext, 'loras'));
   assert.ok(fs.existsSync(r.moved));
+  assert.deepEqual(paused.slice(-2), ['p', 'r'], '移动期间暂停提交，结束后释放');
+  assert.equal(locks.environment.locked, false);
   assert.ok(!fs.existsSync(path.join(root, 'models', 'loras', 'style.safetensors')));
 });
 
