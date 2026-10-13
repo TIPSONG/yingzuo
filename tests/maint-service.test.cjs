@@ -38,8 +38,9 @@ function setup(opt = {}) {
   const editor = {workspace: {tabs: [{id: 'd1', title: '草稿一', graph: {nodes: [{id: 1, type: 'NodeA', widgets_values: ['style.safetensors']}]}}]}};
   const events = {emit: () => {}};
   const locks = createLocks();
-  const svc = createMaintenanceService({db, layout, configRepo, locks, events, comfy, taskService, editor, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
-  const reopen = () => createMaintenanceService({db, layout, configRepo, locks, events, comfy, taskService, editor, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
+  const mk = () => createMaintenanceService({db, layout, configRepo, locks, events, comfy, taskService, editor, linkImpl: opt.linkImpl, pool: opt.pool, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
+  const svc = mk();
+  const reopen = mk;
   return {base, root, ext, svc, db, calls, paused, layout, locks, reopen, taskService};
 }
 
@@ -183,7 +184,8 @@ test('nodeTypesOf 支持 UI 与 API 图', () => {
 test('D06/PR11-R02：继续恢复与恢复备份走同一保护——外部服务运行时拒绝；失败后保持暂停并拒绝新维护', async () => {
   const ext = setup({fetchImpl: async () => new Response('{}', {status: 200})});
   await assert.rejects(ext.svc.methods['maintenance.resumeRestore']('no-such'), e => e.code === 'NOT_OWNED');
-  assert.deepEqual(ext.paused, [], '外部服务检查在暂停之前');
+  assert.deepEqual(ext.paused, ['p', 'r'], 'C03：先暂停并等待空闲，再以后端状态为准；被拒绝时释放租约、不登记阻断');
+  assert.equal((await ext.svc.methods['maintenance.holds']()).length, 0);
   const {svc, paused} = setup();
   await assert.rejects(svc.methods['maintenance.resumeRestore']('no-such'));
   assert.deepEqual(paused, ['p'], '失败后租约未释放');
@@ -270,4 +272,87 @@ test('S02：本应用启动的 ComfyUI 中有其他客户端任务——视为�
   const {svc} = setup({verifyOwned: async () => true, fetchImpl: async url => (String(url).endsWith('/queue') ? json({queue_running: [[1, 'p-native', {}, {}, []]], queue_pending: []}) : json({}))});
   const r = await svc.methods['maintenance.createBackup']();
   assert.equal(r.status, 'blocked'); assert.match(r.error.message, /外部服务/);
+});
+
+/* ---------- 第三轮 C02/C05 ---------- */
+const exdev = () => { throw Object.assign(new Error('cross-device'), {code: 'EXDEV'}); };
+test('C05：正常跨盘移动——复制期间源被替换则两份保留并记录冲突，不删除新源', async () => {
+  const {WorkerPool} = require('../desktop/core/worker-pool.cjs'); const pool = new WorkerPool({size: 1}); const orig = pool.run.bind(pool);
+  const ctx = setup({pool, linkImpl: (a, b) => (a.endsWith('.yz-moving') ? fs.linkSync(a, b) : exdev())});
+  const s = await ctx.svc.methods['resources.scan']();
+  const lora = {...s.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras'), path: path.join(ctx.root, 'models', 'loras', 'style.safetensors')};
+  pool.run = async (k, a) => { const r = await orig(k, a); if (k === 'copyFile' && a.src === lora.path) fs.writeFileSync(lora.path, Buffer.alloc(64, 2)); return r; };
+  try {
+    const r = await ctx.svc.methods['resources.moveModel'](lora.id, path.join(ctx.ext, 'loras'));
+    assert.equal(r.status, 'conflict', JSON.stringify(r)); assert.ok(r.sourceKept);
+    assert.deepEqual(fs.readFileSync(lora.path), Buffer.alloc(64, 2), '新源保留');
+    assert.deepEqual(fs.readFileSync(r.moved), Buffer.alloc(64, 1), '复制结果保留');
+    const moves = path.join(ctx.layout.root, 'model-moves');
+    assert.equal(fs.readdirSync(moves).length, 1); assert.ok(JSON.parse(fs.readFileSync(path.join(moves, fs.readdirSync(moves)[0]), 'utf8')).conflict);
+  } finally { await pool.close(); }
+});
+test('C05：提交前目标出现——拒绝覆盖，保留源与临时副本；已有不同 tmp 时不移动也不删除', async () => {
+  const ctx = setup({linkImpl: exdev});
+  const s = await ctx.svc.methods['resources.scan']();
+  const lora = {...s.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras'), path: path.join(ctx.root, 'models', 'loras', 'style.safetensors')};
+  const dest = path.join(ctx.ext, 'loras', 'style.safetensors'), tmpf = dest + '.yz-moving';
+  fs.writeFileSync(tmpf, 'OTHER');
+  await assert.rejects(ctx.svc.methods['resources.moveModel'](lora.id, path.join(ctx.ext, 'loras')), e => e.code === 'CONFLICT');
+  assert.equal(fs.readFileSync(tmpf, 'utf8'), 'OTHER'); assert.ok(fs.existsSync(lora.path)); fs.rmSync(tmpf);
+  const {WorkerPool} = require('../desktop/core/worker-pool.cjs'); const pool = new WorkerPool({size: 1}); const orig = pool.run.bind(pool);
+  pool.run = async (k, a) => { const r = await orig(k, a); if (k === 'copyFile' && a.dest === tmpf) fs.writeFileSync(dest, 'RACE'); return r; };
+  const ctx2 = {...ctx};
+  try {
+    // 目标在复制后出现：硬链接 EEXIST，独占复制也失败
+    const svc = createMaintenanceService({db: ctx.db, layout: ctx.layout, configRepo: {config: {comfy: {root: ctx.root, url: 'http://127.0.0.1:1/', python: ''}}, derived: () => ({backups: path.join(ctx.base, 'backups')})}, locks: ctx.locks, events: {emit() {}}, comfy: {verifyOwned: async () => false}, taskService: ctx.taskService, pool, linkImpl: (a, b) => (a.endsWith('.yz-moving') ? fs.linkSync(a, b) : exdev()), fetchImpl: async () => { throw new Error('offline'); }});
+    const s2 = await svc.methods['resources.scan']();
+    const l2 = s2.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras');
+    await assert.rejects(svc.methods['resources.moveModel'](l2.id, path.join(ctx2.ext, 'loras')), e => e.code === 'CONFLICT');
+    assert.equal(fs.readFileSync(dest, 'utf8'), 'RACE', '不覆盖目标'); assert.ok(fs.existsSync(lora.path), '源保留'); assert.ok(fs.existsSync(tmpf), '临时副本保留');
+  } finally { await pool.close(); }
+});
+test('C05：启动核对——后端有其他来源任务（或无法确认）时推迟，journal 与文件不动', async () => {
+  const fetchImpl = async u => (String(u).endsWith('queue') ? new Response(JSON.stringify({queue_running: [[0, 'foreign']], queue_pending: []})) : new Response('{}'));
+  const {svc, h, mk, journal, moves} = moveFixture({fetchImpl, verifyOwned: async () => true});
+  svc; const s = mk('a.safetensors', 'A'), d = mk('b.safetensors', 'A');
+  journal('a', {src: s, dest: d, tmp: d + '.yz-moving', sha256: h('A')});
+  const r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'deferred'); assert.ok(fs.existsSync(s) && fs.existsSync(d)); assert.equal(fs.readdirSync(moves).length, 1);
+});
+test('C05：启动核对——目标完整但 tmp 被替换为不同内容时保留 tmp、不删源', async () => {
+  const {svc, h, mk, journal} = moveFixture();
+  const s = mk('a.safetensors', 'AAAA'), d = mk('b.safetensors', 'AAAA'), t = mk('b.safetensors.yz-moving', 'XXXXXXXX');
+  journal('a', {src: s, dest: d, tmp: t, sha256: h('AAAA')});
+  const r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'needs-attention'); assert.ok(fs.existsSync(t) && fs.existsSync(s));
+});
+test('C02：apply 中途进程被结束——重启后从事务记录重建阻断、保留备份；未修改环境的事务取消登记', async () => {
+  const {svc, db, reopen, paused, root} = setup();
+  const r = await svc.methods['maintenance.createBackup']();
+  db.run("INSERT INTO env_transactions (id, scope, phase, backup_ref, target_manifest, journal, created_at, updated_at) VALUES ('mt-killed','plugin-update','apply',?,?, '[]', 'x', 'x')", r.backupDir, JSON.stringify({roots: [root]}));
+  db.run("INSERT INTO env_transactions (id, scope, phase, journal, created_at, updated_at) VALUES ('mt-early','plugin-update','backup','[]','x','x')");
+  paused.length = 0;
+  const svc2 = reopen();
+  const holds = await svc2.methods['maintenance.holds']();
+  assert.deepEqual(holds.map(h => h.id), ['mt-killed']); assert.equal(holds[0].backupDir, r.backupDir); assert.deepEqual(holds[0].roots, [root]);
+  assert.deepEqual(paused, ['p']);
+  assert.equal(db.get("SELECT phase FROM env_transactions WHERE id='mt-early'").phase, 'cancelled');
+  assert.ok((await svc2.methods['maintenance.backups']()).backups.find(b => b.dir === r.backupDir).inUse, '阻断使用的备份不可清理');
+  await assert.rejects(svc2.methods['maintenance.createBackup'](), e => e.code === 'INVALID_STATE');
+  // 第三次启动仍阻断（已写入 holds 文件）；恢复对应备份后解除并标记事务
+  const svc3 = reopen();
+  assert.equal((await svc3.methods['maintenance.holds']()).length, 1);
+  await svc3.methods['maintenance.restoreBackup'](r.backupDir);
+  assert.equal((await svc3.methods['maintenance.holds']()).length, 0);
+  assert.equal(db.get("SELECT phase FROM env_transactions WHERE id='mt-killed'").phase, 'restored');
+});
+test('C02：持久化 phase 在 apply 之前写入 apply、备份完成即登记 backupRef', async () => {
+  const {svc, db, root} = setup(); let seen = null;
+  await svc.runTransaction({title: 't', kind: 'x', roots: [path.join(root, 'custom_nodes')], requiredBytes: 0, apply: async () => { seen = db.get('SELECT phase, backup_ref FROM env_transactions'); }});
+  assert.equal(seen.phase, 'apply'); assert.ok(seen.backup_ref);
+});
+test('C02：holds 文件不是数组时按阻断处理', async () => {
+  const {layout, reopen} = setup();
+  fs.writeFileSync(path.join(layout.root, 'maintenance-holds.json'), '{"a":1}');
+  assert.ok(reopen().gate());
 });

@@ -29,7 +29,7 @@ function nodeTypesOf(graph) {
   return Object.values(graph ?? {}).map(n => n?.class_type);
 }
 
-function createMaintenanceService({db, layout, configRepo, locks, events, logger, comfy, taskService, templateRepo, editor, fetchImpl, onlineService}) {
+function createMaintenanceService({db, layout, configRepo, locks, events, logger, comfy, taskService, templateRepo, editor, fetchImpl, onlineService, linkImpl = fs.linkSync, pool: injectedPool = null}) {
   const backupsDir = () => configRepo.derived(layout).backups;
   const restore = new RestoreEngine({journalDir: path.join(layout.root, 'restore-journal')});
   const notes = new ResourceNotes(path.join(layout.root, 'resource-notes.json'));
@@ -72,34 +72,52 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     let saved = [];
     try { if (fs.existsSync(holdsFile)) saved = JSON.parse(fs.readFileSync(holdsFile, 'utf8')); }
     catch (e) { saved = [{id: 'unreadable', reason: `阻断记录损坏：${e.message}`, backupDir: null, roots: [], at: new Date().toISOString()}]; } // 读不出来也按阻断处理
-    for (const h of Array.isArray(saved) ? saved : []) holds.push({...h, lease: taskService?.hooks.pauseSubmissions(`hold:${h.id}`) ?? null});
+    if (!Array.isArray(saved)) saved = [{id: 'unreadable', reason: '阻断记录格式无效（不是清单），按阻断处理', backupDir: null, roots: [], at: new Date().toISOString()}]; // C02：不能当成空清单
+    for (const h of saved) holds.push({...h, lease: taskService?.hooks.pauseSubmissions(`hold:${h.id}`) ?? null});
     if (holds.length) logger?.warn('上次维护恢复未完成：保持任务暂停、不自动启动服务', {holds: holds.map(h => h.id)});
+  })();
+  /** C02：从事务记录重建阻断。apply/healthcheck/restore 未到终态 → 环境可能已改，保守阻断；plan/backup/staging → 尚未修改环境，取消登记。不自动重放。 */
+  (function deriveFromTransactions() {
+    let rows = []; try { rows = db.all("SELECT * FROM env_transactions WHERE phase IN ('plan','backup','staging','apply','healthcheck','restore')"); } catch { return; }
+    let added = 0;
+    for (const r of rows) {
+      if (['plan', 'backup', 'staging'].includes(r.phase)) { record(r.id, {phase: 'cancelled', error: {message: '应用退出时维护尚未修改环境，已取消登记'}}); continue; }
+      if (holds.some(h => h.id === r.id)) continue;
+      let roots = []; try { roots = JSON.parse(r.target_manifest || '{}').roots ?? []; } catch { /* 忽略 */ }
+      holds.push({id: r.id, reason: `维护在“${r.phase}”阶段中断，环境可能已被修改，请恢复对应备份或确认检查`, backupDir: r.backup_ref ?? null, roots, at: r.updated_at, interrupted: true, lease: taskService?.hooks.pauseSubmissions(`hold:${r.id}`) ?? null});
+      added++;
+    }
+    if (added) { persistHolds(); logger?.warn('检测到中断的维护事务：保持任务暂停、不自动启动服务', {holds: holds.map(h => h.id)}); }
   })();
   function holdAfterFailure(h) { holds.push({at: new Date().toISOString(), roots: [], backupDir: null, ...h}); persistHolds(); logger?.error('维护恢复失败：保持任务暂停、不启动服务', {id: h.id}); events.emit('maintenance.hold', h.id, {stopped: h.stopped}); }
   /** 只解除与已恢复备份对应的阻断；backupDir 为空（未知来源）不解除任何阻断。 */
   function releaseHoldsFor(backupDir) {
     if (!backupDir) return 0;
     const key = path.resolve(backupDir); let n = 0;
-    for (let i = holds.length - 1; i >= 0; i--) if (holds[i].backupDir && path.resolve(holds[i].backupDir) === key) { const [h] = holds.splice(i, 1); if (typeof h.lease === 'function') h.lease(); n++; }
+    for (let i = holds.length - 1; i >= 0; i--) if (holds[i].backupDir && path.resolve(holds[i].backupDir) === key) { const [h] = holds.splice(i, 1); if (typeof h.lease === 'function') h.lease(); try { if (db.get('SELECT id FROM env_transactions WHERE id = ?', h.id)) record(h.id, {phase: 'restored'}); } catch { /* 忽略 */ } n++; }
     persistHolds(); return n;
   }
   const appRec = appBackup.appRecoveryState?.(layout);
   if (appRec) holds.push({id: 'app-restore', reason: `应用数据恢复未完成：${appRec.error ?? ''}`, backupDir: null, roots: [], at: appRec.failedAt, derived: true, lease: taskService?.hooks.pauseSubmissions('app-restore') ?? null});
   const gate = () => (holds.length ? new AppError(CODES.INVALID_STATE, '上一次维护恢复失败，环境处于不确定状态。请先在“维护”页完成恢复。', {details: {holds: holds.map(h => h.id)}}) : null);
+  // C03：锁 → 暂停 → 等待 active/starting 结束 → 再查后端 → 停止；C02：恢复写前登记阻断，完成并校验后才解除
   async function guardedRestore(run, {backupDir = null} = {}) {
     const release = locks.environment.tryAcquire('restore'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用。');
-    let lease = null, ok = false;
+    let lease = null, ok = false, hid = null;
     try {
-      if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 仍在运行，或本应用启动的 ComfyUI 正在执行其他程序的任务，请先结束后再恢复。');
       lease = taskService?.hooks.pauseSubmissions('restore') ?? null;
       await taskService?.hooks.waitForIdle({timeoutMs: 600000});
+      if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 仍在运行，或本应用启动的 ComfyUI 正在执行其他程序的任务（或无法确认），请先结束后再恢复。');
       if (await comfy.verifyOwned()) await comfy.stop();
+      hid = `restore-${Date.now().toString(36)}`;
+      holds.push({id: hid, reason: '恢复进行中；若被中断，请在“维护”页继续恢复', backupDir, roots: [], at: new Date().toISOString(), inProgress: true}); persistHolds();
       const r = await run();
       ok = true; releaseHoldsFor(backupDir);
+      const i = holds.findIndex(h => h.id === hid); if (i >= 0) { holds.splice(i, 1); persistHolds(); }
       return r;
     } finally {
-      // 恢复未完成：保留租约（任务继续暂停），等待用户再次恢复
-      if (ok || !lease) lease?.(); else holdAfterFailure({id: `restore-${Date.now().toString(36)}`, lease, stopped: [], backupDir});
+      if (ok || !hid) lease?.();
+      else { const h = holds.find(x => x.id === hid); if (h) { h.lease = lease; h.inProgress = false; h.reason = '恢复未完成，环境处于不确定状态'; persistHolds(); } logger?.error('维护恢复失败：保持任务暂停、不启动服务', {id: hid}); events.emit('maintenance.hold', hid, {stopped: []}); }
       release();
     }
   }
@@ -114,17 +132,17 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     if (gate()) throw gate();
     let txBackupDir = null;
     const id = `mt-${crypto.randomBytes(5).toString('hex')}`;
-    record(id, {scope: plan.kind ?? 'maintenance', phase: 'plan', target: {title: plan.title, target: plan.target}});
+    record(id, {scope: plan.kind ?? 'maintenance', phase: 'plan', target: {title: plan.title, target: plan.target, roots: plan.roots ?? []}});
     const journal = [];
     const tx = new MaintenanceTransaction({
-      locks, services,
+      locks, services, gate,
       stopService: async () => { await comfy.stop(); },
       startService: async () => { await comfy.ensureRunning(configRepo.config); },
       queue: taskService ? {pauseSubmissions: r => taskService.hooks.pauseSubmissions(r), waitForIdle: o => taskService.hooks.waitForIdle(o)} : null,
       onHold: h => holdAfterFailure({...h, backupDir: txBackupDir, roots: plan.roots ?? []}),
       backup: async p => { const r = await createBackup({...envBackupScope(), backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile, copyImpl: (src, dst) => pool.run('copyFile', {src, dest: dst, excl: false})}); txBackupDir = r.dir; return {dir: r.dir}; },
       restore: async dir => { const j = await restore.prepare(dir); return restore.run(j.id); },
-      onEvent: e => { journal.push(e); record(id, {phase: ['plan', 'disk', 'services', 'lock', 'pause', 'stop'].includes(e.phase) ? 'plan' : e.phase === 'backup' ? 'backup' : e.phase === 'staging' ? 'staging' : e.phase === 'apply' ? 'apply' : e.phase === 'check' ? 'healthcheck' : e.phase === 'done' ? 'done' : e.phase === 'restore' ? 'restore' : e.phase === 'restore-check' ? (e.state === 'done' ? 'restored' : 'failed') : 'failed', journal}); events.emit('maintenance.progress', id, e); },
+      onEvent: e => { journal.push(e); record(id, {backupRef: e.phase === 'backup' && e.dir ? e.dir : undefined, phase: ['plan', 'disk', 'services', 'lock', 'pause', 'stop'].includes(e.phase) ? 'plan' : e.phase === 'backup' ? 'backup' : e.phase === 'staging' ? 'staging' : e.phase === 'apply' ? 'apply' : e.phase === 'check' ? 'healthcheck' : e.phase === 'done' ? 'done' : e.phase === 'restore' ? 'restore' : e.phase === 'failed' && txBackupDir && journal.some(x => x.phase === 'apply') ? 'restore' : e.phase === 'restore-check' ? (e.state === 'done' ? 'restored' : 'failed') : 'failed', journal}); events.emit('maintenance.progress', id, e); },
     });
     const ctxLog = [];
     const wrapped = {...plan, id, stage: plan.stage && (c => { c.log = ctxLog; return plan.stage(c); }), apply: c => { c.log = ctxLog; return plan.apply(c); }};
@@ -176,7 +194,12 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     const lease = taskService?.hooks.pauseSubmissions('model-move-recover') ?? null;
     const out = [];
     try {
-      if (taskService?.hooks.activeTasks().length) return files.map(f => ({file: f, action: 'deferred', reason: '有任务运行中，可能正在加载模型'}));
+      // C05：与维护同一 guard——暂停后等待本应用 active/starting 结束，再核对后端是否有其他来源任务；任何不确定都推迟并保留 journal
+      const defer = reason => files.map(f => ({file: f, action: 'deferred', reason}));
+      if (taskService?.hooks.activeTasks().length) return defer('有任务运行中，可能正在加载模型');
+      try { await taskService?.hooks.waitForIdle({timeoutMs: 5000}); } catch { return defer('有任务正在启动，可能正在加载模型'); }
+      let svc; try { svc = await services(); } catch { return defer('无法确认 ComfyUI 状态'); }
+      if (svc.some(s => s.running && !s.owned)) return defer('ComfyUI 中有其他来源的任务或外部启动的服务（或无法确认），可能正在使用模型');
       for (const f of files) {
         const file = path.join(movesDir, f);
         const keep = (action, extra = {}) => { out.push({file: f, action, ...extra}); };
@@ -189,18 +212,21 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
           const ok = async p => has(p) && await hashFile(p) === j.sha256;
           const destOk = await ok(j.dest), tmpOk = await ok(j.tmp);
           const srcHas = has(j.src), srcSame = srcHas && await hashFile(j.src) === j.sha256;
+          // C05：tmp 只有内容被证明等于被移动文件（或在源完好时为不超过源大小的半成品）才可丢弃；不同内容的 tmp 一律保留
+          const dropTmp = () => { if (has(j.tmp) && tmpOk) fs.rmSync(j.tmp, {force: true}); };
           if (srcHas && !srcSame) {
             // 源路径出现了新内容：两份都保留
-            if (destOk && has(j.tmp)) fs.rmSync(j.tmp, {force: true});
+            if (destOk) dropTmp();
             const reason = '源路径的文件已变化（不是当初移动的文件），两份都已保留，请手动决定。';
             fs.writeFileSync(file, JSON.stringify({...j, conflict: reason}));
             keep('conflict', {src: j.src, dest: j.dest, reason}); continue;
           }
-          if (srcSame && destOk) { if (has(j.tmp)) fs.rmSync(j.tmp, {force: true}); fs.rmSync(j.src); drop('completed', {dest: j.dest}); continue; }
+          if (has(j.tmp) && !tmpOk && !(srcSame && fs.statSync(j.tmp).isFile() && fs.statSync(j.tmp).size <= fs.statSync(j.src).size)) { keep('needs-attention', {reason: '临时文件内容与移动记录不符，可能被其他程序替换，已保留现场。', tmp: j.tmp}); continue; }
+          if (srcSame && destOk) { dropTmp(); fs.rmSync(j.src); drop('completed', {dest: j.dest}); continue; }
           if (srcSame && !has(j.dest)) { if (has(j.tmp)) fs.rmSync(j.tmp, {force: true}); drop('rolled-back', {src: j.src}); continue; }
           if (srcSame) { keep('conflict', {src: j.src, dest: j.dest, reason: '目标路径有不同内容，两份都已保留。'}); continue; }
           // 源不存在
-          if (destOk) { if (has(j.tmp)) fs.rmSync(j.tmp, {force: true}); drop('already-done', {dest: j.dest}); continue; }
+          if (destOk) { dropTmp(); drop('already-done', {dest: j.dest}); continue; }
           if (!has(j.dest) && tmpOk) { fs.renameSync(j.tmp, j.dest); drop('completed-from-temp', {dest: j.dest}); continue; }
           keep('needs-attention', {reason: '源已不存在且目标/临时文件不完整，已保留现场。', src: j.src, dest: j.dest});
         } catch (e) { logger?.warn('模型移动核对失败', {file, error: e.message}); keep('needs-attention', {error: e.message}); }
@@ -209,13 +235,13 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     } finally { lease?.(); release(); }
   }
   // R17：大文件 sha256 在 worker 中计算，不阻塞主进程
-  const pool = sharedPool();
+  const pool = injectedPool ?? sharedPool();
   const hashFile = async p => (await pool.run('sha256', {file: p})).sha256;
   const trashProtected = e => (restore.pending().some(j => path.resolve(j.backupDir) === path.resolve(e.stored)) ? '未完成的恢复正在使用' : null);
   /* ---------- U07：备份保留 ---------- */
   function listBackups() {
     const dir = backupsDir(); if (!fs.existsSync(dir)) return [];
-    const inUse = new Set([...restore.pending().map(j => path.resolve(j.backupDir)), ...listTransactions().filter(t => !['done', 'restored', 'failed'].includes(t.phase)).map(t => t.backupRef && path.resolve(t.backupRef))].filter(Boolean));
+    const inUse = new Set([...restore.pending().map(j => path.resolve(j.backupDir)), ...listTransactions().filter(t => !['done', 'restored', 'failed', 'cancelled'].includes(t.phase)).map(t => t.backupRef && path.resolve(t.backupRef)), ...holds.map(h => h.backupDir && path.resolve(h.backupDir))].filter(Boolean));
     return fs.readdirSync(dir).filter(n => !n.endsWith('.partial')).map(n => path.join(dir, n)).filter(p => fs.existsSync(path.join(p, 'backup.json'))).map(p => { const r = readBackup(p); return {dir: p, id: r.id, createdAt: r.createdAt, sources: r.sources.map(s => s.originalPath), sizeBytes: dirSize(p), inUse: inUse.has(path.resolve(p)), complete: fs.existsSync(path.join(p, 'COMPLETE'))}; }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
   /** 保留最近 keep 份；每个来源至少保留最近一份完整备份（最近已知可恢复基线）；使用中的不删。 */
@@ -300,7 +326,6 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       if (it.symlink) throw new AppError(CODES.UNSUPPORTED, '这是链接文件，请移动其实际文件。');
       const dest = path.join(targetRoot, ...it.name.split('/'));
       if (path.resolve(dest) === path.resolve(it.path)) throw new AppError(CODES.INVALID_ARGUMENT, '已在目标目录。');
-      if (fs.existsSync(dest)) throw new AppError(CODES.CONFLICT, `目标已有同名文件：${dest}`);
       const free = (() => { try { const s = fs.statfsSync(targetRoot); return s.bavail * s.bsize; } catch { return null; } })();
       if (free !== null && free < it.size + 1024 ** 3) throw new AppError(CODES.DISK_SPACE, '目标磁盘空间不足。');
       // D12/PR11-R06：与维护/恢复共用环境锁；暂停提交后再核对任务，复制期间不会有新任务开始
@@ -309,18 +334,39 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       const lease = taskService?.hooks.pauseSubmissions('model-move') ?? null;
       try {
         if (taskService?.hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '有任务运行中，模型可能正被使用，请稍后再移动。');
-        if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 正在运行，可能正在使用该模型；请先关闭后再移动。');
+        // C03/C05：等待 starting 结束后再以后端状态为准
+        try { await taskService?.hooks.waitForIdle({timeoutMs: 5000}); } catch { throw new AppError(CODES.INVALID_STATE, '有任务正在启动，请稍后再移动。'); }
+        if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, 'ComfyUI 是外部启动的、正在执行其他来源的任务或无法确认状态，可能正在使用该模型；请先结束后再移动。');
+        if (fs.existsSync(dest)) throw new AppError(CODES.CONFLICT, `目标已有同名文件：${dest}`);
         fs.mkdirSync(path.dirname(dest), {recursive: true});
-        try { fs.renameSync(it.path, dest); lastScan = null; return {moved: dest, method: 'rename', referencesChanged: false}; }
-        catch (e) { if (e.code !== 'EXDEV') throw e; }
-        const tmp = `${dest}.yz-moving`; fs.mkdirSync(movesDir, {recursive: true}); const journal = path.join(movesDir, `${crypto.randomBytes(6).toString('hex')}.json`);
-        const srcHash = await hashFile(it.path);
-        fs.writeFileSync(journal, JSON.stringify({src: it.path, dest, tmp, sha256: srcHash, at: new Date().toISOString()}));
+        const tmp = `${dest}.yz-moving`;
+        if (fs.existsSync(tmp)) throw new AppError(CODES.CONFLICT, `目标目录有未处理的临时文件：${tmp}，可能是上次中断的移动，请先在启动核对中处理。`);
+        // 同盘：link 到目标（目标已存在时失败，不覆盖）后删除源；不支持硬链接或跨盘时走复制校验
+        try { linkImpl(it.path, dest); fs.rmSync(it.path); lastScan = null; return {moved: dest, method: 'rename', referencesChanged: false}; }
+        catch (e) { if (e.code === 'EEXIST') throw new AppError(CODES.CONFLICT, `目标已有同名文件：${dest}`); }
+        fs.mkdirSync(movesDir, {recursive: true}); const journal = path.join(movesDir, `${crypto.randomBytes(6).toString('hex')}.json`);
+        const srcStat = fs.statSync(it.path); const srcHash = await hashFile(it.path);
+        const jrec = {src: it.path, dest, tmp, sha256: srcHash, size: srcStat.size, at: new Date().toISOString()};
+        fs.writeFileSync(journal, JSON.stringify(jrec));
+        let created = false;
         try {
-          await pool.run('copyFile', {src: it.path, dest: tmp, excl: true}); // S09：大文件复制在 worker 中流式进行
+          created = true; await pool.run('copyFile', {src: it.path, dest: tmp, excl: true}); // S09：大文件复制在 worker 中流式进行（excl：不覆盖已有 tmp）
           if (await hashFile(tmp) !== srcHash) throw new AppError(CODES.CORRUPT_DATA, '复制后校验不一致，已放弃移动，原文件未动。');
-          fs.renameSync(tmp, dest);
-        } catch (e) { fs.rmSync(tmp, {force: true}); fs.rmSync(journal, {force: true}); throw e; }
+          // 提交目标：拒绝覆盖。优先硬链接（EEXIST 原子失败）；文件系统不支持时再做一次独占复制并校验
+          try { linkImpl(tmp, dest); }
+          catch (e) {
+            if (e.code === 'EEXIST') throw Object.assign(new AppError(CODES.CONFLICT, `提交前目标出现了同名文件，已保留源文件和临时副本：${dest}`), {keepTmp: true});
+            await pool.run('copyFile', {src: tmp, dest, excl: true});
+            if (await hashFile(dest) !== srcHash) { fs.rmSync(dest, {force: true}); throw new AppError(CODES.CORRUPT_DATA, '提交目标后校验不一致，已放弃移动。'); }
+          }
+          fs.rmSync(tmp, {force: true});
+        } catch (e) {
+          if (e.code === 'EEXIST' || e.keepTmp) { fs.writeFileSync(journal, JSON.stringify({...jrec, conflict: e.message})); throw e; } // 不是本事务创建或目标冲突：保留现场
+          if (created) fs.rmSync(tmp, {force: true}); fs.rmSync(journal, {force: true}); throw e;
+        }
+        // C05：删除源之前重新核对源的身份与内容；变化则两份保留并记录冲突
+        let same = false; try { const st = fs.statSync(it.path); same = st.size === srcStat.size && st.mtimeMs === srcStat.mtimeMs && await hashFile(it.path) === srcHash; } catch { same = false; }
+        if (!same) { const reason = '复制期间源文件被修改或替换；已保留新的源文件和移动后的副本，请手动决定。'; fs.writeFileSync(journal, JSON.stringify({...jrec, conflict: reason})); lastScan = null; return {moved: dest, method: 'copy-verify', status: 'conflict', reason, sourceKept: true, referencesChanged: false}; }
         fs.rmSync(it.path); fs.rmSync(journal, {force: true}); lastScan = null;
         return {moved: dest, method: 'copy-verify', sha256: srcHash, referencesChanged: false};
       } finally { lease?.(); release(); }

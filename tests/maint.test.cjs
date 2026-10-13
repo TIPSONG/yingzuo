@@ -161,7 +161,27 @@ test('U04 成功事务：顺序为暂停→停止 owned→备份→应用→检�
   assert.equal(r.status, 'done');
   assert.deepEqual(calls.map(c => c[0]), ['pause', 'idle', 'stop', 'start', 'resume']);
   assert.equal(deps.locks.environment.locked, false);
-  assert.deepEqual(r.events.map(e => e.phase), ['plan', 'disk', 'services', 'lock', 'pause', 'stop', 'backup', 'staging', 'apply', 'check', 'done']);
+  assert.deepEqual(r.events.map(e => e.phase), ['plan', 'disk', 'lock', 'pause', 'services', 'stop', 'backup', 'staging', 'apply', 'apply', 'check', 'done']);
+  assert.deepEqual(r.events.filter(e => e.phase === 'apply').map(e => e.state), ['running', 'done']);
+});
+
+test('C03：等待本应用任务结束期间出现外部任务——以等待后的服务状态为准，不停止、不应用、恢复租约', async () => {
+  const base = tmp(); let idle = false;
+  const {deps, target, calls} = txDeps(base, {services: async () => [{id: 'comfy', owned: !idle, running: true}]});
+  deps.queue.waitForIdle = async () => { calls.push(['idle']); idle = true; };
+  let applied = false;
+  const r = await new MaintenanceTransaction(deps).execute({title: 'x', roots: [target], apply: async () => { applied = true; }});
+  assert.equal(r.status, 'blocked'); assert.equal(r.error.code, 'NOT_OWNED'); assert.equal(applied, false);
+  assert.deepEqual(calls.map(c => c[0]), ['pause', 'idle', 'resume']);
+  assert.equal(deps.locks.environment.locked, false);
+});
+
+test('C03：阻断在取得环境锁后检查（等锁期间产生的 hold 也会拦住）', async () => {
+  const base = tmp(); let hold = null;
+  const {deps, target, calls} = txDeps(base, {gate: () => hold});
+  hold = Object.assign(new Error('上一次维护恢复失败'), {code: 'INVALID_STATE'});
+  const r = await new MaintenanceTransaction(deps).execute({title: 'x', roots: [target], apply: async () => {}});
+  assert.equal(r.status, 'blocked'); assert.equal(r.error.code, 'INVALID_STATE'); assert.deepEqual(calls, []);
 });
 
 test('U04 应用失败自动恢复到备份', async () => {

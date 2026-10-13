@@ -1,12 +1,12 @@
 'use strict';
 // U04：维护事务与环境锁。
-// 计划 → 磁盘空间 → 服务 ownership → 获取环境锁 → 暂停提交并等待空闲 → 停止本应用拥有的服务 → 备份 → staging → 应用 → 健康检查 → 完成；
+// 计划 → 磁盘空间 → 获取环境锁 → 锁内检查阻断 → 暂停提交并等待空闲（含 starting） → 服务 ownership/外部任务 → 停止本应用拥有的服务 → 备份 → staging → 应用（写前登记） → 健康检查 → 完成；
 // 任一步失败 → 恢复 → 恢复检查。外部（非本应用拥有）服务仍在运行且与计划冲突时直接阻止。
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const {AppError, CODES} = require('../core/errors.cjs');
 
-const PHASES = ['plan', 'disk', 'services', 'lock', 'pause', 'stop', 'backup', 'staging', 'apply', 'check', 'done'];
+const PHASES = ['plan', 'disk', 'lock', 'pause', 'services', 'stop', 'backup', 'staging', 'apply', 'check', 'done'];
 
 function freeBytes(dir) {
   try { const s = fs.statfsSync(dir); return Number(s.bavail) * Number(s.bsize); } catch { return null; }
@@ -47,17 +47,19 @@ class MaintenanceTransaction {
       if (free !== null && plan.requiredBytes && free < plan.requiredBytes) throw new AppError(CODES.DISK_SPACE, `磁盘空间不足：需要 ${plan.requiredBytes}，可用 ${free}`, {details: {free, required: plan.requiredBytes}});
       this.emit('disk', 'done', {free});
 
-      const services = await d.services();
-      const conflicts = services.filter(s => s.running && !s.owned && (!s.roots || s.roots.some(r => plan.roots.some(p => p.startsWith(r) || r.startsWith(p)))));
-      if (conflicts.length) throw new AppError(CODES.NOT_OWNED, `外部服务仍在运行，阻止维护：${conflicts.map(s => s.id).join('、')}`, {details: {conflicts: conflicts.map(s => s.id)}});
-      this.emit('services', 'done');
-
+      // C03：先取环境锁，在锁内检查阻断；暂停提交并等待本应用 active/starting 全部结束后，再查询服务状态作为最终依据
       release = d.locks.environment.tryAcquire(`maintenance:${id}`);
       if (!release) throw new AppError(CODES.LOCKED, `环境维护锁正被 ${d.locks.environment.holder} 占用。`);
       this.emit('lock', 'done');
+      const held = d.gate?.(); if (held) throw held;
 
       if (d.queue) { lease = d.queue.pauseSubmissions(`maintenance:${id}`); await d.queue.waitForIdle({timeoutMs: plan.idleTimeoutMs ?? 600000}); }
       this.emit('pause', 'done');
+
+      const services = await d.services();
+      const conflicts = services.filter(s => s.running && !s.owned && (!s.roots || s.roots.some(r => plan.roots.some(p => p.startsWith(r) || r.startsWith(p)))));
+      if (conflicts.length) throw new AppError(CODES.NOT_OWNED, `外部服务或其他来源任务仍在运行（或无法确认），阻止维护：${conflicts.map(s => s.id).join('、')}`, {details: {conflicts: conflicts.map(s => s.id)}});
+      this.emit('services', 'done');
 
       for (const s of services.filter(s => s.running && s.owned)) { await d.stopService(s.id); ctx.stopped.push(s.id); }
       this.emit('stop', 'done', {stopped: ctx.stopped});
@@ -69,6 +71,8 @@ class MaintenanceTransaction {
       if (plan.stage) await plan.stage(ctx);
       this.emit('staging', 'done');
 
+      // C02：写前登记——apply 开始前由 onEvent 持久化 phase=apply 与 backupRef；进程在此后被结束，下次启动据此阻断
+      this.emit('apply', 'running', {dir: ctx.backupDir});
       applied = true;
       await plan.apply(ctx);
       this.emit('apply', 'done');
@@ -81,7 +85,7 @@ class MaintenanceTransaction {
       this.emit('failed', 'error', {code: error.code, message: error.message});
       if (applied && ctx.backupDir) {
         try {
-          this.emit('restore', 'running');
+          this.emit('restore', 'running', {dir: ctx.backupDir});
           const r = await d.restore(ctx.backupDir, plan);
           this.emit('restore-check', 'done', {restoreId: r?.id});
           return {id, status: 'restored', error: {code: error.code, message: error.message}, backupDir: ctx.backupDir, events: this.events};

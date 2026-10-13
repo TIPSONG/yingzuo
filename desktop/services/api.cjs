@@ -21,6 +21,7 @@ function createApi(ctx) {
   const comfy = new ComfyProcessManager({registryFile: path.join(layout.root, 'services.json'), logsDir: layout.logs, probe: url => probeComfy(url, {fetchImpl})});
   const lmFor = () => new LmStudioAdapter({cliPath: configRepo.config.lmstudio.cli, registryFile: path.join(layout.root, 'lmstudio.json')});
   let lastStatus = null;
+  let startGate = () => null;
   const hooks = ctx.taskService?.hooks ?? {activeTasks: () => [], waitForIdle: async () => {}, cancelActive: async () => {}, pauseSubmissions: () => {}, resumeSubmissions: () => {}};
 
   async function serviceStatus() {
@@ -61,6 +62,7 @@ function createApi(ctx) {
     // ----- services -----
     'services.status': serviceStatus,
     'services.startComfy': () => locks.environment.run(async () => {
+      const held = startGate(); if (held) throw held; // C03：在实际取得环境锁之后检查维护阻断
       events.emit('services.comfy', null, {phase: 'starting'});
       try {
         const result = await comfy.ensureRunning(configRepo.config, {onProgress: p => events.emit('services.comfy', null, {phase: 'waiting', summary: p.summary})});
@@ -155,6 +157,7 @@ function createApi(ctx) {
   }
   return {
     dispatch, methods, hooks, prepareQuit, shutdownOwnedServices, openKnownLocation, credentials, comfy, serviceStatus,
+    setStartGate(fn) { startGate = typeof fn === 'function' ? fn : () => null; },
     lastServiceSummary: () => lastStatus?.summary,
     start() { serviceStatus().catch(e => logger.warn('initial probe failed', {error: e.message})); },
   };
