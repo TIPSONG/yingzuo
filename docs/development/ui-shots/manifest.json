@@ -1,0 +1,374 @@
+{
+  "generatedAt": "2026-10-13T13:35:15.752Z",
+  "head": "41e19722f992702b63bb185a12d0269b86b0a22d",
+  "desktopDirty": false,
+  "browser": "Chrome/154.0.8037.97",
+  "viewport": {
+    "width": 1440,
+    "height": 960,
+    "deviceScaleFactor": 1
+  },
+  "fixtures": "tools/ui-shots/fixtures.json",
+  "shots": [
+    {
+      "file": "default-home.png",
+      "page": "home",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-create.png",
+      "page": "create",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-create-start.png",
+      "page": "create-start",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-templates.png",
+      "page": "templates",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-online.png",
+      "page": "online",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-assets.png",
+      "page": "assets",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-resources.png",
+      "page": "resources",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-queue.png",
+      "page": "queue",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-services.png",
+      "page": "services",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "default-settings.png",
+      "page": "settings",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-home.png",
+      "page": "home",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-create.png",
+      "page": "create",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-create-start.png",
+      "page": "create-start",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-templates.png",
+      "page": "templates",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-online.png",
+      "page": "online",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-assets.png",
+      "page": "assets",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-resources.png",
+      "page": "resources",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-queue.png",
+      "page": "queue",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-services.png",
+      "page": "services",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "light-settings.png",
+      "page": "settings",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-home.png",
+      "page": "home",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-create.png",
+      "page": "create",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-create-start.png",
+      "page": "create-start",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-templates.png",
+      "page": "templates",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-online.png",
+      "page": "online",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-assets.png",
+      "page": "assets",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-resources.png",
+      "page": "resources",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-queue.png",
+      "page": "queue",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-services.png",
+      "page": "services",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-settings.png",
+      "page": "settings",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-home.png",
+      "page": "home",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-create.png",
+      "page": "create",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-create-start.png",
+      "page": "create-start",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-templates.png",
+      "page": "templates",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-online.png",
+      "page": "online",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-assets.png",
+      "page": "assets",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-resources.png",
+      "page": "resources",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-queue.png",
+      "page": "queue",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-services.png",
+      "page": "services",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    },
+    {
+      "file": "nasa-light-settings.png",
+      "page": "settings",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960
+    }
+  ]
+}
