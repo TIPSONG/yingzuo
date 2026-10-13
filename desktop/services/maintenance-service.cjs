@@ -114,6 +114,26 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
   async function objectInfo() { try { const r = await fetchImpl(new URL('object_info', configRepo.config.comfy.url), {signal: AbortSignal.timeout(10000)}); return r.ok ? r.json() : null; } catch { return null; } }
 
   const trash = new TrashStore({trashDir: layout.trash});
+  /* ---------- R06：跨盘移动中断后的启动核对 ---------- */
+  const movesDir = path.join(layout.root, 'model-moves');
+  /** 目标已完整（哈希一致）→ 删除仍在的源；否则删除临时副本、保留源。任何情况都不删除唯一副本。 */
+  async function recoverModelMoves() {
+    if (!fs.existsSync(movesDir)) return [];
+    const out = [];
+    for (const f of fs.readdirSync(movesDir).filter(n => n.endsWith('.json'))) {
+      const file = path.join(movesDir, f);
+      try {
+        const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+        fs.rmSync(j.tmp, {force: true});
+        const destOk = fs.existsSync(j.dest) && await hashFile(j.dest) === j.sha256;
+        if (destOk && fs.existsSync(j.src)) { fs.rmSync(j.src); out.push({dest: j.dest, action: 'completed'}); }
+        else if (!destOk && fs.existsSync(j.src)) out.push({src: j.src, action: 'rolled-back'});
+        else out.push({dest: j.dest, action: destOk ? 'already-done' : 'needs-attention'});
+        fs.rmSync(file, {force: true});
+      } catch (e) { logger?.warn('模型移动核对失败', {file, error: e.message}); out.push({file, action: 'needs-attention', error: e.message}); }
+    }
+    return out;
+  }
   // R17：大文件 sha256 在 worker 中计算，不阻塞主进程
   const pool = new WorkerPool({size: 2});
   const hashFile = async p => (await pool.run('sha256', {file: p})).sha256;
@@ -207,9 +227,9 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
         fs.mkdirSync(path.dirname(dest), {recursive: true});
         try { fs.renameSync(it.path, dest); lastScan = null; return {moved: dest, method: 'rename', referencesChanged: false}; }
         catch (e) { if (e.code !== 'EXDEV') throw e; }
-        const tmp = `${dest}.yz-moving`, journal = `${tmp}.json`;
+        const tmp = `${dest}.yz-moving`; fs.mkdirSync(movesDir, {recursive: true}); const journal = path.join(movesDir, `${crypto.randomBytes(6).toString('hex')}.json`);
         const srcHash = await hashFile(it.path);
-        fs.writeFileSync(journal, JSON.stringify({src: it.path, dest, sha256: srcHash, at: new Date().toISOString()}));
+        fs.writeFileSync(journal, JSON.stringify({src: it.path, dest, tmp, sha256: srcHash, at: new Date().toISOString()}));
         try {
           fs.copyFileSync(it.path, tmp, fs.constants.COPYFILE_EXCL);
           if (await hashFile(tmp) !== srcHash) throw new AppError(CODES.CORRUPT_DATA, '复制后校验不一致，已放弃移动，原文件未动。');
@@ -227,6 +247,6 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       return {results, note: '插件安装后需重启 ComfyUI，再重新诊断。'};
     },
   };
-  return {methods, runTransaction, buildIndex, listBackups, planPrune, restore};
+  return {methods, runTransaction, buildIndex, listBackups, planPrune, restore, recoverModelMoves};
 }
 module.exports = {createMaintenanceService, nodeTypesOf};

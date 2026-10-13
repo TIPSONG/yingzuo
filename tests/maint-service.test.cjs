@@ -189,3 +189,20 @@ test('D06/PR11-R02：继续恢复与恢复备份走同一保护——外部服�
   assert.equal((await svc.methods['maintenance.holds']()).length, 1);
   await assert.rejects(svc.methods['maintenance.createBackup'](), e => e.code === 'INVALID_STATE');
 });
+
+test('R06：跨盘移动中断后启动核对——目标完整则删源，否则删临时副本保留源', async () => {
+  const {svc, base, layout} = setup();
+  const crypto = require('node:crypto');
+  const mk = (name, body) => { const p = path.join(base, name); fs.writeFileSync(p, body); return p; };
+  const moves = path.join(layout.root, 'model-moves'); fs.mkdirSync(moves, {recursive: true});
+  const h = b => crypto.createHash('sha256').update(b).digest('hex');
+  const s1 = mk('s1.safetensors', 'AAA'), d1 = mk('d1.safetensors', 'AAA');
+  fs.writeFileSync(path.join(moves, 'a.json'), JSON.stringify({src: s1, dest: d1, tmp: d1 + '.yz-moving', sha256: h('AAA')}));
+  const s2 = mk('s2.safetensors', 'BBB'), t2 = mk('d2.safetensors.yz-moving', 'BB');
+  fs.writeFileSync(path.join(moves, 'b.json'), JSON.stringify({src: s2, dest: path.join(base, 'd2.safetensors'), tmp: t2, sha256: h('BBB')}));
+  const r = await svc.recoverModelMoves();
+  assert.deepEqual(r.map(x => x.action).sort(), ['completed', 'rolled-back']);
+  assert.ok(!fs.existsSync(s1) && fs.existsSync(d1));
+  assert.ok(fs.existsSync(s2) && !fs.existsSync(t2));
+  assert.deepEqual(fs.readdirSync(moves), []);
+});
