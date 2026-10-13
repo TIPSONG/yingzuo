@@ -14,6 +14,7 @@
     <nav id="nav" aria-label="主导航">
       <button data-page="home" class="nav active">首页</button>
       <button data-page="create" class="nav" id="editor-home">创作工作区</button>
+      <button data-page="templates" class="nav">模板库</button>
       <button data-page="queue" class="nav">任务队列 <span id="queue-badge" class="count" hidden></span></button>
       <button data-page="services" class="nav">服务与日志</button>
       <button data-page="settings" class="nav">设置</button>
@@ -41,7 +42,7 @@
       </div>
     </section>
     <main id="page-create" class="page" hidden>
-      <header><div><span class="eyebrow">CREATE</span><h1>创作工作区</h1></div><div class="header-actions"><button id="import">导入 JSON</button><button id="blank">空白画布</button><button id="save">保存草稿</button><button id="export" class="primary">导出 JSON 副本</button></div></header>
+      <header><div><span class="eyebrow">CREATE</span><h1>创作工作区</h1></div><div class="header-actions"><button id="import">导入 JSON</button><button id="blank">空白画布</button><button id="save">保存草稿</button><button id="tpl-save" title="把当前标签保存为模板新版本">存为模板</button><button id="tpl-form" title="编辑表单字段与映射">表单设置</button><button id="export" class="primary">导出 JSON 副本</button></div></header>
       <div class="tab-row"><div id="tabs" role="tablist" aria-label="桌面工作流标签"></div><button id="new-tab" title="新建标签（起始页）">＋</button><button id="rename" title="重命名当前标签">重命名</button><button id="duplicate" title="新建当前工作流副本">复制标签</button></div>
       <section class="toolbar"><div class="mode-buttons" aria-label="编辑模式"><button data-mode="graph">节点画布</button><button data-mode="parameters">参数表单</button><button data-mode="app">官方 App Mode</button></div><div class="run-bar"><button id="run-task" class="primary" title="运行当前标签（Ctrl+Enter）" disabled>运行</button><button id="run-batch" disabled>批量…</button><button id="run-refs" disabled title="为 LoadImage 节点选择本地参考图，运行时自动上传">参考图…</button><button id="run-enhance" disabled title="只运行 Gemma 润色节点，不出图">仅润色</button><span id="run-hint" class="muted">打开工作流并连接 ComfyUI 后可运行</span></div><span id="graph-info">打开一个工作流开始</span></section>
       <div id="status" role="status" aria-live="polite">工作副本保存在本机，不覆盖原模板。</div>
@@ -61,6 +62,10 @@
       </section>
       <footer><span id="save-state">独立工作副本 · 本机保存</span><span id="transport">尚未检测 WebSocket</span></footer>
     </main>
+    <section id="page-templates" class="page" hidden aria-label="模板库">
+      <header class="page-head"><div><span class="eyebrow">TEMPLATES</span><h1>模板库</h1></div><div class="header-actions"><button id="tpl-builtins">导入内置五个模板</button><button id="tpl-import" class="primary">导入模板…</button></div></header>
+      <div class="page-body"><div class="actions"><input id="tpl-search" placeholder="搜索名称、标签、文件夹"><select id="tpl-folder"><option value="">全部文件夹</option></select><label><input type="checkbox" id="tpl-fav"> 只看收藏</label></div><div id="tpl-list" class="list"></div></div>
+    </section>
     <section id="page-queue" class="page" hidden aria-label="任务队列">
       <header class="page-head"><div><span class="eyebrow">QUEUE</span><h1>任务队列</h1></div><div class="header-actions"><button id="queue-pause">暂停提交</button><button id="queue-resume">继续</button><button id="queue-refresh">刷新</button></div></header>
       <div class="page-body"><div id="queue-state" class="muted"></div><div id="queue-list" class="list"></div></div>
@@ -89,5 +94,6 @@
   <script src="workbench.js"></script>
   <script src="ui/shell.js"></script>
   <script src="ui/tasks.js"></script>
+  <script src="ui/templates.js"></script>
 </body>
 </html>

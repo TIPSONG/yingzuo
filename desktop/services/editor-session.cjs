@@ -340,6 +340,14 @@ const commands = {
       return {tabId:id,title:tab.title,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
     }finally{if(previous&&previous!==id&&workspace.tabs.some(t=>t.id===previous))await activate(previous).catch(()=>{});}
   },
+  // T01：从模板仓库打开（模板 ID 与工作副本 ID 分离；已打开同一模板时切换过去）。
+  openGraph: async (title,graph,templateId)=>{
+    const existing=templateId?workspace.tabs.find(t=>t.templateId===templateId):null;
+    if(existing)return activate(existing.id);
+    return newTab(title,Store.validateGraph(graph),templateId??null);
+  },
+  /** T02：读取指定标签当前图（先从编辑器抓取最新快照）。 */
+  tabGraph: async tabId=>{await capture();const tab=workspace.tabs.find(t=>t.id===(tabId??workspace.activeId));if(!tab)throw new Error('请先打开工作流。');return {tabId:tab.id,title:tab.title,templateId:tab.templateId??null,graph:structuredClone(tab.graph)};},
   showEditor: async()=>{currentView='editor';layout();return {state:state(),snapshot:currentSnapshot()};},
 };
 return {

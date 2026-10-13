@@ -14,6 +14,7 @@ const GROUPS = {
   services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
   settings: ['get','update','pickPath','setCredential','removeCredential'],
   tasks: ['preview','run','previewBatch','runBatch','enhance','enhanceResult','list','get','cancel','retry','recheck','pause','resume','pickReference'],
+  templates: ['list','get','update','import','importBuiltins','open','saveFromTab','restore','export','formDraft','saveForm','checkMapping','rebind'],
   maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts'],
 };
 let counter = 0;

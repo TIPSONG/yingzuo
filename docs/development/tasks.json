@@ -513,41 +513,46 @@
   "id": "T01",
   "name": "模板仓库",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/repositories/template-repo.cjs",
+   "desktop/ui/templates.js"
+  ],
+  "checks": "tests/templates.test.cjs",
+  "note": "导入/搜索/文件夹/标签/收藏/内置五模板只读导入；缩略图仅仓库方法 setThumbnail，界面未接（无缩略图生成来源）"
  },
  {
   "id": "T02",
   "name": "保存与历史",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/templates.test.cjs",
+  "note": "版本只追加、恢复生成新版本、另存、导出（含 .yingzuo-form.json）；原模板文件只读"
  },
  {
   "id": "T03",
   "name": "表单编辑器",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "shared/form-schema.cjs"
+  ],
+  "checks": "tests/templates.test.cjs",
+  "note": "表单设置弹窗：名称/分组/顺序/范围/添加/移除；与 ParameterBinding schema 共用。参数表单页仍用 P0 画布读取，不读模板 schema"
  },
  {
   "id": "T04",
   "name": "映射失效处理",
   "batch": 3,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/templates.test.cjs",
+  "note": "删除/改类/缺字段/改连线判失效，候选仅同类型同字段，服务端再校验"
  },
  {
   "id": "T05",

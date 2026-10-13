@@ -126,6 +126,7 @@ function createApi(ctx) {
     },
   };
   if (ctx.taskService) Object.assign(methods, ctx.taskService.methods);
+  if (ctx.extraMethods) Object.assign(methods, ctx.extraMethods);
   async function dispatch(message) {
     const command = validateCommand(message);
     const fn = methods[command.method];
