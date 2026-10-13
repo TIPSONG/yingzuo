@@ -29,6 +29,20 @@ jobs:
           $unpacked = Get-ChildItem dist -Directory | Where-Object Name -like 'win-unpacked*' | Select-Object -First 1
           if (-not $unpacked) { throw 'win-unpacked 不存在' }
           Get-ChildItem "$($unpacked.FullName)\resources\app.asar.unpacked\node_modules\better-sqlite3\build\Release\*.node"
+      - name: Run packaged self-test (--yz-smoke)
+        shell: pwsh
+        run: |
+          $unpacked = Get-ChildItem dist -Directory | Where-Object Name -like 'win-unpacked*' | Select-Object -First 1
+          $exe = Get-ChildItem $unpacked.FullName -Filter *.exe | Where-Object Name -notlike 'Uninstall*' | Select-Object -First 1
+          $out = Join-Path $env:RUNNER_TEMP 'yz-smoke.json'
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--yz-smoke=$out" -PassThru -Wait
+          if (-not (Test-Path $out)) { throw "自检没有写出结果（退出码 $($p.ExitCode)）" }
+          Get-Content $out
+          $r = Get-Content $out -Raw | ConvertFrom-Json
+          if (-not $r.ok) { throw '打包自检失败' }
+          $sql = $r.checks | Where-Object name -eq 'sqlite'
+          if ($sql.detail.driver -ne 'better-sqlite3') { throw "打包版应使用 better-sqlite3，实际：$($sql.detail.driver)" }
+          Copy-Item $out dist/smoke-result.json
       - uses: actions/upload-artifact@v4
         with:
           name: yingzuo-windows
@@ -36,4 +50,5 @@ jobs:
             dist/*.exe
             dist/artifacts.json
             dist/SHA256SUMS.txt
+            dist/smoke-result.json
           retention-days: 14

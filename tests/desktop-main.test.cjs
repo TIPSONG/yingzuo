@@ -272,3 +272,15 @@ test('E10：原生视图快捷键映射', () => {
   assert.equal(shortcutFor({type: 'keyDown', key: 'Enter'}), null);
   assert.equal(shortcutFor({type: 'keyDown', control: true, alt: true, key: '0'}), null);
 });
+
+test('B03：打包自检在临时目录运行并写出结果', async () => {
+  const os = require('node:os');
+  const {smokeTarget, runSmoke} = require('../desktop/smoke.cjs');
+  assert.equal(smokeTarget(['x', '--yz-smoke=C:\\t\\r.json']), 'C:\\t\\r.json');
+  assert.equal(smokeTarget(['x']), null);
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yz-sm-')), 'r.json');
+  await runSmoke(out, {app: {getVersion: () => '0.0.0-test'}});
+  const r = JSON.parse(fs.readFileSync(out, 'utf8'));
+  for (const name of ['versions', 'sqlite', 'modules', 'workbench']) assert.equal(r.checks.find(c => c.name === name).ok, true, JSON.stringify(r.checks));
+  fs.rmSync(path.dirname(out), {recursive: true, force: true});
+});
