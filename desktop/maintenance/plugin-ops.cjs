@@ -5,6 +5,7 @@
 // Python 依赖用 Comfy 自己的 python -m pip 安装，并把 Python 环境目录纳入同一事务的备份范围。
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const {execFile} = require('node:child_process');
 const {AppError, CODES} = require('../core/errors.cjs');
 const {DISABLED_DIR} = require('../resources/plugin-inventory.cjs');
@@ -85,6 +86,24 @@ function updatePlan({repoDir, revision, python = null, patchesDir, title, kind =
       const diff = (await git(repoDir, ['diff', '--binary', 'HEAD'])).stdout;
       ctx.patchFile = null;
       if (diff) { fs.mkdirSync(patchesDir, {recursive: true}); ctx.patchFile = path.join(patchesDir, `${path.basename(repoDir)}-${ctx.before.slice(0, 8)}-${Date.now()}.patch`); fs.writeFileSync(ctx.patchFile, diff + '\n'); ctx.log.push(`本地改动已保存为补丁 ${ctx.patchFile}`); }
+      // R03/D07：切换前先验证补丁可在目标版本上重放（临时索引，不动工作区）；不能重放则阻止，环境不变
+      if (ctx.patchFile) {
+        const idx = path.join(os.tmpdir(), `yz-idx-${process.pid}-${Date.now()}`);
+        try {
+          await git(repoDir, ['read-tree', ctx.target], {env: {GIT_INDEX_FILE: idx}});
+          await git(repoDir, ['apply', '--cached', '--check', ctx.patchFile], {env: {GIT_INDEX_FILE: idx}});
+        } catch (e) {
+          plan.pending = {patchFile: ctx.patchFile, reason: e.message.slice(0, 1000)};
+          throw new AppError(CODES.CONFLICT, `本地改动无法在目标版本上重放，已取消更新（环境未改动）。补丁保存在 ${ctx.patchFile}，可手动合并后再更新。`, {details: plan.pending});
+        } finally { fs.rmSync(idx, {force: true}); }
+      }
+      // 未跟踪文件与目标版本同名时，强制切换会覆盖它们：阻止
+      const untracked = (await git(repoDir, ['ls-files', '--others', '--exclude-standard'])).stdout.split('\n').filter(Boolean);
+      if (untracked.length) {
+        const inTarget = new Set((await git(repoDir, ['ls-tree', '-r', '--name-only', ctx.target])).stdout.split('\n'));
+        const clash = untracked.filter(f => inTarget.has(f));
+        if (clash.length) throw new AppError(CODES.CONFLICT, `未跟踪文件与目标版本冲突，已取消更新：${clash.slice(0, 5).join('、')}`, {details: {clash}});
+      }
       ctx.reqBefore = await git(repoDir, ['show', `${ctx.before}:requirements.txt`]).then(r => r.stdout, () => null);
       ctx.reqAfter = await git(repoDir, ['show', `${ctx.target}:requirements.txt`]).then(r => r.stdout, () => null);
     },
@@ -92,18 +111,18 @@ function updatePlan({repoDir, revision, python = null, patchesDir, title, kind =
       // 本地改动已在补丁文件和事务备份中，强制切换（不依赖 git 用户身份，不用 stash）
       await git(repoDir, ['checkout', '--quiet', '--force', '--detach', ctx.target]);
       if (ctx.patchFile) {
-        try { await git(repoDir, ['apply', '--3way', ctx.patchFile]); ctx.log.push('本地改动已重放'); }
-        catch (e) {
-          // 冲突：保留补丁进入待处理，不舍弃；工作区回到干净的目标版本，由用户决定（事务不回滚更新本身）
-          await git(repoDir, ['checkout', '--quiet', '--', '.']).catch(() => {});
-          await git(repoDir, ['reset', '--quiet', '--hard', ctx.target]).catch(() => {});
-          plan.pending = {patchFile: ctx.patchFile, reason: e.message.slice(0, 1000)};
-          ctx.log.push('补丁重放冲突，已列入待处理');
-        }
+        // 已预检；仍失败则抛出，由事务恢复到更新前（不把“干净目标版本 + 待处理补丁”记为成功）
+        await git(repoDir, ['apply', ctx.patchFile]); ctx.log.push('本地改动已重放');
       }
       if (updateDeps && ctx.reqAfter !== null && ctx.reqAfter !== ctx.reqBefore) { await pipInstall({python, requirements: path.join(repoDir, 'requirements.txt'), cwd: repoDir}); ctx.log.push('requirements.txt 有变化，已安装依赖'); }
     },
-    async check(ctx) { return (await git(repoDir, ['rev-parse', 'HEAD'])).stdout === ctx.target; },
+    async check(ctx) {
+      if ((await git(repoDir, ['rev-parse', 'HEAD'])).stdout !== ctx.target) return false;
+      // 补丁效果仍在：反向应用可行即说明改动存在于工作区
+      if (ctx.patchFile) { try { await git(repoDir, ['apply', '--reverse', '--check', ctx.patchFile]); } catch { return false; } }
+      if (updateDeps && python && plan.checkModules?.length) { try { await run(python, ['-c', plan.checkModules.map(m => `import ${m}`).join(';')], {timeoutMs: 120000}); } catch { return false; } }
+      return true;
+    },
     result: () => ({repo: repoDir, pending: plan.pending, needsRestart: true}),
   };
   return plan;

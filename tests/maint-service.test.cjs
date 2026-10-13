@@ -127,11 +127,24 @@ test('U06 更新：本地补丁可重放则保留；冲突则列入待处理且�
   assert.equal(r.result.pending, null);
   assert.match(fs.readFileSync(path.join(repo, 'a.py'), 'utf8'), /LOCAL PATCH/);
   assert.equal(git(repo, 'rev-parse', 'HEAD'), git(repo, 'rev-parse', 'v2'));
+  // R03/D07：补丁冲突不能记为成功；预检阻止，环境与本地改动不变
   const r2 = await svc.runTransaction(ops.updatePlan({repoDir: repo, revision: 'v3', patchesDir: patches, updateDeps: false, fetch: false}));
-  assert.equal(r2.status, 'done', JSON.stringify(r2.error));
-  assert.ok(r2.result.pending);
-  assert.ok(fs.existsSync(r2.result.pending.patchFile));
-  assert.match(fs.readFileSync(r2.result.pending.patchFile, 'utf8'), /LOCAL PATCH/);
+  assert.equal(r2.status, 'blocked');
+  assert.equal(r2.error.code, 'CONFLICT');
+  assert.equal(git(repo, 'rev-parse', 'HEAD'), git(repo, 'rev-parse', 'v2'));
+  assert.match(fs.readFileSync(path.join(repo, 'a.py'), 'utf8'), /LOCAL PATCH/);
+  assert.ok(fs.readdirSync(patches).some(f => fs.readFileSync(path.join(patches, f), 'utf8').includes('LOCAL PATCH')));
+});
+
+test('R03：未跟踪文件与目标版本同名时阻止更新，文件不被覆盖', async () => {
+  const {svc, base} = setup();
+  const repo = path.join(base, 'repo2'); fs.mkdirSync(repo);
+  fs.writeFileSync(path.join(repo, 'a.py'), 'a\n'); git(repo, 'init', '-q'); git(repo, 'add', '-A'); git(repo, 'commit', '-qm', 'v1');
+  fs.writeFileSync(path.join(repo, 'new.py'), 'upstream\n'); git(repo, 'add', '-A'); git(repo, 'commit', '-qm', 'v2'); git(repo, 'tag', 'v2');
+  git(repo, 'checkout', '-q', 'HEAD~1'); fs.writeFileSync(path.join(repo, 'new.py'), 'mine\n');
+  const r = await svc.runTransaction(ops.updatePlan({repoDir: repo, revision: 'v2', patchesDir: path.join(base, 'p2'), updateDeps: false, fetch: false}));
+  assert.equal(r.status, 'blocked'); assert.match(r.error.message, /未跟踪/);
+  assert.equal(fs.readFileSync(path.join(repo, 'new.py'), 'utf8'), 'mine\n');
 });
 
 test('R08 只能移动到同用途已登记目录；跨目录移动后原文件不在', async () => {
