@@ -8,7 +8,7 @@ let page = 'home', startOpen = false, modalOpen = false, settings = null, lastSe
 function toast(message, error = false) { const t = q('#toast'); t.textContent = message; t.classList.toggle('error', error); t.hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, error ? 9000 : 4000); }
 async function call(promise, okMessage) {
   const r = await promise;
-  if (!r?.ok) { const message = r?.error?.message || '操作未完成。'; toast(message, true); throw Object.assign(new Error(message), {handled: true}); }
+  if (!r?.ok) { const message = r?.error?.message || '操作未完成。'; toast(message, true); throw Object.assign(new Error(message), {handled: true, code: r?.error?.code ?? null, details: r?.error?.details ?? null}); }
   if (okMessage) toast(typeof okMessage === 'function' ? okMessage(r.data) : okMessage);
   return r.data;
 }

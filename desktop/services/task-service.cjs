@@ -84,8 +84,13 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
     catch (e) { logger?.warn('无法建立 ComfyUI WebSocket', {error: e.message}); }
   }
 
-  async function compile(tabId) {
+  /** PR11-R09：必须显式给出发起标签；expectedRevision 不一致时拒绝，绝不回退到当前活动标签。 */
+  async function compile(tabId, {expectedRevision = null} = {}) {
+    if (typeof tabId !== 'string' || !tabId) throw new AppError(CODES.INVALID_ARGUMENT, '缺少发起任务的标签。');
+    if (editor.workspace && !editor.workspace.tabs.some(t => t.id === tabId)) throw new AppError(CODES.NOT_FOUND, '发起任务的标签已关闭。', {details: {tabId}});
     const r = await editor.enqueue(() => editor.commands.compileTab(tabId));
+    if (r.tabId !== tabId) throw new AppError(CODES.CONFLICT, '编译结果不属于发起标签。');
+    if (expectedRevision !== null && expectedRevision !== undefined && r.revision !== expectedRevision) throw new AppError(CODES.REVISION_MISMATCH, `标签「${r.title}」在等待期间已被修改（版本 ${expectedRevision} → ${r.revision}）。`, {details: {tabId, expectedRevision, revision: r.revision}});
     const info = await getObjectInfo();
     const issues = checkPrompt(r.apiPrompt, {objectInfo: info});
     return {...r, issues, objectInfoAvailable: !!info, bindings: B.inferBindings(r.apiPrompt)};
@@ -98,19 +103,19 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
     'tasks.preview': async tabId => { const c = await compile(tabId); return {tabId: c.tabId, title: c.title, revision: c.revision, issues: c.issues, objectInfoAvailable: c.objectInfoAvailable, bindings: c.bindings, nodeCount: Object.keys(c.apiPrompt).length}; },
     /** Q06：运行当前（或指定）标签。values 为绑定参数覆盖，references 为 [{nodeId,input,refId}]。 */
     'tasks.run': async (tabId, options = {}) => {
-      const c = await compile(tabId);
+      const c = await compile(tabId, {expectedRevision: options.expectedRevision});
       assertRunnable(c.issues);
       let prompt = B.applyValues(c.apiPrompt, c.bindings, options.values);
       const enh = c.bindings.enhancer;
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
-      if (enh && options.adoptedText) prompt = B.adoptEnhanced(prompt, enh, options.adoptedText);
+      if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const p = withPrefix(prompt, c, options.prefixMode);
       return queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: options.references, params: options.values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
     'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
     'tasks.runBatch': async (tabId, spec = {}) => {
-      const c = await compile(tabId); assertRunnable(c.issues);
+      const c = await compile(tabId, {expectedRevision: spec.expectedRevision}); assertRunnable(c.issues);
       const items = expandBatch(spec);
       if ((spec.prompts?.length > 0) && !c.bindings.prompt) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的提示词输入，不能批量替换提示词。');
       if (items.some(i => i.seed !== null) && !(c.bindings.seed && (!c.bindings.seed.readonly || c.bindings.seedSource))) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的 seed 输入。');
@@ -124,16 +129,16 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       return {groupId, tasks: created};
     },
     /** Q08：仅润色。只提交润色节点及其上游，完成后在任务输出中读取文本，不执行绘图。 */
-    'tasks.enhance': async (tabId, {text, references = []} = {}) => {
-      const c = await compile(tabId);
+    'tasks.enhance': async (tabId, {text, references = [], rerun = false, expectedRevision = null} = {}) => {
+      const c = await compile(tabId, {expectedRevision});
       const enh = c.bindings.enhancer;
       if (!enh) throw new AppError(CODES.NOT_FOUND, '此工作流没有 Gemma 润色节点。');
       let prompt = c.apiPrompt;
-      if (typeof text === 'string' && text.trim()) { if (!enh.textInput) throw new AppError(CODES.INVALID_ARGUMENT, '润色节点没有可写入的文本输入。'); prompt = structuredClone(prompt); prompt[enh.nodeId].inputs[enh.textInput] = text; }
+      if (typeof text === 'string' && text.trim()) { try { prompt = B.setEnhancerOriginal(prompt, enh, text); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const info = await getObjectInfo();
       if (!info) throw new AppError(CODES.SERVICE_UNAVAILABLE ?? CODES.INTERNAL, '无法读取 ComfyUI 节点信息，不能构造仅润色任务。');
       let sub;
-      try { sub = B.extractEnhanceOnly(prompt, enh.nodeId, {objectInfo: info}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
+      try { sub = B.extractEnhanceOnly(prompt, enh.nodeId, {objectInfo: info, rerun}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       assertRunnable([...checkPrompt(sub.prompt, {objectInfo: info}), ...B.checkEnhancerRun(sub.prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages})]);
       return queue.enqueue({kind: 'enhance', workflowId: c.tabId, inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: references.filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}}})});
     },
@@ -142,7 +147,7 @@ function createTaskService({db, layout, configRepo, events, locks, logger, edito
       if (t.state !== 'succeeded') return {state: t.state, text: null, error: t.error};
       const s = tasks.snapshotOf(t);
       const text = (t.outputs ?? []).filter(o => o.kind === 'text' && o.nodeId === s.enhance.outputNode).map(o => o.text).join('\n').trim();
-      return {state: t.state, text: text || null, original: s.apiPrompt[s.enhance.enhancer.nodeId]?.inputs?.[s.enhance.enhancer.textInput] ?? null, error: text ? null : {message: '任务成功但没有读取到润色文本。'}};
+      return {state: t.state, text: text || null, original: B.enhancerOriginal(s.apiPrompt, s.enhance.enhancer), error: text ? null : {message: '任务成功但没有读取到润色文本。'}};
     },
     'tasks.list': async (filter = {}) => ({tasks: tasks.list({states: filter.states, limit: Math.min(500, filter.limit ?? 100), groupId: filter.groupId}), queue: queue.state()}),
     'tasks.get': async id => { const t = tasks.get(id); if (!t) throw new AppError(CODES.NOT_FOUND, '任务不存在。'); return {...t, events: tasks.events_(id), lineage: tasks.lineage(id)}; },

@@ -22,11 +22,11 @@ const refKey = tabId => `yingzuo.refs.${tabId}`;
 const loadRefs = tabId => { try { return JSON.parse(localStorage.getItem(refKey(tabId)) || '[]'); } catch { return []; } };
 const saveRefs = (tabId, refs) => localStorage.setItem(refKey(tabId), JSON.stringify(refs));
 q('#run-refs').addEventListener('click', async () => {
+  const tabId = current.activeId; // PR11-R09：先固定发起标签，之后不再读取 current
   let preview;
-  try { preview = await call(yz.tasks.preview(current.activeId)); } catch (e) { swallow(e); return; }
+  try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
   const slots = (preview.bindings.references ?? []).filter(r => r && !r.readonly);
   if (!slots.length) { toast('此工作流没有可替换的 LoadImage 参考图节点。'); return; }
-  const tabId = current.activeId;
   let refs = loadRefs(tabId).filter(r => slots.some(s => s.nodeId === r.nodeId));
   const enh = preview.bindings.enhancer;
   const render = back => { back.querySelector('#r-list').innerHTML = slots.map((s, i) => { const r = refs.find(x => x.nodeId === s.nodeId); return `<div class="row"><span>图 ${i + 1} · 节点 #${esc(s.nodeId)}：${r ? esc(r.name) : `沿用工作流中的 ${esc(s.value)}`}</span><span><button data-pick="${esc(s.nodeId)}">选择…</button>${r ? `<button data-clear="${esc(s.nodeId)}">移除</button>` : ''}</span></div>`; }).join(''); };
@@ -40,13 +40,24 @@ q('#run-refs').addEventListener('click', async () => {
     });
   });
 });
-async function runCurrent(options = {}) {
-  try {
-    const references = loadRefs(current.activeId).map(({nodeId, input, refId}) => ({nodeId, input, refId}));
-    const t = await call(yz.tasks.run(current.activeId, {references, ...options}), '已加入队列。');
-    scheduleRefresh(); return t;
-  } catch (e) { const issues = e.details?.issues; swallow(e); return null; }
+/** PR11-R09：所有异步流程在开始时固定 {tabId, revision}，之后只对该标签提交。 */
+const tabTitle = tabId => current?.tabs?.find(t => t.id === tabId)?.title ?? '原标签';
+async function confirmStale(origin, err) {
+  if (err.code === 'NOT_FOUND') { toast(`「${origin.title ?? tabTitle(origin.tabId)}」已关闭，本次结果未提交到其他标签。`, true); return false; }
+  if (err.code !== 'REVISION_MISMATCH') return false;
+  return modal(`<h3>原标签已被修改</h3><p>「${esc(origin.title ?? tabTitle(origin.tabId))}」在等待期间被修改。可以用它的最新内容继续，或取消。结果不会用于其他标签。</p><div class="actions"><button data-x="no">取消</button><button data-x="yes" class="primary">用该标签最新内容继续</button></div>`, (back, done) => back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done(x.dataset.x === 'yes'); }));
 }
+async function runFor(origin, options = {}) {
+  const references = loadRefs(origin.tabId).map(({nodeId, input, refId}) => ({nodeId, input, refId}));
+  try {
+    const t = await call(yz.tasks.run(origin.tabId, {references, expectedRevision: origin.revision ?? null, ...options}), '已加入队列。');
+    scheduleRefresh(); return t;
+  } catch (e) {
+    if (origin.revision != null && await confirmStale(origin, e)) return runFor({...origin, revision: null}, options);
+    if (!e.handled) swallow(e); return null;
+  }
+}
+function runCurrent(options = {}) { return runFor({tabId: current.activeId, revision: null}, options); }
 q('#run-task').addEventListener('click', () => runCurrent());
 // E10：焦点在原生 ComfyUI 视图时，主进程转发 Ctrl+Enter
 window.yingzuoDesktop?.onStatus?.(d => { if (d?.shortcut === 'run' && S.page === 'create') { if (canRun()) runCurrent(); else toast('请先连接 ComfyUI 并打开工作流。', true); } });
@@ -54,8 +65,10 @@ document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.ke
 
 /* ---------- Q10 批量 ---------- */
 q('#run-batch').addEventListener('click', async () => {
+  const tabId = current.activeId;
   let preview;
-  try { preview = await call(yz.tasks.preview(current.activeId)); } catch (e) { swallow(e); return; }
+  try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
+  const origin = {tabId, revision: preview.revision, title: preview.title};
   const b = preview.bindings;
   const spec = await modal(`<h3>批量运行</h3>
     <p class="muted">提示词输入：${b.prompt ? esc(`${b.prompt.nodeType} #${b.prompt.nodeId}`) : '未识别（不能批量替换提示词）'}；seed：${b.seed ? esc(`#${(b.seed.readonly ? b.seedSource : b.seed)?.nodeId ?? '—'}`) : '未识别'}</p>
@@ -70,23 +83,27 @@ q('#run-batch').addEventListener('click', async () => {
     back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done(x.dataset.x === 'yes' ? read() : null); });
   });
   if (!spec) return;
-  try { spec.references = loadRefs(current.activeId).map(({nodeId, input, refId}) => ({nodeId, input, refId})); const r = await call(yz.tasks.runBatch(current.activeId, spec), d => `已加入 ${d.tasks.length} 个任务。`); scheduleRefresh(); return r; } catch (e) { swallow(e); }
+  const submit = async rev => { spec.references = loadRefs(origin.tabId).map(({nodeId, input, refId}) => ({nodeId, input, refId})); const r = await call(yz.tasks.runBatch(origin.tabId, {...spec, expectedRevision: rev}), d => `已加入 ${d.tasks.length} 个任务。`); scheduleRefresh(); return r; };
+  try { return await submit(origin.revision); } catch (e) { if (await confirmStale(origin, e)) { try { return await submit(null); } catch { /* 已提示 */ } } }
 });
 
 /* ---------- Q08 仅润色 ---------- */
 function waitTerminal(id) { return new Promise(resolve => { const t = tasks.find(x => x.id === id); if (t && TERMINAL.has(t.state)) resolve(t); else waiters.set(id, resolve); }); }
 q('#run-enhance').addEventListener('click', async () => {
+  const tabId = current.activeId;
   let preview;
-  try { preview = await call(yz.tasks.preview(current.activeId)); } catch (e) { swallow(e); return; }
+  try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
   if (!preview.bindings.enhancer) { toast('此工作流没有 Gemma 润色节点。', true); return; }
+  const origin = {tabId, revision: preview.revision, title: preview.title};
   const original = preview.bindings.prompt?.value ?? '';
-  let text = original;
+  let text = original, lastText = null;
   for (;;) {
     const input = await modal(`<h3>仅润色（不出图）</h3><p class="muted">只运行润色节点及其上游，结果可编辑后再决定是否采用。</p><textarea id="e-in">${esc(text)}</textarea><div class="actions"><button data-x="no">取消</button><button data-x="yes" class="primary">开始润色</button></div>`, (back, done) => back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done(x.dataset.x === 'yes' ? back.querySelector('#e-in').value : null); }));
     if (input === null) return;
     text = input;
     let task;
-    try { task = await call(yz.tasks.enhance(current.activeId, {text, references: loadRefs(current.activeId).map(({nodeId, input, refId}) => ({nodeId, input, refId}))})); } catch (e) { swallow(e); return; }
+    try { task = await call(yz.tasks.enhance(origin.tabId, {text, rerun: text === lastText, expectedRevision: origin.revision, references: loadRefs(origin.tabId).map(({nodeId, input, refId}) => ({nodeId, input, refId}))})); } catch (e) { if (await confirmStale(origin, e)) { origin.revision = null; continue; } return; }
+    lastText = text;
     toast('润色任务已加入队列…'); scheduleRefresh();
     await waitTerminal(task.id);
     let result;
@@ -94,7 +111,7 @@ q('#run-enhance').addEventListener('click', async () => {
     const choice = await modal(`<h3>润色结果</h3>${result.text ? `<label>可编辑</label><textarea id="e-out">${esc(result.text)}</textarea>` : `<p class="err">${esc(result.error?.message ?? STATE[result.state])}</p>`}<p class="muted">原文：${esc(result.original ?? text)}</p>
       <div class="actions"><button data-x="no">保留原文</button><button data-x="retry">重新润色</button>${result.text ? '<button data-x="adopt" class="primary">采用并生成</button>' : ''}</div>`, (back, done) => back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done({action: x.dataset.x, text: back.querySelector('#e-out')?.value}); }));
     if (choice.action === 'retry') continue;
-    if (choice.action === 'adopt') await runCurrent({adoptedText: choice.text});
+    if (choice.action === 'adopt') await runFor(origin, {adoptedText: choice.text});
     return;
   }
 });

@@ -34,7 +34,7 @@ const objectInfo = {
 
 test('E07：按节点类型与连线推断参数；提示词经由 Gemma 节点时绑定到其原文输入', () => {
   const b = B.inferBindings(gemmaPrompt());
-  assert.deepEqual([b.prompt.nodeId, b.prompt.input, b.prompt.via], ['3', 'prompt', '4']);
+  assert.deepEqual([b.prompt.nodeId, b.prompt.input, b.prompt.encoder], ['3', 'prompt', '4']);
   assert.equal(b.negative.value, '模糊'); assert.equal(b.seed.value, 42); assert.equal(b.steps.value, 20);
   assert.equal(b.width.value, 1024); assert.equal(b.model.value, 'qwen-image-2.1-Q6_K.gguf');
   assert.equal(b.references.length, 2); assert.equal(b.enhancer.toggleInput, 'enable_llm');

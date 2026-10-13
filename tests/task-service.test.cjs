@@ -45,7 +45,7 @@ function setup(t, extra = {}) {
 
 test('Q06：运行当前标签——编译、检查、按绑定覆盖参数、入队、history 成功', async t => {
   const {svc, submitted, settle} = setup(t);
-  const task = await svc.methods['tasks.run'](null, {values: {seed: 99}});
+  const task = await svc.methods['tasks.run']('tab1', {values: {seed: 99}});
   await settle();
   assert.equal(svc.tasks.get(task.id).state, 'succeeded');
   assert.equal(submitted[0].prompt[7].inputs.seed, 99);
@@ -55,19 +55,19 @@ test('Q06：运行当前标签——编译、检查、按绑定覆盖参数、�
 });
 test('Q08：仅润色只提交润色子图；读取文本；采用后再生成时关闭 enable_llm', async t => {
   const {svc, submitted, settle} = setup(t);
-  const e = await svc.methods['tasks.enhance'](null, {text: '一只猫在窗边'});
+  const e = await svc.methods['tasks.enhance']('tab1', {text: '一只猫在窗边'});
   await settle();
   assert.deepEqual(Object.keys(submitted[0].prompt).sort(), ['3', 'yz_enhance_out']);
   assert.equal(submitted[0].prompt[3].inputs.prompt, '一只猫在窗边');
   const r = await svc.methods['tasks.enhanceResult'](e.id);
   assert.equal(r.text, '润色后：一只橘猫'); assert.equal(r.original, '一只猫在窗边');
-  await svc.methods['tasks.run'](null, {adoptedText: r.text}); await settle();
+  await svc.methods['tasks.run']('tab1', {adoptedText: r.text}); await settle();
   assert.equal(submitted[1].prompt[3].inputs.prompt, '润色后：一只橘猫'); assert.equal(submitted[1].prompt[3].inputs.enable_llm, false);
 });
 test('Q10：批量展开为同组任务并按顺序提交', async t => {
   const {svc, submitted, settle} = setup(t);
-  assert.equal((await svc.methods['tasks.previewBatch'](null, {prompts: ['a', 'b'], count: 2, seedStart: 10})).count, 4);
-  const r = await svc.methods['tasks.runBatch'](null, {prompts: ['a', 'b'], count: 2, seedStart: 10});
+  assert.equal((await svc.methods['tasks.previewBatch']('tab1', {prompts: ['a', 'b'], count: 2, seedStart: 10})).count, 4);
+  const r = await svc.methods['tasks.runBatch']('tab1', {prompts: ['a', 'b'], count: 2, seedStart: 10});
   await settle();
   assert.equal(r.tasks.length, 4);
   assert.deepEqual(submitted.map(s => [s.prompt[3].inputs.prompt, s.prompt[7].inputs.seed]), [['a', 10], ['a', 11], ['b', 10], ['b', 11]]);
@@ -75,7 +75,7 @@ test('Q10：批量展开为同组任务并按顺序提交', async t => {
 test('S07：退出钩子——暂停后不再提交，等待空闲立即返回', async t => {
   const {svc, submitted, settle} = setup(t);
   svc.hooks.pauseSubmissions();
-  await svc.methods['tasks.run'](null, {}); await settle();
+  await svc.methods['tasks.run']('tab1', {}); await settle();
   assert.equal(submitted.length, 0);
   assert.deepEqual(svc.hooks.activeTasks(), []);
   await svc.hooks.waitForIdle();
@@ -86,13 +86,22 @@ test('S07：退出钩子——暂停后不再提交，等待空闲立即返回',
 test('A03 输出前缀进入运行路径；A01 成功终态回调作品关联', async t => {
   const linked = [];
   const {svc, submitted, settle} = setup(t, {config: {output: {prefixMode: 'workflow'}}, onTerminal: task => linked.push(task.id)});
-  const task = await svc.methods['tasks.run'](null, {});
+  const task = await svc.methods['tasks.run']('tab1', {});
   await settle(); await new Promise(r => setTimeout(r, 5));
   const save = Object.values(submitted[0].prompt).find(n => n.class_type === 'SaveImage');
   assert.match(save.inputs.filename_prefix, /^映作\/T_tab1\//);
   assert.deepEqual(linked, [task.id]);
-  const none = await svc.methods['tasks.run'](null, {prefixMode: 'none'});
+  const none = await svc.methods['tasks.run']('tab1', {prefixMode: 'none'});
   await settle();
   assert.ok(none);
   assert.doesNotMatch(Object.values(submitted[1].prompt).find(n => n.class_type === 'SaveImage').inputs.filename_prefix, /映作/);
+});
+
+test('PR11-R09：必须给出发起标签；版本不一致或标签已关闭时拒绝，不回退到当前标签', async t => {
+  const {svc, submitted} = setup(t);
+  await assert.rejects(svc.methods['tasks.run'](null, {}), /缺少发起任务的标签/);
+  await assert.rejects(svc.methods['tasks.run']('tab1', {expectedRevision: 2}), e => e.code === 'REVISION_MISMATCH');
+  await assert.rejects(svc.methods['tasks.enhance']('tab1', {expectedRevision: 9}), e => e.code === 'REVISION_MISMATCH');
+  assert.equal(submitted.length, 0);
+  assert.ok(await svc.methods['tasks.run']('tab1', {expectedRevision: 3}));
 });
