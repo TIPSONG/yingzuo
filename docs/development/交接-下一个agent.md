@@ -108,7 +108,29 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 批次 1：全部程序完成（F08：GitHub Actions Windows 构建在 cd4862b 首次全绿；之前 Windows 上的测试因 SQLite 文件句柄未关闭导致 EBUSY 失败，已修复）。
 - 批次 2–5：见进度表。
 
-## 第四轮（PR11 审阅修复）进度 — 2026-10-13（R22 复核后）
+## 当前状态（第六轮：PR11 第三轮审阅 C01–C09，以此为准）— 2026-10-13
+- 审阅原文：docs/development/PR11第三轮代码审阅与最终收尾计划.md（审阅 head f493fce）。状态表：`node tools/pr11.cjs render`（Grovebot开发进度.md 的 C01–C09 区块）。
+- **范围冻结**：本轮之后不再加功能；剩下的只有 Codex 在 Windows 上的人工验收与验收中发现的问题修复。
+- C01 图密钥：`shared/graph-storage-policy.cjs`（secureForStorage / stripForExport / resolveInMemory / scan）。草稿自动保存、关闭归档、模板版本、模板/诊断/工作流导出都经过该策略；启动迁移 `desktop/maintenance/secret-migration.cjs` 处理历史数据并写 `migrations/secret-scan.json`；应用备份前先迁移，仍有未处理项则阻止备份。
+- C02/C03 维护事务：锁 → 锁内 gate → 暂停租约并等空闲 → services 检查 → 停本应用服务 → 备份 → staging → apply（先写 running）→ 检查。启动时按事务记录重建 hold；恢复失败保留 hold；被 hold 引用的备份不可清理。
+- C04 应用恢复：`restore.cjs` 回滚可重入（冲突即停，不覆盖）；失败进入 `desktop/recovery.cjs` 恢复窗口；标记损坏时按 journal 重建。
+- C05 模型移动：等空闲 + 服务检查；link 无覆盖提交；删源前重算哈希，变化则记录冲突、两份都留。
+- C06 表单：版本固定（baseVersion）；`tasks.applyFormField` 带 expectedRevision；`checkFieldValue` 在运行/批量/增强前校验；复制标签保留 templateId/templateVersionId。
+- C07 图包：导出/解析在 worker；子图槽位 `父:子`；导入可落为本地模板（source `package:<id>`），失败回滚关闭标签与关系。
+- C08 worker：WorkerPool open/closing/closed，关闭后 run 报 CLOSED；任务输出关联 `AssetIndex.linkTaskOutputsAsync` 与收藏复制/校验走 worker。
+- 原 3 个已知限制已解决：草稿自动保存明文密钥（C01）、任务输出关联与收藏复制同步执行（C08）、复制标签丢失模板/表单绑定（C06）。
+- 仍为有限支持/残留：E07、S04 真实外部契约（交 Codex）；R06 受限 Git 后端；无 object_info 时密钥识别是启发式；离线导入图包时槽位输入只标“未验证”；图包导入若 setTemplateVersion 失败，本地模板条目可能残留；迁移会删除旧模板明文 blob（新 blob 先写入并更新行之后）。
+- Artifact：Windows build 上传 `yingzuo-windows`。
+- Codex 验收：待Codex验收.md “PR11 第三轮（C01–C09）”。
+
+### 第六轮 CI 记录
+- 代码 head 252d11a：Windows build https://github.com/TIPSONG/yingzuo/actions/runs/38392346922 成功，`npm run check` 339 项 / 338 通过 / 1 跳过 / 0 失败；Regression 38392347038、38392340988 成功；artifact `yingzuo-windows`。
+- feab742、b78acd4 的 Windows build 失败（C01 迁移测试在 Windows 上先删目录后关数据库导致 EBUSY），252d11a 已修复。
+- 本条记录所在的纯文档提交之后的 CI：提交时尚在运行（pending），结果以 PR #11 页面为准。
+
+## 历史记录（以下为早期轮次，内容可能与当前实现不一致，仅供追溯）
+
+### 第四轮（PR11 审阅修复）进度 — 2026-10-13（R22 复核后）
 - 审阅原文：docs/development/PR11代码审阅与下一轮程序计划.md；逐项状态：`node tools/pr11.cjs render`（数据 pr11-status.json）；82 项：`node tools/progress.cjs render`（新增“有限支持”状态）。
 - 已合并 origin/feat/grovebot-review2（head bbbcba7 之前的全部提交），并接入 R14/R17(部分)/R18/R19/R20。
 - 程序完成：D01–D03、D05–D15；PR11-R01–R09、R12–R16、R18–R21。
@@ -117,7 +139,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 下一步建议：D04 左侧参数面板（workbench.js renderFields 改为优先用 tasks.form，注意子图节点 ID “父:子” 与画布 widget 的映射）；R11 导出 manifest；R17 assets 缩略图改走 WorkerPool。
 - 关键新模块：desktop/services/quit-flow.cjs、desktop/maintenance/app-backup.cjs、entry.cjs（单实例锁 + 应用数据恢复）、queue-service 暂停租约/followers/enqueueGroup。
 
-## 第五轮（PR11 第二轮审阅 S01–S10）进度 — 2026-10-13（当前状态，以此为准）
+### 第五轮（PR11 第二轮审阅 S01–S10）进度 — 2026-10-13（已被第六轮取代）
 - 审阅原文：docs/development/PR11第二轮代码审阅与收尾计划.md（审阅 head 68f7598）；状态表：`node tools/pr11.cjs render`（Grovebot开发进度.md 中 N01–N06、S01–S10 区块）。
 - 82 项：79 程序完成、3 有限支持（E07、S04 真实外部契约交 Codex；R06 受限 Git 后端为原方案允许的范围）。T01（模板缩略图）、T03（表单）、O07（在线模板库浏览）本轮完成。
 - S01 提交屏障：`queue-service.cjs` 的 `starting` 计数 + `blocked()` 在 ready / 后端 queue / GPU 锁三个等待点后重检，取得 GPU 锁后同步进入 preparing。
@@ -132,6 +154,6 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - S10：在线模板库（`templates.browseOnline` 等，官方 Comfy-Org/workflow_templates 索引，样本夹具 tests/fixtures/comfy-workflow-templates-index.sample.json）；模板缩略图（`templates.thumbnail/setThumbnail`，任务成功自动生成）。
 - 需要 Codex 在 Windows 上人工验收：见 待Codex验收.md “PR11 第二轮（S01–S10）”。
 
-### 第五轮 CI 记录
+##### 第五轮 CI 记录
 - 8654359（及 a11de2c、e6d2d80、ce73b3d、7d6f45e、14ef487、ff3604e）：Windows build 与 Regression 全部成功；打包自检的 worker 步骤（asar 内加载 worker、sharp 缩略图/元数据/复制）已通过。
 - PR #11 描述已更新，仍为草稿。
