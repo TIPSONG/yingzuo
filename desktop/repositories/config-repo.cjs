@@ -28,7 +28,7 @@ function defaults(platform = process.platform) {
     downloads: {concurrency: 2, retries: 3},
     queue: {maxBatch: 100},
     tray: {closeToTray: true, showNotifications: true},
-    ui: {startPage: 'home'},
+    ui: {startPage: 'home', theme: 'dark'},
     updates: {channel: 'stable', checkFrequency: 'manual', appReleaseRepo: 'TIPSONG/yingzuo'},
     network: {onlineSources: true},
     output: {prefixMode: 'none'},
@@ -65,6 +65,7 @@ function validate(config, {exists = p => fs.existsSync(p)} = {}) {
   if (!Array.isArray(config.paths?.extraOutputDirs)) add('paths.extraOutputDirs', '必须是目录列表。');
   if (!['stable', 'beta'].includes(config.updates?.channel)) add('updates.channel', '渠道只能是 stable / beta。');
   if (!['manual', 'daily', 'weekly'].includes(config.updates?.checkFrequency)) add('updates.checkFrequency', '检查频率只能是 manual / daily / weekly。');
+  if (!['dark', 'light'].includes(config.ui?.theme ?? 'dark')) add('ui.theme', '界面主题只能是 dark / light。');
   return issues;
 }
 function deepMerge(base, patch) {

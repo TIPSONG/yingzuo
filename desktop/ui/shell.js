@@ -167,20 +167,34 @@ q('#export-diag').addEventListener('click', () => call(yz.maintenance.exportDiag
 
 /* ---------- 设置（S01/S08） ---------- */
 const FIELDS = [
+  ['外观', [['ui.theme', '界面主题', 'theme', '深色为默认；立即生效并写入配置']]],
   ['ComfyUI', [['comfy.root', '安装目录', 'path'], ['comfy.python', 'Python', 'file', '按需启动用；通常是 .venv\\Scripts\\python.exe'], ['comfy.url', '地址', 'text', '仅本机 http 地址'], ['comfy.extraArgs', '附加启动参数', 'list', '每项以空格分隔；--listen/--port 由地址决定'], ['comfy.startTimeoutSec', '启动超时（秒）', 'int'], ['comfy.workflowsDir', '工作流目录', 'path', '留空 = <安装目录>\\user\\default\\workflows'], ['comfy.outputDir', '输出目录', 'path', '留空 = <安装目录>\\output'], ['comfy.inputDir', '输入目录', 'path', '留空 = <安装目录>\\input']]],
   ['LM Studio / Gemma', [['lmstudio.url', 'API 地址', 'text'], ['lmstudio.cli', 'lms CLI', 'file'], ['gemma.patchFile', 'Gemma 本地补丁', 'file', '仅登记位置，更新插件时据此保留补丁']]],
   ['目录', [['paths.templates', '模板', 'path', '留空使用数据目录'], ['paths.favorites', '收藏', 'path'], ['paths.downloads', '下载', 'path'], ['paths.backups', '备份', 'path']]],
   ['行为', [['tray.closeToTray', '关闭窗口时缩到托盘', 'bool'], ['downloads.concurrency', '下载并发', 'int'], ['queue.maxBatch', '批量上限', 'int'], ['defaults.templateId', '默认模板', 'select:text,edit,gemma-text,gemma-edit,prompt'], ['updates.checkFrequency', '更新检查', 'select:manual,daily,weekly'], ['updates.channel', '更新渠道', 'select:stable,beta']]],
 ];
 const getPath = (o, p) => p.split('.').reduce((a, k) => a?.[k], o);
+
+function applyTheme(theme) {
+  const t = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+}
 async function loadSettings() {
-  try { settings = await call(yz.settings.get()); renderSettings(); } catch (e) { swallow(e); }
+  try { settings = await call(yz.settings.get()); applyTheme(settings?.config?.ui?.theme); renderSettings(); } catch (e) { swallow(e); }
 }
 function renderSettings() {
   const c = settings.config;
   q('#settings-issues').innerHTML = (settings.loadError ? `<div class="issue error">配置文件读取失败，已用默认值启动（原文件已另存）：${esc(settings.loadError)}</div>` : '') + settings.issues.map(i => `<div class="issue ${i.severity}">${esc(i.field)}：${esc(i.message)}</div>`).join('');
   q('#settings-form').innerHTML = FIELDS.map(([legend, items]) => `<fieldset><legend>${esc(legend)}</legend>${items.map(([key, label, type, hint]) => {
     const v = getPath(c, key); let input;
+    if (type === 'theme') {
+      const cur = v === 'light' ? 'light' : 'dark';
+      input = `<div class="theme-options" role="radiogroup" aria-label="${esc(label)}">
+        <button type="button" class="theme-option ${cur === 'dark' ? 'active' : ''}" data-theme-set="dark" aria-pressed="${cur === 'dark'}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>深色</small></button>
+        <button type="button" class="theme-option theme-option-light ${cur === 'light' ? 'active' : ''}" data-theme-set="light" aria-pressed="${cur === 'light'}"><span class="theme-swatch" aria-hidden="true"><span></span><span></span><span></span></span><small>浅色</small></button>
+      </div><input type="hidden" data-key="${key}" data-type="text" value="${cur}">`;
+      return `<div class="setting setting-theme"><span>${esc(label)}</span>${input}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>`;
+    }
     if (type === 'bool') input = `<input type="checkbox" data-key="${key}" data-type="bool" ${v ? 'checked' : ''}>`;
     else if (type === 'int') input = `<input type="number" data-key="${key}" data-type="int" value="${esc(v)}">`;
     else if (type === 'list') input = `<input type="text" data-key="${key}" data-type="list" value="${esc((v || []).join(' '))}">`;
@@ -201,9 +215,24 @@ function collectPatch() {
   }
   return patch;
 }
-q('#settings-save').addEventListener('click', async () => { try { const r = await call(yz.settings.update(collectPatch()), '设置已保存。'); settings = {...settings, ...r}; renderSettings(); refreshStatus(); } catch (e) { swallow(e); } });
+q('#settings-save').addEventListener('click', async () => { try { const r = await call(yz.settings.update(collectPatch()), '设置已保存。'); settings = {...settings, ...r}; applyTheme(settings?.config?.ui?.theme); renderSettings(); refreshStatus(); } catch (e) { swallow(e); } });
 q('#settings-reload').addEventListener('click', loadSettings);
-q('#settings-form').addEventListener('click', async e => { const b = e.target.closest('[data-pick]'); if (!b) return; try { const r = await call(yz.settings.pickPath(b.dataset.pick)); if (!r.cancelled) { settings = {...settings, ...r}; renderSettings(); } } catch (err) { swallow(err); } });
+q('#settings-form').addEventListener('click', async e => {
+  const themeBtn = e.target.closest('[data-theme-set]');
+  if (themeBtn) {
+    const theme = themeBtn.dataset.themeSet === 'light' ? 'light' : 'dark';
+    applyTheme(theme);
+    const hidden = q('#settings-form [data-key="ui.theme"]');
+    if (hidden) hidden.value = theme;
+    try {
+      const r = await call(yz.settings.update({ui: {theme}}), theme === 'light' ? '已切换为浅色主题。' : '已切换为深色主题。');
+      settings = {...settings, ...r};
+      renderSettings();
+    } catch (err) { swallow(err); }
+    return;
+  }
+  const b = e.target.closest('[data-pick]'); if (!b) return; try { const r = await call(yz.settings.pickPath(b.dataset.pick)); if (!r.cancelled) { settings = {...settings, ...r}; renderSettings(); } } catch (err) { swallow(err); }
+});
 q('#credentials').addEventListener('click', async e => {
   const s = e.target.closest('[data-cred-save]'), r = e.target.closest('[data-cred-remove]');
   try {

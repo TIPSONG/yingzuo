@@ -173,6 +173,13 @@ test('配置：默认值、问题清单、补丁白名单、损坏文件隔离�
   assert.match(r2.loadError, /JSON/); assert.equal(r2.config.comfy.url, 'http://127.0.0.1:8188/');
   assert.ok(fs.readdirSync(d).some(f => f.startsWith('config.json.invalid-')));
   assert.ok(validate({...defaults('linux'), gemma: {contextLength: 4096}}).some(i => i.field === 'gemma.contextLength'));
+  assert.equal(defaults('linux').ui.theme, 'dark');
+  assert.ok(validate({...defaults('linux'), ui: {startPage: 'home', theme: 'neon'}}).some(i => i.field === 'ui.theme'));
+  const themeFile = path.join(d, 'config-theme.json');
+  const themeRepo = new ConfigRepository(themeFile, {platform: 'linux'});
+  themeRepo.load();
+  assert.equal(themeRepo.update({ui: {theme: 'light'}}).config.ui.theme, 'light');
+  assert.equal(JSON.parse(fs.readFileSync(themeFile, 'utf8')).ui.theme, 'light');
 });
 for (const driver of ['better-sqlite3', 'node:sqlite']) {
   test(`SQLite（${driver}）：迁移、事务回滚、嵌套保存点、一致性备份、未来版本拒绝`, t => {

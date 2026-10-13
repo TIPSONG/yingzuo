@@ -108,6 +108,16 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 批次 1：全部程序完成（F08：GitHub Actions Windows 构建在 cd4862b 首次全绿；之前 Windows 上的测试因 SQLite 文件句柄未关闭导致 EBUSY 失败，已修复）。
 - 批次 2–5：见进度表。
 
+## 主题切换（2026-10-13）
+- 配置：`ui.theme` = `dark` | `light`（默认 `dark`），经 `ConfigRepository` 白名单与校验写入。
+- 界面：设置页「外观」卡片（深色 / 浅色），点击立即 `document.documentElement.dataset.theme` 并 `settings.update`；启动时 `loadSettings` 也会应用。
+- CSS：`workbench.css` / `shell.css` 用 CSS 变量；`[data-theme="light"]` 覆盖。默认深色观感不变。CSP：无 HTML `style=`。
+- 截图：
+  - `/workspace/yingzuo-ui-shots/light-01-home.png`
+  - `/workspace/yingzuo-ui-shots/light-09-settings.png`
+  - `/workspace/yingzuo-ui-shots/light-02-create.png`
+- 测试：`npm run check` 339 / 338 通过 / 1 跳过；foundation 覆盖 theme 默认值、非法值、持久化。
+
 ## UI 视觉抛光（2026-10-13，无新功能）
 - 提交：`ca2f8db`（`feat/grovebot-impl`）。仅 CSS / 少量空状态文案与 class，不改 IPC、API、业务逻辑。
 - 方向：对齐根目录 A 测（`index.html` + `style.css`）——暗色、苔绿强调色 `--accent:#d1ed87`、圆角与间距、焦点环。
