@@ -7,10 +7,14 @@ const {TemplateRepository} = require('../repositories/template-repo.cjs');
 const ImportPipeline = require('../../shared/import-pipeline.cjs');
 const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
+const SF = require('../../shared/secret-fields.cjs');
 
 function createTemplateService({db, layout, editor, taskService, dialog, getWindow, builtins = () => []}) {
   const repo = new TemplateRepository(db, layout.templates);
   const tabGraph = tabId => editor.enqueue(() => editor.commands.tabGraph(tabId));
+  // S05：存为模板前把敏感输入（如 API Key）转入系统加密存储，图中只保留占位；导出时占位清空、不导出凭据
+  const securedGraph = async tabId => { const t = await tabGraph(tabId); if (!taskService?.secrets) return t; const c = await compile(tabId); return {...t, graph: taskService.secrets.redactGraph(t.graph, c.apiPrompt)}; };
+  const stripPlaceholders = v => (typeof v === 'string' ? (v.startsWith(SF.PLACEHOLDER_PREFIX) ? '' : v) : Array.isArray(v) ? v.map(stripPlaceholders) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, stripPlaceholders(x)])) : v);
   const compile = async tabId => { if (!taskService) throw new AppError(CODES.SERVICE_UNAVAILABLE, '任务服务不可用，无法编译工作流。'); return taskService.compile(tabId); };
   function importText(text, {name, folder, tags, source}) {
     let info;
@@ -51,7 +55,7 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
     },
     /** T02：把当前标签存为模板新版本；标签不是从模板打开的则新建模板。 */
     'templates.saveFromTab': async (tabId, {name, note, asNew = false, formSchema} = {}) => {
-      const t = await tabGraph(tabId);
+      const t = await securedGraph(tabId);
       if (t.templateId && repo.get(t.templateId) && !asNew) return {template: repo.get(t.templateId), version: repo.saveVersion(t.templateId, {graph: t.graph, formSchema: formSchema ?? repo.current(t.templateId).formSchema, note: note ?? '从工作副本保存'})};
       const created = t.templateId && repo.get(t.templateId) ? repo.saveAs(t.templateId, {name: name ?? `${t.title} 副本`, graph: t.graph, formSchema}) : repo.create({name: name ?? t.title, graph: t.graph, formSchema, source: 'workspace'});
       return {template: created, version: repo.versions(created.id)[0]};
@@ -61,7 +65,7 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       const v = versionId ? repo.version(versionId) : repo.current(id);
       const r = await dialog.showSaveDialog(getWindow(), {title: '导出模板', defaultPath: `${repo.get(id).name}.json`, filters: [{name: 'ComfyUI 工作流', extensions: ['json']}]});
       if (r.canceled || !r.filePath) return {cancelled: true};
-      fs.writeFileSync(r.filePath, JSON.stringify(v.graph, null, 2));
+      fs.writeFileSync(r.filePath, JSON.stringify(stripPlaceholders(v.graph), null, 2));
       if (v.formSchema) fs.writeFileSync(r.filePath.replace(/\.json$/i, '') + '.yingzuo-form.json', JSON.stringify({kind: 'yingzuo-form', version: 1, fields: v.formSchema}, null, 2));
       return {path: r.filePath};
     },
@@ -80,7 +84,7 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       const c = await compile(tabId);
       const bad = F.validateMapping(fields, c.apiPrompt).filter(m => m.status !== 'ok');
       if (bad.length) throw new AppError(CODES.INVALID_ARGUMENT, `有 ${bad.length} 个字段映射失效：${bad[0].reason}`, {details: {bad}});
-      const t = await tabGraph(tabId);
+      const t = await securedGraph(tabId);
       return repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: note ?? '更新表单'});
     },
     /** T04：映射校验与重新绑定（必须同类型同字段）。 */
@@ -89,7 +93,7 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       const c = await compile(tabId); const cur = repo.current(id); const fields = [...(cur.formSchema ?? [])];
       if (!fields[index]) throw new AppError(CODES.NOT_FOUND, '字段不存在。');
       try { fields[index] = F.rebind(fields[index], c.apiPrompt, nodeId); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
-      const t = await tabGraph(tabId);
+      const t = await securedGraph(tabId);
       return repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: `重新绑定 ${fields[index].label ?? fields[index].fieldName} → 节点 ${nodeId}`});
     },
   };

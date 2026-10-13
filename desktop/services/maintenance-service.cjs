@@ -226,7 +226,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       const c = await taskService.compile(tabId);
       const plan = planQuickUse(c.apiPrompt, res, opts);
       if (!plan.available || !opts.run) return plan;
-      return {plan, task: taskService.queue.enqueue({workflowId: c.tabId, inputRevision: c.revision, snapshot: {uiGraph: c.uiGraph, apiPrompt: applyPlan(c.apiPrompt, plan), title: c.title, params: {quickUse: it.name}, references: []}})};
+      return {plan, task: taskService.submissions.enqueueCompiled(c, applyPlan(c.apiPrompt, plan), {params: {quickUse: it.name}, references: []})}; // S05：经统一提交入口（脱敏、身份、前缀）
     },
     'resources.plugins': async () => ({plugins: await listPlugins({comfyRoot: comfyRoot(), objectInfo: await objectInfo()}), manager: detectManager(path.join(comfyRoot(), 'custom_nodes'))}),
     'resources.disablePlugin': async (name, reason) => runTransaction({title: `禁用插件 ${name}`, kind: 'plugin-disable', target: name, roots: [path.join(comfyRoot(), 'custom_nodes')], requiredBytes: 0, apply: async c => { c.log.push(disablePlugin({comfyRoot: comfyRoot(), name, reason}).message); }}),

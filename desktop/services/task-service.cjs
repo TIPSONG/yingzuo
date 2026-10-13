@@ -161,6 +161,16 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
   }
   const resolveSecrets = prompt => SF.resolveSecrets(prompt, async name => credentials?.get(name) ?? null).catch(e => { throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, e.message, {details: {missing: e.missing}}); });
   const enqueue = spec => queue.enqueue({...spec, snapshot: redactSnapshot(spec.snapshot)});
+  /** S05：唯一的生产提交入口。其他服务（快捷使用等）只能经此提交，统一套用工作流身份、输出前缀、参考图与敏感字段政策。 */
+  const submissions = {
+    /** 从已编译标签和最终 API 图生成任务（不直接接触 queue/仓库）。 */
+    enqueueCompiled: (c, prompt, {kind = 'generate', params = null, meta = {}, references, prefixMode} = {}) => {
+      const p = withPrefix(prompt, c, prefixMode);
+      return enqueue({kind, workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, references), params, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...meta}})});
+    },
+    enqueue,
+    enqueueGroup: specs => queue.enqueueGroup(specs.map(sp => ({...sp, snapshot: redactSnapshot(sp.snapshot)}))),
+  };
 
   /* ---------- D04/PR11-R10：模板自定义表单进入正式运行 ---------- */
   let formProvider = null;
@@ -212,9 +222,9 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       const specs = items.map(item => {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
         const p = withPrefix(B.applyValues(custom.prompt, c.bindings, values), c, spec.prefixMode);
-        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: redactSnapshot(snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}}))};
+        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}})};
       });
-      const created = queue.enqueueGroup(specs);
+      const created = submissions.enqueueGroup(specs);
       return {groupId, tasks: created};
     },
     /** Q08：仅润色。只提交润色节点及其上游，完成后在任务输出中读取文本，不执行绘图。 */
@@ -268,6 +278,10 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
   };
   async function start() { connectSocket(); try { await queue.recoverOnStartup(); } catch (e) { logger?.error('任务恢复失败', {error: e.message}); } }
   function stop() { queue.stop(); socket?.close(); }
-  return {tasks, queue, refs, methods, hooks, start, stop, compile, connectSocket, setFormProvider: f => { formProvider = f; }};
+  const secrets = {
+    /** S05：模板/草稿等持久化 UI 图前调用——敏感值转入系统加密存储，图中只留占位。 */
+    redactGraph: (graph, apiPrompt) => redactSnapshot({uiGraph: graph, apiPrompt}).uiGraph,
+  };
+  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, setFormProvider: f => { formProvider = f; }};
 }
 module.exports = {createTaskService, ReferenceStore, uploadReferences};

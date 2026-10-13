@@ -40,7 +40,7 @@ function setup(t, extra = {}) {
   const svc = createTaskService({credentials: extra.credentials ?? null, db, layout, configRepo, events: new EventBus(), locks: createLocks(), editor, fetchImpl, WebSocketImpl: null, onTerminal: extra.onTerminal});
   svc.queue.pollMs = 1; svc.queue.sleep = () => new Promise(r => setImmediate(r));
   const settle = async () => { for (let i = 0; i < 300 && (svc.queue.pumping || svc.queue.running); i++) await new Promise(r => setTimeout(r, 1)); };
-  return {svc, submitted, settle, editor};
+  return {svc, submitted, settle, editor, db, layout};
 }
 
 test('Q06：运行当前标签——编译、检查、按绑定覆盖参数、入队、history 成功', async t => {
@@ -159,6 +159,45 @@ test('R18/D15：敏感输入不以明文写入任务快照；提交时从凭据�
   const t2 = svc.queue.enqueue({workflowId: 'tab1', snapshot: snap}); await settle();
   assert.equal(submitted.length, 1, '凭据缺失不提交');
   assert.equal(svc.tasks.get(t2.id).state, 'failed');
+});
+test('S05：快捷使用 / 批量 / 统一入口都经同一脱敏政策；生产代码不直接调用 queue.enqueue', async t => {
+  const store = new Map();
+  const credentials = {available: () => true, set: (n, v) => store.set(n, v), get: n => store.get(n) ?? null};
+  const {svc, submitted, settle, editor} = setup(t, {credentials});
+  const KEY = 'sk-fictional-quickuse-1111';
+  editor.commands.compileTab = async id => { const p = prompt(); p[3].inputs.lmstudio_api_key = KEY; return {tabId: id, title: 'T', revision: 3, uiGraph: {nodes: [{id: 3, widgets_values: ['猫', KEY]}]}, apiPrompt: p}; };
+  const c = await svc.compile('tab1');
+  const t1 = svc.submissions.enqueueCompiled(c, c.apiPrompt, {params: {quickUse: 'x.safetensors'}, references: []});
+  const b = await svc.methods['tasks.runBatch']('tab1', {seeds: [1, 2]});
+  await settle();
+  for (const id of [t1.id, ...b.tasks.map(x => x.id)]) assert.ok(!JSON.stringify(svc.tasks.snapshotOf(svc.tasks.get(id))).includes(KEY));
+  assert.ok(submitted.length >= 3 && submitted.every(x => x.prompt[3].inputs.lmstudio_api_key === KEY), '提交时仍可还原');
+  const fs = require('node:fs'), path = require('node:path');
+  const dir = path.join(__dirname, '..', 'desktop');
+  const offenders = [];
+  const walk = d => { for (const n of fs.readdirSync(d, {withFileTypes: true})) { const p = path.join(d, n.name); if (n.isDirectory()) walk(p); else if (/\.c?js$/.test(n.name) && !/queue-service\.cjs$|task-service\.cjs$/.test(n.name) && /\bqueue\.enqueue(Group)?\(|tasks\.create\(/.test(fs.readFileSync(p, 'utf8'))) offenders.push(path.relative(dir, p)); } };
+  walk(dir);
+  assert.deepEqual(offenders, [], '生产代码只能经 submissions 提交');
+});
+test('S05：存为模板时敏感值转入凭据存储，模板图只留占位；导出时清空占位', async t => {
+  const store = new Map();
+  const credentials = {available: () => true, set: (n, v) => store.set(n, v), get: n => store.get(n) ?? null};
+  const {svc, editor, db, layout} = setup(t, {credentials});
+  const KEY = 'sk-fictional-template-2222';
+  const ui = {nodes: [{id: 3, type: 'LMStudioPromptEnhancer', widgets_values: ['猫', KEY]}], links: []};
+  editor.commands.compileTab = async id => { const p = prompt(); p[3].inputs.lmstudio_api_key = KEY; return {tabId: id, title: 'T', revision: 3, uiGraph: ui, apiPrompt: p}; };
+  editor.commands.tabGraph = async id => ({tabId: id, title: 'T', graph: ui, templateId: null});
+  const {createTemplateService} = require('../desktop/services/template-service.cjs');
+  const out = path.join(layout.root, 'exported.json');
+  const ts = createTemplateService({db, layout, editor, taskService: svc, dialog: {showSaveDialog: async () => ({filePath: out})}, getWindow: () => null});
+  const r = await ts.methods['templates.saveFromTab']('tab1', {name: '含密钥'});
+  const saved = ts.repo.current(r.template.id).graph;
+  assert.ok(!JSON.stringify(saved).includes(KEY));
+  assert.match(saved.nodes[0].widgets_values[1], /^__yz_credential__:node-secret:/);
+  assert.equal([...store.values()][0], KEY);
+  await ts.methods['templates.export'](r.template.id);
+  const exported = fs.readFileSync(out, 'utf8');
+  assert.ok(!exported.includes(KEY) && !exported.includes('__yz_credential__'));
 });
 test('R18/D15：系统加密不可用时拒绝创建含敏感输入的任务', async t => {
   const {svc, editor} = setup(t, {credentials: {available: () => false}});
