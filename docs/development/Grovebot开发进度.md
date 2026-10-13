@@ -33,7 +33,7 @@
 | D05 | P1 | 维护失败仍启动服务、继续队列 | 程序完成 | ea187ce | maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时 | 队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放 |
 | D06 | P1 | 继续恢复绕开运行保护 | 程序完成 | 0fd23ab | maint-service.test D06 | 资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示 |
 | D07 | P1 | 补丁冲突仍记成功 | 程序完成 | dad09fb | maint-service.test U06 冲突阻止、R03 未跟踪文件 | 默认策略：冲突在切换前阻止（环境不变）；未提供 needs-resolution 停留模式；Python 模块检查需计划提供 checkModules |
-| D08 | P1 | 启动恢复没有持续跟踪存量任务 | 未开始 |  |  |  |
+| D08 | P1 | 启动恢复没有持续跟踪存量任务 | 程序完成 | bf765ab | queue.test R12/D08 |  |
 | D09 | P1 | 取消后退出 15 秒超时当作可退出 | 程序完成 | 0fd23ab | quit-flow.test（4 项） | 退出流程抽到 desktop/services/quit-flow.cjs |
 | D10 | P1 | 目标中断未探测，可能中断下一项 | 程序完成 | 0fd23ab | queue.test D10 两项 | GET /api/jobs 探测；支持时用 /api/jobs/{id}/cancel（服务端原子）；旧后端发送前再核对，仍非原子 |
 | D11 | P1 | 服务归属与停止确认不严格 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
@@ -57,7 +57,7 @@
 | PR11-R09 | P1 | 异步 UI 固定发起标签和版本 | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
 | PR11-R10 | P1 | 自定义表单进入创作和运行 | 实现中 | 40fc5b1 | task-service.test：表单映射写入/超范围/失效字段/无表单；ui-tasks.test：按表单运行固定发起标签 | “运行”按钮按已保存表单弹出填写并经 applyForm 写入；快照记录 templateId/versionId/取值。左侧参数面板（workbench.js renderFields）仍枚举全部 widget，批量与润色尚未走表单 |
 | PR11-R11 | P1 | 参考图关系进工作区仓库 | 未开始 |  |  |  |
-| PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 未开始 |  |  |  |
+| PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 实现中 | bf765ab | queue.test R12/D08；task-service.test R12 未知重试确认 | 已做：ready、独立 follower、恢复期间新建任务等待、unknown 重试需确认。未做：意图快照与实际提交快照（上传后文件引用、最终参数）分开存储 |
 | PR11-R13 | P1 | 环境备份与应用数据备份分开 | 未开始 |  |  |  |
 | PR11-R14 | P2 | 回收区与备份空间管理 | 程序完成 | ca3792f | maint-service.test R07/R14；review2 trash-store.test | 只管理本应用登记条目；永久清理需确认、逐项再核对；未完成恢复使用的条目受保护 |
 | PR11-R15 | P2 | 206 续传与来源身份 | 未开始 |  |  |  |
