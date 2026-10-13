@@ -228,10 +228,10 @@
       "id": "PR11-R11",
       "level": "P1",
       "name": "参考图关系进工作区仓库",
-      "status": "实现中",
-      "commit": "2434be6",
-      "tests": "task-service.test R11",
-      "note": "已做：持久关系、迁移、复制、丢失检测、运行统一来源。未做：导出/恢复带素材 manifest、子图内 LoadImage 的槽位测试、关闭标签恢复时关系随归档"
+      "status": "程序完成",
+      "commit": "bf2ef3a",
+      "tests": "graph-package.test×2、task-service.test S08、app-backup.test",
+      "note": "包=UI 图+模板/表单版本+槽位/内容ID/sha256/素材本体；导入先整体校验再写入、分配新标签；缺失素材如实列出；关闭归档写 meta（标题/模板版本），“最近关闭”可重开并带回关系；应用备份含 reference-relations.json、task-submissions 与 references"
     },
     {
       "id": "PR11-R12",
@@ -451,10 +451,10 @@
       "id": "S08",
       "level": "P1",
       "name": "完成参考素材 manifest 与恢复闭包",
-      "status": "未开始",
-      "commit": "",
-      "tests": "",
-      "note": ""
+      "status": "程序完成",
+      "commit": "bf2ef3a",
+      "tests": "graph-package.test×2、task-service.test S08、app-backup.test",
+      "note": "包=UI 图+模板/表单版本+槽位/内容ID/sha256/素材本体；导入先整体校验再写入、分配新标签；缺失素材如实列出；关闭归档写 meta（标题/模板版本），“最近关闭”可重开并带回关系；应用备份含 reference-relations.json、task-submissions 与 references"
     },
     {
       "id": "S09",
