@@ -154,7 +154,7 @@ body {
   margin: 0;
   height: 100vh;
   display: grid;
-  grid-template-rows: 36px minmax(0, 1fr);
+  grid-template-rows: 40px minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   background: var(--bg);
