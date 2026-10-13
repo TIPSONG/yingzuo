@@ -30,8 +30,8 @@ test('应用数据备份包含数据库/工作区/模板/快照/参考图，不�
   const r = await A.applyPendingAppRestore(layout);
   assert.equal(r.status, 'restored', r.error);
   assert.equal(fs.readFileSync(layout.workspace, 'utf8'), '{"v":1}');
-  const db2 = Database.open(layout.database); t.after(() => db2.close());
-  assert.deepEqual(db2.all('SELECT x FROM t').map(x => x.x), ['v1']);
+  const db2 = Database.open(layout.database);
+  try { assert.deepEqual(db2.all('SELECT x FROM t').map(x => x.x), ['v1']); } finally { db2.close(); } // Windows：先关库再删目录
   assert.ok(fs.readdirSync(d).some(n => n.startsWith('workspace.json.yz-scene-')), '失败现场保留');
   assert.equal(await A.applyPendingAppRestore(layout), null, '只执行一次');
 });
