@@ -42,7 +42,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 并行分工：`feat/grovebot-assets`（A01–A08）与 `feat/grovebot-maint`（U01–U04、R01–R05）由其他 worker 负责，本分支**不实现、不改它们在进度表中的行**（它们用 `docs/development/进度-assets.md` / `进度-maint.md`）。
 
 1. E10 剩余（图片选择/下载、缩放快捷键）。
-2. T01–T07（模板），然后批次 4：O01–O08、R06–R08、T08；批次 5：U05–U08。
+2. 批次 4：O01–O08、R06–R08、T08；批次 5：U05–U08。
 3. 草稿 PR #11 已开，继续推送到同一分支；不要再开 PR、不要合并。
 
 ## 6. 任务链路速览（批次 2）
@@ -54,8 +54,17 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - UI：`desktop/ui/tasks.js`（运行栏、参考图、批量、仅润色弹窗、任务队列页）。`window.yzShell` 由 shell.js 暴露。
 - 修复：better-sqlite3 是延迟加载原生模块，现在在 loadDriver 里用 `:memory:` 探测，Electron 下 ABI 不匹配时回退 node:sqlite（box 上用 Electron 启动验证过）。
 
+## 6b. 模板与诊断（批次 3 中本分支负责的 T01–T07）
+
+- `desktop/repositories/template-repo.cjs`：templates/template_versions 表（v1 迁移已有）+ `data/templates/{graphs,forms}/xx/<sha256>.json` 内容寻址；版本只追加。
+- `shared/form-schema.cjs`：表单字段 = ParameterBinding；nodeId 用编译后 API 编号；映射校验/重新绑定只允许同类型同字段。
+- `desktop/services/template-service.cjs`、`diagnostics-service.cjs`：接口都在 `templates.*` 分组（诊断也放这里，避免与 maint 分支的 `resources.*` 冲突）。
+- `editor-session.cjs` 新增 `openGraph`、`tabGraph`、`replaceGraph`。
+- UI：`desktop/ui/templates.js`（模板库页、存为模板、表单设置、诊断弹窗）。
+
 ## 7. 检查点记录
 
 - 批次 1：除 F08（等 Windows 构建）外程序完成；S07 已在批次 2 完成。
 - 批次 2：Q01–Q10、E07–E09 程序完成（ComfyUI 为替身，Gemma 节点输入名为推断，需 Codex 用真实工作流验收）；E10 实现中。
-- 最近提交见 `git log`；`npm run check`：154 项，153 通过，1 跳过。
+- 批次 3（本分支部分）：T01–T07 程序完成。
+- 最近提交见 `git log`；`npm run check`：160 项，159 通过，1 跳过。
