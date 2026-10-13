@@ -137,6 +137,9 @@ test('D04/PR11-R10：模板自定义表单进入正式运行——按表单映�
   assert.equal(svc.tasks.snapshotOf(svc.tasks.get(task.id)).form.versionId, 'v2');
   await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 99}}), /超出范围/);
   await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {1: 2}}), /映射失效/);
+  const b = await svc.methods['tasks.runBatch']('tab1', {seeds: [5, 6], formValues: {0: 41}}); await settle();
+  assert.deepEqual(submitted.slice(-2).map(x => [x.prompt[7].inputs.steps, x.prompt[7].inputs.seed]), [[41, 5], [41, 6]]);
+  assert.equal(b.tasks.length, 2);
   svc.setFormProvider(() => null);
   await assert.rejects(svc.methods['tasks.run']('tab1', {formValues: {0: 3}}), e => e.code === 'INVALID_STATE');
 });

@@ -190,10 +190,11 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
       const items = plan.items.flatMap(it => params.map(p => ({prompt: it.prompt, seed: it.seed, params: {...p, ...it.values}})));
       if ((spec.prompts?.length > 0) && !c.bindings.prompt) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的提示词输入，不能批量替换提示词。');
       if (items.some(i => i.seed !== null) && !(c.bindings.seed && (!c.bindings.seed.readonly || c.bindings.seedSource))) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的 seed 输入。');
+      const custom = applyCustomForm(c, c.apiPrompt, spec.formValues); // D04：批量同样按自定义表单写入
       const groupId = crypto.randomUUID();
       const specs = items.map(item => {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
-        const p = withPrefix(B.applyValues(c.apiPrompt, c.bindings, values), c, spec.prefixMode);
+        const p = withPrefix(B.applyValues(custom.prompt, c.bindings, values), c, spec.prefixMode);
         return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: redactSnapshot(snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: p.prefix ? {outputPrefix: p.prefix} : {}}))};
       });
       const created = queue.enqueueGroup(specs);
