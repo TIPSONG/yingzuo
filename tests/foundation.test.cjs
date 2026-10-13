@@ -16,7 +16,8 @@ const {resolveDataRoot, ensureLayout, importLegacy} = require('../desktop/reposi
 const {ConfigRepository, validate, defaults} = require('../desktop/repositories/config-repo.cjs');
 const {Database} = require('../desktop/repositories/database.cjs');
 const Store = require('../desktop/workspace-store.cjs');
-const tmp = t => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-f-')); t.after(() => fs.rmSync(d, {recursive: true, force: true})); return d; };
+// Windows：数据库句柄在后注册的 after 钩子里关闭，删除失败时推迟到进程退出再删。
+const tmp = t => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-f-')); t.after(() => { try { fs.rmSync(d, {recursive: true, force: true}); } catch { process.once('exit', () => { try { fs.rmSync(d, {recursive: true, force: true}); } catch { /* 留给系统清理 */ } }); } }); return d; };
 const graph = p => ({version: 0.4, nodes: [{id: 1, type: 'CLIPTextEncode', widgets_values: [p]}], links: [], extra: {}});
 
 test('任务状态机：合法转移、终态不可变、unknown 不能自动回到 queued', () => {

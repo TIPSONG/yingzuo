@@ -64,7 +64,9 @@ class Database {
     this.driver = loadDriver(driver);
     if (!readonly) fs.mkdirSync(path.dirname(file), {recursive: true});
     this.db = this.driver.open(file, {readonly});
-    if (!readonly) { this.db.exec('PRAGMA journal_mode = WAL'); this.db.exec('PRAGMA foreign_keys = ON'); this.db.exec('PRAGMA busy_timeout = 3000'); }
+    // 构造中途失败也要关闭底层句柄（Windows 上未关闭的句柄会锁住文件）。
+    try { if (!readonly) { this.db.exec('PRAGMA journal_mode = WAL'); this.db.exec('PRAGMA foreign_keys = ON'); this.db.exec('PRAGMA busy_timeout = 3000'); } }
+    catch (error) { try { this.db.close(); } catch { /* 忽略 */ } throw error; }
     this.depth = 0;
   }
   static open(file, options = {}) {
