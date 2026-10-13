@@ -11,3 +11,12 @@
 | R18（部分）/ D15 | 新增独立脱敏工具 shared/secret-fields.cjs（识别 password/已知 secret 字段，替换为 credentialRef 占位）+ 测试；接入快照存储留给主线 worker 决定 | shared/secret-fields.cjs、tests/secret-fields.test.cjs | 工具完成（3 项回归）；**未接入**快照存储/导出，需主线在 task-repo/提交路径调用 redactForStorage/resolveSecrets |
 
 全量：`npm test` 248 项，247 通过、1 跳过；`node tools/check.cjs` 通过。
+
+## 第二轮（R14/R17/R19/R20）
+
+| 项 | 内容 | 范围 | 状态 |
+| --- | --- | --- | --- |
+| R14 | 回收区登记/列表/恢复/清理计划（只限本应用登记条目，保护在用备份/引用） | desktop/maintenance/trash-store.cjs（新增）| 进行中 |
+| R17 | worker 执行层（sha256/大图读取上限，可取消） | desktop/core/worker-pool.cjs、desktop/core/workers/*（新增）| 待做 |
+| R19 | 批量纯规划校验（全量校验后才返回计划，第 N 项无效不提交任何项） | shared/batch-plan.cjs（新增）| 待做 |
+| R20 | 稳定 workflowId + SaveImageAdvanced 适配纯函数 | shared/output-plan.cjs（新增）| 待做 |
