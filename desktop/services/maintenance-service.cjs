@@ -30,7 +30,7 @@ function nodeTypesOf(graph) {
   return Object.values(graph ?? {}).map(n => n?.class_type);
 }
 
-function createMaintenanceService({db, layout, configRepo, locks, events, logger, comfy, taskService, templateRepo, editor, fetchImpl, onlineService, linkImpl = fs.linkSync, pool: injectedPool = null, credentials = null}) {
+function createMaintenanceService({db, layout, configRepo, locks, events, logger, comfy, taskService, templateRepo, editor, fetchImpl, onlineService, linkImpl = fs.linkSync, pool: injectedPool = null, credentials = null, portCheck = null}) {
   const backupsDir = () => configRepo.derived(layout).backups;
   const restore = new RestoreEngine({journalDir: path.join(layout.root, 'restore-journal')});
   const notes = new ResourceNotes(path.join(layout.root, 'resource-notes.json'));
@@ -49,10 +49,29 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
   const listTransactions = () => db.all('SELECT * FROM env_transactions ORDER BY created_at DESC LIMIT 100').map(r => ({id: r.id, scope: r.scope, phase: r.phase, backupRef: r.backup_ref, target: r.target_manifest ? JSON.parse(r.target_manifest) : null, journal: JSON.parse(r.journal || '[]'), error: r.error ? JSON.parse(r.error) : null, createdAt: r.created_at, updatedAt: r.updated_at}));
 
   /* ---------- U04：事务执行 ---------- */
+  // RV04：服务状态分三类——confirmed-stopped（端口拒绝连接且没有存活的登记进程）、running、unknown。
+  // HTTP 超时/错误/非成功响应不等于“未运行”。unknown 一律视为 running && !owned（阻止维护/移动/恢复）；
+  // 只有核实为本应用启动的进程（HTTP 不通也算）才可按既有流程停止并等待真实退出后继续。
+  async function probeState() {
+    const base = new URL(configRepo.config.comfy.url);
+    let http = 'fail';
+    try { const r = await fetchImpl(new URL('system_stats', base), {signal: AbortSignal.timeout(3000)}); http = r.ok ? 'ok' : 'error'; } catch { http = 'fail'; }
+    let owned = false; try { owned = !!(await comfy.verifyOwned()); } catch { owned = false; }
+    if (http === 'ok') return {state: 'running', owned, http};
+    if (owned) return {state: 'unknown', owned: true, http, reason: '本应用启动的进程仍存活，但 HTTP 不可用'};
+    let recordAlive = false; try { const rec = comfy.record; recordAlive = !!(rec?.pid && (comfy.aliveImpl ? comfy.aliveImpl(rec.pid) : false)); } catch { recordAlive = false; }
+    if (recordAlive) return {state: 'unknown', owned: false, http, reason: '登记的进程仍存活但身份无法核实'};
+    if (http === 'error') return {state: 'unknown', owned: false, http, reason: '端口上有服务应答但不是正常的 ComfyUI 响应'};
+    const check = portCheck ?? (() => require('./service-probe.cjs').checkPort(base.hostname, Number(base.port) || 80, 3000));
+    let port; try { port = await check(base.hostname, Number(base.port) || 80); } catch (e) { port = {reachable: false, code: 'ERROR', error: e.message}; }
+    if (!port.reachable && port.code === 'ECONNREFUSED') return {state: 'confirmed-stopped', owned: false, http};
+    return {state: 'unknown', owned: false, http, reason: port.reachable ? '端口可连接但服务身份未知' : `无法确认端口状态：${port.error ?? port.code}`};
+  }
   async function services() {
-    const running = await fetchImpl(new URL('system_stats', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => r.ok, () => false);
-    let owned = running ? await comfy.verifyOwned() : false, foreign = 0;
-    if (running && owned) {
+    const st = await probeState();
+    if (st.state === 'confirmed-stopped') return [{id: 'comfy', state: st.state, running: false, owned: false, foreignJobs: 0}];
+    let owned = st.owned, foreign = 0;
+    if (st.state === 'running' && owned) {
       // S02：本应用启动的后端里也可能有原生画布/其他客户端的任务；核对失败按“不能确认”处理
       try {
         const q = await fetchImpl(new URL('queue', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
@@ -61,7 +80,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       } catch { foreign = -1; }
       if (foreign) owned = false;
     }
-    return [{id: 'comfy', running, owned, foreignJobs: foreign, roots: configRepo.config.comfy.root ? [configRepo.config.comfy.root] : undefined}];
+    return [{id: 'comfy', state: st.state, reason: st.reason ?? null, running: true, owned, foreignJobs: foreign, roots: st.state === 'unknown' ? undefined : (configRepo.config.comfy.root ? [configRepo.config.comfy.root] : undefined)}];
   }
   /* ---------- D05/D06/PR11-R01/R02：恢复失败后保持暂停；所有恢复走同一受保护路径 ---------- */
   // S02：阻断持久化到 maintenance-holds.json；启动时在任何提交/服务操作前重建并重新取得暂停租约。
@@ -201,6 +220,8 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       try { await taskService?.hooks.waitForIdle({timeoutMs: 5000}); } catch { return defer('有任务正在启动，可能正在加载模型'); }
       let svc; try { svc = await services(); } catch { return defer('无法确认 ComfyUI 状态'); }
       if (svc.some(s => s.running && !s.owned)) return defer('ComfyUI 中有其他来源的任务或外部启动的服务（或无法确认），可能正在使用模型');
+      // RV04：本应用启动但 HTTP 不通的实例：先按既有流程停止并等待真实退出，再处理文件
+      if (svc.some(s => s.state === 'unknown' && s.owned)) { try { await comfy.stop(); } catch (e) { return defer(`无法停止本应用启动的 ComfyUI：${e.message}`); } }
       for (const f of files) {
         const file = path.join(movesDir, f);
         const keep = (action, extra = {}) => { out.push({file: f, action, ...extra}); };
@@ -345,7 +366,9 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
         if (taskService?.hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '有任务运行中，模型可能正被使用，请稍后再移动。');
         // C03/C05：等待 starting 结束后再以后端状态为准
         try { await taskService?.hooks.waitForIdle({timeoutMs: 5000}); } catch { throw new AppError(CODES.INVALID_STATE, '有任务正在启动，请稍后再移动。'); }
-        if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, 'ComfyUI 是外部启动的、正在执行其他来源的任务或无法确认状态，可能正在使用该模型；请先结束后再移动。');
+        const svcNow = await services();
+        if (svcNow.some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, 'ComfyUI 是外部启动的、正在执行其他来源的任务或无法确认状态，可能正在使用该模型；请先结束后再移动。');
+        if (svcNow.some(s => s.state === 'unknown' && s.owned)) await comfy.stop(); // RV04：HTTP 不通的本应用实例先停止并等待退出
         if (fs.existsSync(dest)) throw new AppError(CODES.CONFLICT, `目标已有同名文件：${dest}`);
         fs.mkdirSync(path.dirname(dest), {recursive: true});
         const tmp = `${dest}.yz-moving`;

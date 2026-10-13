@@ -6,10 +6,10 @@ const {AppError, CODES} = require('../core/errors.cjs');
 function checkPort(host, port, timeoutMs = 1500) {
   return new Promise(resolve => {
     const socket = net.connect({host: host.replace(/^\[|\]$/g, ''), port});
-    const done = (ok, error) => { socket.destroy(); resolve({reachable: ok, error: error || null}); };
-    socket.setTimeout(timeoutMs, () => done(false, '连接超时'));
+    const done = (ok, error, code = null) => { socket.destroy(); resolve({reachable: ok, error: error || null, code}); };
+    socket.setTimeout(timeoutMs, () => done(false, '连接超时', 'TIMEOUT'));
     socket.once('connect', () => done(true));
-    socket.once('error', e => done(false, e.code === 'ECONNREFUSED' ? '端口未监听（服务未运行）' : e.message));
+    socket.once('error', e => done(false, e.code === 'ECONNREFUSED' ? '端口未监听（服务未运行）' : e.message, e.code ?? 'ERROR'));
   });
 }
 async function getJson(fetchImpl, url, timeoutMs = 4000) {

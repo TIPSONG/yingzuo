@@ -32,13 +32,13 @@ function setup(opt = {}) {
   const config = {comfy: {root, url: 'http://127.0.0.1:1/', python: ''}, maintenance: {keepBackups: 2}};
   const configRepo = {config, derived: () => ({backups: path.join(base, 'backups')})};
   const calls = [];
-  const comfy = {verifyOwned: opt.verifyOwned ?? (async () => false), stop: async () => calls.push('stop'), ensureRunning: async () => calls.push('start')};
+  const comfy = {verifyOwned: opt.verifyOwned ?? (async () => false), stop: async () => calls.push('stop'), ensureRunning: async () => calls.push('start'), record: opt.record ?? null, aliveImpl: opt.alive ?? (() => false)};
   const paused = [];
   const taskService = {hooks: {pauseSubmissions: () => { paused.push('p'); return () => paused.push('r'); }, waitForIdle: async () => {}, activeTasks: () => opt.active ?? []}, tasks: {list: () => [{id: 't1', seq: 1}], snapshotOf: () => ({apiPrompt: {1: {class_type: 'LoraLoader', inputs: {lora_name: 'style.safetensors'}}}})}};
   const editor = {workspace: {tabs: [{id: 'd1', title: '草稿一', graph: {nodes: [{id: 1, type: 'NodeA', widgets_values: ['style.safetensors']}]}}]}};
   const events = {emit: () => {}};
   const locks = createLocks();
-  const mk = () => createMaintenanceService({db, layout, configRepo, locks, events, comfy, taskService, editor, linkImpl: opt.linkImpl, pool: opt.pool, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
+  const mk = () => createMaintenanceService({portCheck: opt.portCheck ?? (async () => ({reachable: false, code: 'ECONNREFUSED'})), db, layout, configRepo, locks, events, comfy, taskService, editor, linkImpl: opt.linkImpl, pool: opt.pool, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
   const svc = mk();
   const reopen = mk;
   return {base, root, ext, svc, db, calls, paused, layout, locks, reopen, taskService};
@@ -76,7 +76,7 @@ test('环境锁被占用时事务被阻止，不改动任何文件', async () =>
   const base = setup();
   // 通过内部锁：先占用
   const locks = createLocks(); const release = locks.environment.tryAcquire('other');
-  const svc = createMaintenanceService({db: base.db, layout: base.layout, configRepo: {config: {comfy: {root: base.root, url: 'http://127.0.0.1:1/'}}, derived: () => ({backups: path.join(base.base, 'b2')})}, locks, events: {emit() {}}, comfy: {verifyOwned: async () => false}, fetchImpl: async () => { throw new Error('x'); }});
+  const svc = createMaintenanceService({portCheck: async () => ({reachable: false, code: 'ECONNREFUSED'}), db: base.db, layout: base.layout, configRepo: {config: {comfy: {root: base.root, url: 'http://127.0.0.1:1/'}}, derived: () => ({backups: path.join(base.base, 'b2')})}, locks, events: {emit() {}}, comfy: {verifyOwned: async () => false}, fetchImpl: async () => { throw new Error('x'); }});
   const r = await svc.methods['resources.disablePlugin']('node-a');
   assert.equal(r.status, 'blocked');
   assert.ok(fs.existsSync(path.join(base.root, 'custom_nodes', 'node-a')));
@@ -304,7 +304,7 @@ test('C05：提交前目标出现——拒绝覆盖，保留源与临时副本�
   const ctx2 = {...ctx};
   try {
     // 目标在复制后出现：硬链接 EEXIST，独占复制也失败
-    const svc = createMaintenanceService({db: ctx.db, layout: ctx.layout, configRepo: {config: {comfy: {root: ctx.root, url: 'http://127.0.0.1:1/', python: ''}}, derived: () => ({backups: path.join(ctx.base, 'backups')})}, locks: ctx.locks, events: {emit() {}}, comfy: {verifyOwned: async () => false}, taskService: ctx.taskService, pool, linkImpl: (a, b) => (a.endsWith('.yz-moving') ? fs.linkSync(a, b) : exdev()), fetchImpl: async () => { throw new Error('offline'); }});
+    const svc = createMaintenanceService({portCheck: async () => ({reachable: false, code: 'ECONNREFUSED'}), db: ctx.db, layout: ctx.layout, configRepo: {config: {comfy: {root: ctx.root, url: 'http://127.0.0.1:1/', python: ''}}, derived: () => ({backups: path.join(ctx.base, 'backups')})}, locks: ctx.locks, events: {emit() {}}, comfy: {verifyOwned: async () => false}, taskService: ctx.taskService, pool, linkImpl: (a, b) => (a.endsWith('.yz-moving') ? fs.linkSync(a, b) : exdev()), fetchImpl: async () => { throw new Error('offline'); }});
     const s2 = await svc.methods['resources.scan']();
     const l2 = s2.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras');
     await assert.rejects(svc.methods['resources.moveModel'](l2.id, path.join(ctx2.ext, 'loras')), e => e.code === 'CONFLICT');
@@ -355,4 +355,43 @@ test('C02：holds 文件不是数组时按阻断处理', async () => {
   const {layout, reopen} = setup();
   fs.writeFileSync(path.join(layout.root, 'maintenance-holds.json'), '{"a":1}');
   assert.ok(reopen().gate());
+});
+
+/* ---------- RV04：探测失败 ≠ 确认停止 ---------- */
+const timeoutFetch = async () => { throw Object.assign(new Error('The operation was aborted due to timeout'), {name: 'TimeoutError'}); };
+const portTimeout = async () => ({reachable: false, code: 'TIMEOUT', error: '连接超时'});
+for (const [name, opt] of [
+  ['system_stats 超时 + 端口超时', {fetchImpl: timeoutFetch, portCheck: portTimeout}],
+  ['system_stats 返回 500', {fetchImpl: async () => new Response('err', {status: 500})}],
+  ['端口可连接但身份未知', {fetchImpl: timeoutFetch, portCheck: async () => ({reachable: true})}],
+  ['登记 PID 活着但 HTTP 不通（身份无法核实）', {fetchImpl: timeoutFetch, record: {pid: 4242}, alive: () => true}],
+]) {
+  test(`RV04：${name}——unknown，不移动/不恢复/不进入 apply，文件不动`, async () => {
+    const {svc, h, mk, journal, moves, calls, root} = moveFixture(opt);
+    const s = mk('a.safetensors', 'A'), d = mk('b.safetensors', 'A');
+    journal('a', {src: s, dest: d, tmp: d + '.yz-moving', sha256: h('A')});
+    const r = await svc.recoverModelMoves();
+    assert.equal(r[0].action, 'deferred'); assert.ok(fs.existsSync(s) && fs.existsSync(d)); assert.equal(fs.readdirSync(moves).length, 1);
+    const scan = await svc.methods['resources.scan']();
+    const lora = scan.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras');
+    await assert.rejects(svc.methods['resources.moveModel'](lora.id, path.join(root, '..', 'ext', 'loras')), e => e.code === 'NOT_OWNED');
+    assert.ok(fs.existsSync(path.join(root, 'models', 'loras', 'style.safetensors')));
+    const t = await svc.methods['resources.disablePlugin']('node-a', 'x');
+    assert.notEqual(t.status, 'done'); assert.ok(fs.existsSync(path.join(root, 'custom_nodes', 'node-a')), '未进入 apply');
+    assert.deepEqual(calls.filter(c => c === 'stop'), []);
+  });
+}
+test('RV04：本应用启动的进程存活但 HTTP 不通——先停止并等待退出，再继续核对', async () => {
+  const {svc, h, mk, journal, calls} = moveFixture({fetchImpl: timeoutFetch, portCheck: portTimeout, verifyOwned: async () => true});
+  const s = mk('a.safetensors', 'A'), d = mk('b.safetensors', 'A');
+  journal('a', {src: s, dest: d, tmp: d + '.yz-moving', sha256: h('A')});
+  const r = await svc.recoverModelMoves();
+  assert.deepEqual(calls.filter(c => c === 'stop'), ['stop']);
+  assert.equal(r[0].action, 'completed');
+});
+test('RV04：真正已退出（端口拒绝连接、无存活登记进程）——仍可正常操作', async () => {
+  const {svc, h, mk, journal} = moveFixture({fetchImpl: timeoutFetch});
+  const s = mk('a.safetensors', 'A'), d = mk('b.safetensors', 'A');
+  journal('a', {src: s, dest: d, tmp: d + '.yz-moving', sha256: h('A')});
+  assert.equal((await svc.recoverModelMoves())[0].action, 'completed');
 });
