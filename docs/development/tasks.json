@@ -328,51 +328,51 @@
   "id": "Q01",
   "name": "任务持久化",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
  },
  {
   "id": "Q02",
   "name": "Comfy HTTP/WS 客户端",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
  },
  {
   "id": "Q03",
   "name": "单一串行调度器",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
  },
  {
   "id": "Q04",
   "name": "提交与断连核对",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
  },
  {
   "id": "Q05",
   "name": "真实状态与错误",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
  },
  {
   "id": "Q06",
@@ -388,11 +388,11 @@
   "id": "Q07",
   "name": "取消与重试",
   "batch": 2,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
  },
  {
   "id": "Q08",
@@ -418,11 +418,11 @@
   "id": "Q10",
   "name": "批量与重启恢复",
   "batch": 5,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "恢复与 FIFO 已实现并测试；批量 UI 未做"
  },
  {
   "id": "A01",
