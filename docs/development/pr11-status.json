@@ -259,13 +259,19 @@
       "id": "PR11-R19",
       "level": "P2",
       "name": "批量参数变化与原子规划",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "eebced9",
+      "tests": "task-service.test R19；review2 batch-plan.test",
+      "note": "后端已接：planBatch 全量校验 + queue.enqueueGroup 单事务。正式 UI 的参数变化（variations）输入未做"
     },
     {
       "id": "PR11-R20",
       "level": "P2",
       "name": "稳定输出身份与真实保存节点适配",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "eebced9",
+      "tests": "task-service.test A03/R20；review2 output-plan.test",
+      "note": "无模板时用结构指纹；SaveImageAdvanced 仅在 object_info 确认 STRING 前缀字段时改写"
     },
     {
       "id": "PR11-R21",

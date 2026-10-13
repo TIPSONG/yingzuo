@@ -64,8 +64,8 @@
 | PR11-R16 | P2 | 分享 JPEG 完整解析和方向策略 | 未开始 |  |  |  |
 | PR11-R17 | P2 | 大文件工作移出主进程 | 未开始 |  |  |  |
 | PR11-R18 | P1 | 敏感输入引用与快照脱敏 | 程序完成 | 5729991 | task-service.test R18 两项；review2 的 secret-fields.test | 合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理 |
-| PR11-R19 | P2 | 批量参数变化与原子规划 | 未开始 |  |  |  |
-| PR11-R20 | P2 | 稳定输出身份与真实保存节点适配 | 未开始 |  |  |  |
+| PR11-R19 | P2 | 批量参数变化与原子规划 | 实现中 | eebced9 | task-service.test R19；review2 batch-plan.test | 后端已接：planBatch 全量校验 + queue.enqueueGroup 单事务。正式 UI 的参数变化（variations）输入未做 |
+| PR11-R20 | P2 | 稳定输出身份与真实保存节点适配 | 程序完成 | eebced9 | task-service.test A03/R20；review2 output-plan.test | 无模板时用结构指纹；SaveImageAdvanced 仅在 object_info 确认 STRING 前缀字段时改写 |
 | PR11-R21 | P1 | 真实契约检查与 CI 业务初始化 | 未开始 |  |  |  |
 | PR11-R22 | P2 | 功能闭环复核与交接 | 未开始 |  |  |  |
 
