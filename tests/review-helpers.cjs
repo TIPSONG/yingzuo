@@ -27,7 +27,7 @@ function setup(t, extra = {}) {
   const json = v => new Response(JSON.stringify(v), {status: 200, headers: {'content-type': 'application/json'}});
   const fetchImpl = async (url, init = {}) => {
     const u = new URL(url);
-    if (u.pathname === '/object_info') return json(info);
+    if (u.pathname === '/object_info') return json(extra.info ?? info);
     if (u.pathname === '/queue') return json({queue_running: [], queue_pending: []});
     if (u.pathname === '/prompt') { const body = JSON.parse(init.body); submitted.push(body); history[body.prompt_id] = {prompt: [0, body.prompt_id, body.prompt, body.extra_data], outputs: {12: {images: [{filename: 'a.png', type: 'output'}]}}, status: {completed: true, status_str: 'success'}}; return json({prompt_id: body.prompt_id, number: 1, node_errors: {}}); }
     if (u.pathname.startsWith('/history/')) { const id = decodeURIComponent(u.pathname.slice(9)); return json(history[id] ? {[id]: history[id]} : {}); }

@@ -207,6 +207,44 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
     if (bad.length) throw new AppError(CODES.INVALID_STATE, `表单有 ${bad.length} 个字段映射失效：${bad[0].binding.label ?? bad[0].binding.fieldName}——${bad[0].reason} 请在表单设置中重新绑定或移除后再运行。`, {details: {bad: bad.map(m => ({label: m.binding.label ?? m.binding.fieldName, status: m.status}))}});
     map.forEach((m, i) => { if (formValues && Object.hasOwn(formValues, i)) return; const err = F.checkFieldValue(m.binding, c.apiPrompt[m.binding.nodeId].inputs[m.binding.fieldName]); if (err) throw new AppError(CODES.INVALID_ARGUMENT, `当前画布中的值不符合表单约束：${err}`); });
   }
+  /** RV07：全部覆盖（formValues、绑定值、批量变化、params、采用润色）完成后，对最终 prompt 再校验：
+   * 表单映射与约束（类型/范围/步长/选项），以及被覆盖输入的节点定义约束（枚举选项、数值范围）。 */
+  function checkFinalPrompt(c, prompt, info, label = '') {
+    const at = label ? `${label}：` : '';
+    const form = formOf(c);
+    if (form?.fields?.length) {
+      const map = F.validateMapping(form.fields, prompt);
+      for (const m of map) {
+        if (m.status !== 'ok') throw new AppError(CODES.INVALID_ARGUMENT, `${at}最终参数使表单字段“${m.binding.label ?? m.binding.fieldName}”映射失效：${m.reason}`);
+        const err = F.checkFieldValue(m.binding, prompt[m.binding.nodeId].inputs[m.binding.fieldName]);
+        if (err) throw new AppError(CODES.INVALID_ARGUMENT, `${at}最终提交值不符合表单约束：${err}`);
+      }
+    }
+    for (const [id, node] of Object.entries(prompt)) {
+      const before = c.apiPrompt[id]?.inputs ?? {};
+      for (const [name, value] of Object.entries(node.inputs ?? {})) {
+        if (Array.isArray(value) || JSON.stringify(before[name]) === JSON.stringify(value)) continue; // 只检查被覆盖的输入
+        const def = info?.[node.class_type]?.input; const spec = def?.required?.[name] ?? def?.optional?.[name];
+        if (!Array.isArray(spec)) continue;
+        if (Array.isArray(spec[0])) { if (!spec[0].some(o => String(o) === String(value))) throw new AppError(CODES.INVALID_ARGUMENT, `${at}${name} 的值“${value}”不在可选项中。`); continue; }
+        const o = spec[1] ?? {};
+        if (['INT', 'FLOAT'].includes(spec[0])) {
+          if (typeof value !== 'number' || !Number.isFinite(value)) throw new AppError(CODES.INVALID_ARGUMENT, `${at}${name} 必须是有效数字。`);
+          if (spec[0] === 'INT' && !Number.isInteger(value)) throw new AppError(CODES.INVALID_ARGUMENT, `${at}${name} 必须是整数。`);
+          if (typeof o.min === 'number' && value < o.min) throw new AppError(CODES.INVALID_ARGUMENT, `${at}${name} 不能小于 ${o.min}。`);
+          if (typeof o.max === 'number' && value > o.max) throw new AppError(CODES.INVALID_ARGUMENT, `${at}${name} 不能大于 ${o.max}。`);
+        }
+      }
+    }
+  }
+  /** RV07：快照里的表单值记录实际最终提交值。 */
+  const finalForm = (custom, c, prompt) => {
+    if (!custom.form) return formIdentity(c, prompt);
+    const values = Object.fromEntries(custom.form.fields.map((b, i) => [i, prompt?.[b.nodeId]?.inputs?.[b.fieldName] ?? null]));
+    return {templateId: custom.form.templateId, form: {...custom.form, values, requestedValues: custom.form.values}};
+  };
+  /** RV14：queue.maxBatch 是批量上限的唯一来源。 */
+  const maxBatch = () => { const n = configRepo.config.queue?.maxBatch; return Number.isInteger(n) && n >= 1 ? n : 100; };
   function applyCustomForm(c, prompt, formValues) {
     if (formValues === undefined || formValues === null) return {prompt, form: null};
     const form = formOf(c);
@@ -244,7 +282,7 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       const r = await editor.enqueue(() => editor.commands.applyParameters([{nodeId: t.target.nodeId, graphId: t.target.graphId, widgetName: t.target.widgetName, value}], c.tabId, c.revision));
       return {tabId: c.tabId, revision: r?.state?.tabs?.find(x => x.id === c.tabId)?.revision ?? null, applied: {index, value}};
     },
-    'tasks.preview': async tabId => { const c = await compile(tabId); return {tabId: c.tabId, title: c.title, revision: c.revision, issues: c.issues, objectInfoAvailable: c.objectInfoAvailable, bindings: c.bindings, nodeCount: Object.keys(c.apiPrompt).length}; },
+    'tasks.preview': async tabId => { const c = await compile(tabId); return {tabId: c.tabId, title: c.title, revision: c.revision, issues: c.issues, objectInfoAvailable: c.objectInfoAvailable, bindings: c.bindings, nodeCount: Object.keys(c.apiPrompt).length, maxBatch: maxBatch()}; },
     /** Q06：运行当前（或指定）标签。values 为绑定参数覆盖，references 为 [{nodeId,input,refId}]。 */
     'tasks.run': async (tabId, options = {}) => {
       const c = await compile(tabId, {expectedRevision: options.expectedRevision});
@@ -255,29 +293,37 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       const enh = c.bindings.enhancer;
       if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
+      checkFinalPrompt(c, prompt, await getObjectInfo());
       const p = withPrefix(prompt, c, options.prefixMode);
-      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : formIdentity(c, prompt))}})});
+      return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...finalForm(custom, c, prompt)}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
-    'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: 100, bindings: c.bindings, issues: c.issues}; },
+    'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: maxBatch(), bindings: c.bindings, issues: c.issues}; },
     'tasks.runBatch': async (tabId, spec = {}) => {
       const c = await compile(tabId, {expectedRevision: spec.expectedRevision}); assertRunnable(c.issues);
       // R19：先全量规划与校验，任何一项无效整体拒绝；之后整组一次登记
       const types = {}; for (const [k, b] of Object.entries(c.bindings)) if (b && !b.readonly && 'value' in b) types[k] = {type: typeof b.value === 'number' ? (Number.isInteger(b.value) ? 'int' : 'float') : typeof b.value === 'boolean' ? 'bool' : 'string', label: k};
-      const plan = planBatch({prompts: spec.prompts?.length ? spec.prompts : null, seeds: spec.seeds, count: spec.count, seedStart: spec.seedStart, variations: spec.variations}, types);
+      const plan = planBatch({prompts: spec.prompts?.length ? spec.prompts : null, seeds: spec.seeds, count: spec.count, seedStart: spec.seedStart, variations: spec.variations}, types, {max: maxBatch()});
       if (!plan.ok) throw new AppError(CODES.INVALID_ARGUMENT, `批量计划无效：${plan.errors[0].message}`, {details: {errors: plan.errors}});
       const params = Array.isArray(spec.params) && spec.params.length ? spec.params : [{}];
-      if (plan.total * params.length > 100) throw new AppError(CODES.INVALID_ARGUMENT, `批量共 ${plan.total * params.length} 个任务，超过上限 100。`);
+      if (plan.total * params.length > maxBatch()) throw new AppError(CODES.INVALID_ARGUMENT, `批量共 ${plan.total * params.length} 个任务，超过上限 ${maxBatch()}。`);
       const items = plan.items.flatMap(it => params.map(p => ({prompt: it.prompt, seed: it.seed, params: {...p, ...it.values}})));
       if ((spec.prompts?.length > 0) && !c.bindings.prompt) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的提示词输入，不能批量替换提示词。');
       if (items.some(i => i.seed !== null) && !(c.bindings.seed && (!c.bindings.seed.readonly || c.bindings.seedSource))) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的 seed 输入。');
       checkFormForRun(c, spec.formValues);
       const custom = applyCustomForm(c, c.apiPrompt, spec.formValues); // D04：批量同样按自定义表单写入
       const groupId = crypto.randomUUID();
-      const specs = items.map(item => {
+      const info = await getObjectInfo();
+      // RV07：整组先全部算出最终 prompt 并校验，任一项无效整组零入队
+      const finals = items.map((item, i) => {
         const values = {...item.params, ...(item.prompt !== null ? {prompt: item.prompt} : {}), ...(item.seed !== null ? {seed: item.seed} : {})};
-        const p = withPrefix(B.applyValues(custom.prompt, c.bindings, values), c, spec.prefixMode);
-        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(custom.form ? {templateId: custom.form.templateId, form: custom.form} : formIdentity(c, p.prompt))}})}; // C06：批量沿用同一表单身份
+        const finalPrompt = B.applyValues(custom.prompt, c.bindings, values);
+        checkFinalPrompt(c, finalPrompt, info, `第 ${i + 1} 个任务`);
+        return {values, finalPrompt};
+      });
+      const specs = finals.map(({values, finalPrompt}) => {
+        const p = withPrefix(finalPrompt, c, spec.prefixMode);
+        return {workflowId: workflowIdOf(c), inputRevision: c.revision, groupId, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, spec.references), params: values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...finalForm(custom, c, finalPrompt)}})}; // C06：批量沿用同一表单身份
       });
       const created = submissions.enqueueGroup(specs);
       return {groupId, tasks: created};
