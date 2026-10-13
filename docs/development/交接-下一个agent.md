@@ -131,3 +131,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - S09：`sharedPool()`；worker 任务 imageMeta / thumbnail（sharp）/ copyFile；AssetIndex 异步扫描与缩略图去重；打包自检 `worker` 步骤。
 - S10：在线模板库（`templates.browseOnline` 等，官方 Comfy-Org/workflow_templates 索引，样本夹具 tests/fixtures/comfy-workflow-templates-index.sample.json）；模板缩略图（`templates.thumbnail/setThumbnail`，任务成功自动生成）。
 - 需要 Codex 在 Windows 上人工验收：见 待Codex验收.md “PR11 第二轮（S01–S10）”。
+
+### 第五轮 CI 记录
+- 8654359（及 a11de2c、e6d2d80、ce73b3d、7d6f45e、14ef487、ff3604e）：Windows build 与 Regression 全部成功；打包自检的 worker 步骤（asar 内加载 worker、sharp 缩略图/元数据/复制）已通过。
+- PR #11 描述已更新，仍为草稿。
