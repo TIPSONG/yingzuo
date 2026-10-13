@@ -30,6 +30,7 @@ function createApi(ctx) {
     try { comfyProbe = await probeComfy(config.comfy.url, {fetchImpl, editorReady: {ready: editor.connected}}); }
     catch (e) { comfyProbe = {summary: 'config-error', error: e.message}; }
     if (comfyProbe.summary === 'ready' || comfyProbe.summary === 'degraded') comfyProbe.ownership = (await comfy.verifyOwned()) ? 'owned' : 'external';
+    if (comfyProbe.summary === 'ready') ctx.taskService?.warmObjectInfo?.().catch?.(() => {}); // RV02：连上即缓存节点定义（落盘），供首次保存识别敏感字段
     const lm = lmFor();
     const cli = await lm.detect();
     try { lmProbe = await probeLmStudio(config.lmstudio.url, {fetchImpl, cli: {...cli, listLoaded: cli.available && cli.canListLoaded ? () => lm.listLoaded() : null}}); }

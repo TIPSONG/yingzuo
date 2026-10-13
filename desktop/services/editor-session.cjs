@@ -39,7 +39,12 @@ const fallbackPolicy=require('../../shared/graph-storage-policy.cjs').createGrap
 const secureDisk=g=>graphPolicy?graphPolicy.secureForStorage(g):g;
 const resolveMem=g=>graphPolicy?graphPolicy.resolveInMemory(g).graph:g;
 const exportCopy=g=>(graphPolicy??fallbackPolicy).stripForExport(g);
-function setGraphPolicy(p){graphPolicy=p;for(const t of workspace.tabs)t.graph=resolveMem(t.graph);persistedWorkspace=JSON.stringify(workspace);}
+function setGraphPolicy(p){
+  graphPolicy=p;
+  // RV01：旧版本按脱敏前内存图记录哈希；有了政策后用凭据核实旧关系，核实成功才接受（原文件保留，下次保存改写索引）。
+  if(startupError&&/草稿校验不一致/.test(startupError)){try{workspace=Store.readWorkspace(paths.workspace,{resolveGraph:resolveMem});startupError=null;}catch(error){startupError=error.message;}}
+  for(const t of workspace.tabs)t.graph=resolveMem(t.graph);persistedWorkspace=JSON.stringify(workspace);
+}
 function persist() { if (startupError) throw new Error('旧工作区读取失败，已保留原文件。请先检查后再保存新草稿。'); Store.writeWorkspace(paths.workspace,workspace,{secureGraph:secureDisk});persistedWorkspace=JSON.stringify(workspace); }
 function layout() {
   if (!window || !bounds) return;
@@ -327,7 +332,8 @@ const commands = {
     const result=await dialog.showSaveDialog(window,{title:'导出工作流副本',defaultPath:path.join(folder,`${Store.safeName(tab.title)}.json`),filters:[{name:'ComfyUI 工作流',extensions:['json']}]});
     if(result.canceled||!result.filePath)return {cancelled:true};
     const ex=exportCopy(tab.graph);fs.writeFileSync(result.filePath,JSON.stringify(ex.graph,null,2),'utf8');
-    return {state:state(),path:result.filePath,refill:ex.refill,message:`工作流已保存：${result.filePath}${ex.refill.length?`（${ex.refill.length} 个敏感字段已移除，导入后需重新填写）`:''}`};
+    const unsure=ex.uncertain??[];
+    return {state:state(),path:result.filePath,refill:ex.refill,uncertain:unsure,message:`工作流已保存：${result.filePath}${ex.refill.length?`（${ex.refill.length} 个敏感字段已移除，导入后需重新填写）`:''}${unsure.length?`。注意：${unsure.length} 个节点的敏感字段位置无法确认（${unsure.map(u=>`${u.type}.${u.field}`).join('、')}），未自动清除，请分享前手工检查`:''}`};
   },
   showPreview: async()=>{
     await capture();persist();currentView='preview';

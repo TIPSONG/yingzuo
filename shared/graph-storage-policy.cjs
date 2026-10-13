@@ -15,7 +15,8 @@ const SF = require('./secret-fields.cjs');
 
 const KEY_LIKE = /^(sk-[A-Za-z0-9_-]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|hf_[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|xox[abpr]-[A-Za-z0-9-]{10,})$/;
 const WIDGET_TYPES = new Set(['INT', 'FLOAT', 'STRING', 'BOOLEAN', 'COMBO']);
-const isWidgetDef = def => Array.isArray(def) && (Array.isArray(def[0]) || WIDGET_TYPES.has(def[0]));
+// RV02：forceInput / rawLink 的输入只能连线，不占 widgets_values 位置。
+const isWidgetDef = def => Array.isArray(def) && (Array.isArray(def[0]) || WIDGET_TYPES.has(def[0])) && !def[1]?.forceInput && !def[1]?.rawLink;
 
 /** 按 object_info 推出 widgets_values 每一位对应的字段名（seed 类之后的 control_after_generate 占一位）。 */
 function widgetNames(classType, objectInfo) {
@@ -34,21 +35,26 @@ function* nodesOf(graph) {
   for (const sg of graph?.definitions?.subgraphs ?? []) for (const n of sg?.nodes ?? []) yield {scope: `subgraph:${sg.id}`, node: n};
 }
 /** 找出图中的敏感 widget：[{scope,nodeId,type,key,name,value}]（key 是 widgets_values 的下标或键）。 */
-function findSecretWidgets(graph, {objectInfo = null, knownValues = new Set()} = {}) {
+function findSecretWidgets(graph, {objectInfo = null, knownValues = new Set(), uncertain = []} = {}) {
   const hits = [];
   for (const {scope, node} of nodesOf(graph)) {
     const wv = node?.widgets_values; if (!wv || typeof wv !== 'object') continue;
     const type = String(node.type ?? '');
     const add = (key, name) => { const value = wv[key]; if (typeof value === 'string' && value) hits.push({scope, nodeId: String(node.id), type, key, name, value}); };
     if (!Array.isArray(wv)) { for (const k of Object.keys(wv)) if (SF.isSecretInput(type, k, null) || knownValues.has(wv[k]) || KEY_LIKE.test(String(wv[k] ?? ''))) add(k, k); continue; }
-    const names = widgetNames(type, objectInfo);
+    let names = widgetNames(type, objectInfo);
     const marked = new Set();
+    // RV02：只有推出的 widget 位数与实际 widgets_values 长度一致时才按位置映射；不一致（自定义序列化、
+    // 动态输入等）视为对应关系未知，不按猜测的位置处理，转为按值识别并报告 uncertain。
+    const declaredSecret = names ? names.find(w => w.def && SF.isSecretInput(type, w.name, w.def))?.name : null;
+    if (names && names.length !== wv.length) { names = null; if (declaredSecret) uncertain.push({scope, nodeId: String(node.id), type, field: declaredSecret}); }
     if (names) names.forEach((w, i) => { if (w.def && i < wv.length && SF.isSecretInput(type, w.name, w.def)) { add(i, w.name); marked.add(i); } });
-    // 没有 object_info：已转为输入的 widget 名称 + 已知明文 + 密钥格式
+    // 没有可靠映射：已转为输入的 widget 名称 / object_info 声明的敏感字段 + 已知明文 + 密钥格式
     const widgetInputs = (node.inputs ?? []).filter(x => x?.widget?.name).map(x => x.widget.name);
-    if (!names && widgetInputs.some(n => SF.isSecretInput(type, n, null))) {
-      // 顺序不可知时，按值判断：该节点所有字符串值里非空、非多行、无空格的视为候选
-      wv.forEach((v, i) => { if (!marked.has(i) && typeof v === 'string' && v && !/\s/.test(v) && v.length >= 8) { add(i, widgetInputs.find(n => SF.isSecretInput(type, n, null))); marked.add(i); } });
+    const secretField = declaredSecret ?? widgetInputs.find(n => SF.isSecretInput(type, n, null));
+    if (!names && secretField) {
+      // 顺序不可知时，按值判断：该节点所有字符串值里非空、无空白、≥8 字符的视为候选（内部保存可还原，不丢数据）
+      wv.forEach((v, i) => { if (!marked.has(i) && typeof v === 'string' && v && !/\s/.test(v) && v.length >= 8 && !SF.isPlaceholder(v) && !knownValues.has(v) && !KEY_LIKE.test(v)) { add(i, secretField); hits[hits.length - 1].guessed = true; marked.add(i); } });
     }
     wv.forEach((v, i) => { if (!marked.has(i) && typeof v === 'string' && v && !SF.isPlaceholder(v) && (knownValues.has(v) || KEY_LIKE.test(v))) { add(i, names?.[i]?.name ?? `#${i}`); marked.add(i); } });
   }
@@ -83,12 +89,19 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
   /** 对外导出：移除真实值与本机凭据标识，返回 {graph, refill}。 */
   function stripForExport(graph) {
     const out = structuredClone(graph);
-    const hits = findSecretWidgets(out, {objectInfo: objectInfo(), knownValues: knownValues()});
+    const uncertain = [];
+    const hits = findSecretWidgets(out, {objectInfo: objectInfo(), knownValues: knownValues(), uncertain});
     const refill = [];
-    for (const h of hits) { setAt(out, h, ''); refill.push({scope: h.scope, nodeId: h.nodeId, type: h.type, field: h.name}); }
+    // RV02：确定的位置（object_info 映射一致、已知明文、密钥格式、占位）才清空；按值猜测的位置不清空，
+    // 改为在 uncertain 中报告，调用方据此提示用户手工检查，不宣称已安全。
+    for (const h of hits) {
+      if (h.guessed && !SF.isPlaceholder(h.value)) { uncertain.push({scope: h.scope, nodeId: h.nodeId, type: h.type, field: h.name, key: h.key}); continue; }
+      setAt(out, h, ''); refill.push({scope: h.scope, nodeId: h.nodeId, type: h.type, field: h.name});
+    }
     // 其余位置残留的占位（本机凭据标识）也清空
     const walk = v => (typeof v === 'string' ? (SF.isPlaceholder(v) ? '' : v) : Array.isArray(v) ? v.map(walk) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v);
-    return {graph: walk(out), refill};
+    const seen = new Set();
+    return {graph: walk(out), refill, uncertain: uncertain.filter(u => { const k = `${u.scope}|${u.nodeId}|${u.field}|${u.key ?? ''}`; if (seen.has(k)) return false; seen.add(k); return true; })};
   }
   /** 载入：在内存中把占位还原；缺凭据保留占位并列出。 */
   function resolveInMemory(graph) {

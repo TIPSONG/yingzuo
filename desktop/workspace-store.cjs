@@ -51,7 +51,7 @@ function validateWorkspace(data) {
   return {...data, version:WORKSPACE_VERSION, tabs, activeId:ids.has(data.activeId) ? data.activeId : tabs[0]?.id || null};
 }
 const draftsDir = file => path.join(path.dirname(file), 'drafts');
-function readWorkspace(file) {
+function readWorkspace(file, {resolveGraph = null} = {}) {
   if (!fs.existsSync(file)) return emptyWorkspace();
   if (fs.statSync(file).size > MAX_WORKSPACE_BYTES) throw new Error('工作区记录超过大小限制，请保留文件并检查。');
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -64,7 +64,13 @@ function readWorkspace(file) {
       const draftFile = path.join(dir, path.basename(tab.graphRef));
       if (!fs.existsSync(draftFile)) throw new Error(`草稿文件缺失：${tab.graphRef}`);
       const graph = JSON.parse(fs.readFileSync(draftFile, 'utf8'));
-      if (tab.graphHash && graphHash(graph) !== tab.graphHash) throw new Error(`草稿校验不一致：${tab.graphRef}，已保留原文件。`);
+      // RV01：索引哈希对应磁盘上的实际内容（脱敏后）。旧版本曾按脱敏前的内存图计算；
+      // 只有能用凭据把磁盘图还原为与旧哈希一致的内存图时才接受（下次保存会改写为正确索引），否则保留原文件并报错。
+      if (tab.graphHash && graphHash(graph) !== tab.graphHash) {
+        let legacyOk = false;
+        if (resolveGraph) { try { legacyOk = graphHash(resolveGraph(graph)) === tab.graphHash; } catch { legacyOk = false; } }
+        if (!legacyOk) throw new Error(`草稿校验不一致：${tab.graphRef}，已保留原文件。`);
+      }
       const {graphRef, graphHash: _h, nativeIdentity, ...rest} = tab;
       const out = {...rest, graph};
       const workflowPath = nativeIdentity?.workflowPath ?? tab.workflowPath, documentId = nativeIdentity?.documentId ?? tab.documentId;
@@ -87,10 +93,11 @@ function writeWorkspace(file, data, {secureGraph = null} = {}) {
   const dir = draftsDir(file);
   const tabs = valid.tabs.map(tab => {
     const {graph, workflowPath, documentId, ...meta} = tab;
-    const body = JSON.stringify(secureGraph ? secureGraph(graph) : graph); // C01：磁盘副本经统一保存政策（敏感值→凭据引用）
+    const diskGraph = secureGraph ? secureGraph(graph) : graph; // C01：磁盘副本经统一保存政策（敏感值→凭据引用）
+    const body = JSON.stringify(diskGraph);
     if (Buffer.byteLength(body) > MAX_GRAPH_BYTES) throw new Error('工作副本超过 8 MB，暂不保存。');
     const nativeIdentity = workflowPath || documentId ? {hostName:`yingzuo-${tab.id}`, workflowPath:workflowPath ?? null, documentId:documentId ?? null} : null;
-    return {meta:{...meta, graphRef:`drafts/${tab.id}.json`, graphHash:graphHash(graph), nativeIdentity, ...(workflowPath ? {workflowPath} : {}), ...(documentId ? {documentId} : {})}, body};
+    return {meta:{...meta, graphRef:`drafts/${tab.id}.json`, graphHash:graphHash(diskGraph), nativeIdentity, ...(workflowPath ? {workflowPath} : {}), ...(documentId ? {documentId} : {})}, body};
   });
   const index = JSON.stringify({...valid, tabs:tabs.map(t => t.meta)}, null, 2);
   if (Buffer.byteLength(index) > MAX_WORKSPACE_BYTES) throw new Error('工作区记录过大，未覆盖已有草稿。');

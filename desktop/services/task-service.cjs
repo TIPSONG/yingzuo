@@ -81,10 +81,16 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     if (!clientCache || clientCache.base.href !== new URL(url).href) clientCache = new ComfyHttpClient(url, {fetchImpl});
     return clientCache;
   };
+  // RV02：object_info 落盘缓存。首次保存/离线时用上次连接得到的节点定义识别敏感字段，不要求先运行一次任务。
+  const objectInfoFile = layout.root ? require('node:path').join(layout.root, 'object-info-cache.json') : null;
   let objectInfo = null, objectInfoAt = 0;
+  try { if (objectInfoFile && fs.existsSync(objectInfoFile)) { const c = JSON.parse(fs.readFileSync(objectInfoFile, 'utf8')); if (c && typeof c.data === 'object') objectInfo = c.data; } } catch (e) { logger?.warn('object_info 缓存读取失败', {error: e.message}); }
   async function getObjectInfo() {
-    if (objectInfo && Date.now() - objectInfoAt < 60000) return objectInfo;
-    try { objectInfo = await client().objectInfo(); objectInfoAt = Date.now(); } catch (e) { logger?.warn('object_info 获取失败', {error: e.message}); }
+    if (objectInfo && objectInfoAt && Date.now() - objectInfoAt < 60000) return objectInfo;
+    try {
+      objectInfo = await client().objectInfo(); objectInfoAt = Date.now();
+      if (objectInfoFile) { try { const tmp = `${objectInfoFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify({savedAt: new Date().toISOString(), data: objectInfo})); fs.renameSync(tmp, objectInfoFile); } catch (e) { logger?.warn('object_info 缓存写入失败', {error: e.message}); } }
+    } catch (e) { logger?.warn('object_info 获取失败', {error: e.message}); }
     return objectInfo;
   }
   const queue = new QueueService({
@@ -407,6 +413,6 @@ function createTaskService({credentials = null, db, layout, configRepo, events, 
     /** S05：模板/草稿等持久化 UI 图前调用——敏感值转入系统加密存储，图中只留占位。 */
     redactGraph: (graph, apiPrompt) => redactSnapshot({uiGraph: graph, apiPrompt}).uiGraph,
   };
-  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, cachedObjectInfo: () => objectInfo, setTemplateRepo: r => { templateRepo = r; }, setFormProvider: f => { formProvider = f; }};
+  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, cachedObjectInfo: () => objectInfo, warmObjectInfo: () => getObjectInfo(), setTemplateRepo: r => { templateRepo = r; }, setFormProvider: f => { formProvider = f; }};
 }
 module.exports = {createTaskService, ReferenceStore, uploadReferences};
