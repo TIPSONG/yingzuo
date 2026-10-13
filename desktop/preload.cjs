@@ -17,6 +17,7 @@ const GROUPS = {
   templates: ['list','get','update','import','importBuiltins','open','saveFromTab','restore','export','formDraft','saveForm','checkMapping','rebind','diagnose','catalog','applyFix','undoFix','exportFixed','importOnline','dependencyPlan','findModelSources','applyDependencyPlan','detectManager'],
   downloads: ['search','detail','version','parseLink','plan','pickDir','add','list','pause','resume','cancel'],
   maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts','checkUpdates','checkAppRelease','downloadAppRelease','openAppUpdateFolder'],
+  assets: ['scan','watch','list','recent','get','thumbnail','linkTask','previewPrefix','openFile','revealFile','openLocation','shareSupport','exportOriginal','exportShare','favorite','unfavorite','favorites','favoriteLayout'],
 };
 let counter = 0;
 const call = (method, args) => ipcRenderer.invoke('yingzuo:api', {requestId:`r${Date.now().toString(36)}${(counter++).toString(36)}`, method, args});
