@@ -237,10 +237,10 @@
       "id": "PR11-R12",
       "level": "P1",
       "name": "启动恢复持续跟踪与提交快照",
-      "status": "实现中",
-      "commit": "bf765ab",
-      "tests": "queue.test R12/D08；task-service.test R12 未知重试确认",
-      "note": "已做：ready、独立 follower、恢复期间新建任务等待、unknown 重试需确认。未做：意图快照与实际提交快照（上传后文件引用、最终参数）分开存储"
+      "status": "程序完成",
+      "commit": "a38e080",
+      "tests": "queue.test R12/D08；task-service.test R12（未知重试确认、提交记录）",
+      "note": "提交记录保存在 task-submissions/，每次尝试追加，只含凭据占位符"
     },
     {
       "id": "PR11-R13",

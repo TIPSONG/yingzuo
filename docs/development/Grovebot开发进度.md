@@ -57,7 +57,7 @@
 | PR11-R09 | P1 | 异步 UI 固定发起标签和版本 | 程序完成 | fdbe85a | ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision | 主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理） |
 | PR11-R10 | P1 | 自定义表单进入创作和运行 | 实现中 | 3c3202e | task-service.test D04（单次与批量）、ui-tasks.test D04 | 运行按钮按表单弹窗；后端单次/批量都可按表单写入并记入快照。未做：左侧参数面板改用表单、批量弹窗中填写表单、润色流程 |
 | PR11-R11 | P1 | 参考图关系进工作区仓库 | 实现中 | 2434be6 | task-service.test R11 | 已做：持久关系、迁移、复制、丢失检测、运行统一来源。未做：导出/恢复带素材 manifest、子图内 LoadImage 的槽位测试、关闭标签恢复时关系随归档 |
-| PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 实现中 | bf765ab | queue.test R12/D08；task-service.test R12 未知重试确认 | 已做：ready、独立 follower、恢复期间新建任务等待、unknown 重试需确认。未做：意图快照与实际提交快照（上传后文件引用、最终参数）分开存储 |
+| PR11-R12 | P1 | 启动恢复持续跟踪与提交快照 | 程序完成 | a38e080 | queue.test R12/D08；task-service.test R12（未知重试确认、提交记录） | 提交记录保存在 task-submissions/，每次尝试追加，只含凭据占位符 |
 | PR11-R13 | P1 | 环境备份与应用数据备份分开 | 程序完成 | 1a66ac2 | app-backup.test | 资源页“应用数据备份”；恢复在 entry.cjs 中、main.cjs 打开数据库前执行；收藏 manifest 在数据库中。真实空间需求预估未做（按实际复制） |
 | PR11-R14 | P2 | 回收区与备份空间管理 | 程序完成 | ca3792f | maint-service.test R07/R14；review2 trash-store.test | 只管理本应用登记条目；永久清理需确认、逐项再核对；未完成恢复使用的条目受保护 |
 | PR11-R15 | P2 | 206 续传与来源身份 | 程序完成 | 50c8fa9 | review2 downloader-resume.test（7 项） | 由 feat/grovebot-review2 完成并已合并 |
