@@ -65,25 +65,63 @@ function stripPng(buf) {
 }
 
 // ---------- JPEG ----------
+// R16/D13：完整遍历 JPEG 标记序列（含多个 SOS、扫描间的 APP/COM/DHT/DQT 等），直到 EOI。
+// 熵编码数据作为 {marker:'ECS'} 原样保留；EOI 之后的尾随字节不保留（常见于附加元数据）。
 function jpegSegments(buf) {
   if (detectFormat(buf) !== 'jpeg') throw bad('不是 JPEG');
   const segs = [{marker: 0xd8, start: 0, end: 2}];
   let off = 2;
   for (;;) {
-    if (off >= buf.length) throw bad('JPEG 在扫描数据前结束');
+    if (off >= buf.length) throw bad('JPEG 缺少 EOI（文件被截断）');
     if (buf[off] !== 0xff) throw bad('JPEG 段标记错位');
     let m = off + 1;
-    while (buf[m] === 0xff) m++; // 填充字节
+    while (m < buf.length && buf[m] === 0xff) m++; // 填充字节
+    if (m >= buf.length) throw bad('JPEG 段被截断');
     const marker = buf[m];
-    if (marker === 0xd9) { segs.push({marker, start: off, end: m + 1}); return {segs, tail: m + 1}; }
+    if (marker === 0xd9) { segs.push({marker, start: off, end: m + 1}); return {segs, tail: m + 1, trailing: buf.length - (m + 1)}; }
     if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) { segs.push({marker, start: off, end: m + 1}); off = m + 1; continue; }
+    if (marker === 0x00) throw bad('JPEG 段标记无效');
     if (m + 3 > buf.length) throw bad('JPEG 段被截断');
     const len = buf.readUInt16BE(m + 1);
     if (len < 2 || m + 1 + len > buf.length) throw bad('JPEG 段长度无效');
     segs.push({marker, start: off, end: m + 1 + len, data: buf.subarray(m + 3, m + 1 + len)});
     off = m + 1 + len;
-    if (marker === 0xda) return {segs, tail: off}; // SOS 之后是熵编码数据，原样保留
+    if (marker === 0xda) {
+      // 扫描熵编码数据：0xFF00 为填充、0xFFD0–D7 为重启标记，均属于数据；其他 0xFF xx 为下一个标记。
+      let p = off;
+      for (;;) {
+        if (p + 1 >= buf.length) throw bad('JPEG 扫描数据被截断（缺少 EOI）');
+        if (buf[p] === 0xff) {
+          const n = buf[p + 1];
+          if (n !== 0x00 && n !== 0xff && !(n >= 0xd0 && n <= 0xd7)) break;
+          if (n === 0xff) { p++; continue; }
+        }
+        p++;
+      }
+      segs.push({marker: 'ECS', start: off, end: p});
+      off = p;
+    }
   }
+}
+/** 读取 Exif APP1 中的方向（0x0112）；没有或无法解析返回 null。 */
+function jpegOrientation(segs) {
+  for (const s of segs) {
+    if (s.marker !== 0xe1 || !s.data || s.data.toString('latin1', 0, 6) !== 'Exif\0\0') continue;
+    const t = s.data.subarray(6);
+    if (t.length < 8) return null;
+    const le = t.toString('latin1', 0, 2) === 'II';
+    if (!le && t.toString('latin1', 0, 2) !== 'MM') return null;
+    const u16 = o => le ? t.readUInt16LE(o) : t.readUInt16BE(o), u32 = o => le ? t.readUInt32LE(o) : t.readUInt32BE(o);
+    const ifd = u32(4);
+    if (ifd + 2 > t.length) return null;
+    const n = u16(ifd);
+    for (let i = 0; i < n; i++) {
+      const e = ifd + 2 + i * 12;
+      if (e + 12 > t.length) return null;
+      if (u16(e) === 0x0112) return u16(e + 8);
+    }
+  }
+  return null;
 }
 function jpegDropReason(s) {
   const id = s.data ? s.data.toString('latin1', 0, Math.min(s.data.length, 32)) : '';
@@ -95,9 +133,12 @@ function jpegDropReason(s) {
   return null;
 }
 function stripJpeg(buf) {
-  const {segs, tail} = jpegSegments(buf), parts = [], removed = [];
-  for (const s of segs) { const r = jpegDropReason(s); if (r) removed.push(r); else parts.push(buf.subarray(s.start, s.end)); }
-  parts.push(buf.subarray(tail));
+  const {segs, trailing} = jpegSegments(buf), parts = [], removed = [];
+  // 方向策略：Exif 方向非 1 时，剥离 Exif 会改变显示方向；无损路径无法保持一致 → 拒绝该文件的分享副本。
+  const orientation = jpegOrientation(segs);
+  if (orientation != null && orientation !== 1) throw new AppError(CODES.UNSUPPORTED, `该 JPEG 依赖 Exif 方向（${orientation}）显示，去除元数据会改变显示方向，已禁用分享副本导出（可用原图导出）。`);
+  for (const s of segs) { const r = s.marker === 'ECS' ? null : jpegDropReason(s); if (r) removed.push(r); else parts.push(buf.subarray(s.start, s.end)); }
+  if (trailing > 0) removed.push('trailing-data');
   return {buffer: Buffer.concat(parts), removed};
 }
 function jpegComments(buf) {
@@ -195,4 +236,4 @@ function readGenerationInfo(buf) {
   info.missing = ['prompts', 'seed', 'parameters', 'workflow'].filter(k => k === 'prompts' ? !info.prompts.length && !info.parameters : k === 'seed' ? info.seed === null : k === 'parameters' ? !info.samplers.length && !info.parameters : !info.hasWorkflow);
   return info;
 }
-module.exports = {detectFormat, shareSupport, SHARE_FORMATS, pngChunks, pngText, stripPng, stripJpeg, stripWebp, stripForShare, readGenerationInfo, summarizeComfyPrompt};
+module.exports = {jpegSegments, jpegOrientation, detectFormat, shareSupport, SHARE_FORMATS, pngChunks, pngText, stripPng, stripJpeg, stripWebp, stripForShare, readGenerationInfo, summarizeComfyPrompt};

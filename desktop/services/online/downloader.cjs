@@ -20,6 +20,15 @@ async function hashFile(file, bytes) {
   return h;
 }
 
+const isWeak = e => typeof e === 'string' && /^W\//i.test(e.trim());
+const sameEtag = (a, b) => !!a && !!b && !isWeak(a) && !isWeak(b) && a.trim() === b.trim();
+/** R15：续传依据。强 ETag 优先，其次 Last-Modified；都没有返回 null（不可续传）。 */
+function resumeValidator(d) {
+  if (d.etag && !isWeak(d.etag)) return d.etag;
+  if (d.lastModified) return d.lastModified;
+  return null;
+}
+
 class DownloadManager {
   /**
    * resolve(urlRef) → {url, headers}：由 provider 解析（可带临时授权头，不持久化）。
@@ -99,7 +108,10 @@ class DownloadManager {
     const {url, headers = {}} = await this.resolve(d.urlRef); // O06：每次重新解析（签名 URL 可能过期）
     let have = fs.existsSync(d.tempPath) ? fs.statSync(d.tempPath).size : 0;
     const req = {...headers};
-    if (have > 0) { req.range = `bytes=${have}-`; if (d.etag) req['if-range'] = d.etag; else if (d.lastModified) req['if-range'] = d.lastModified; }
+    // R15：只有存在可靠来源身份（强 ETag 或 Last-Modified）时才续传；弱 ETag 不能用于 If-Range；否则从零重下。
+    const validator = resumeValidator(d);
+    if (have > 0 && !validator) { this.logger?.info('download restart: no reliable validator', {id}); fs.rmSync(d.tempPath, {force: true}); have = 0; }
+    if (have > 0) { req.range = `bytes=${have}-`; req['if-range'] = validator; }
     const controller = new AbortController();
     const off = token.onCancel ? token.onCancel(() => controller.abort()) : null;
     const timer = setInterval(() => { if (token.cancelled) controller.abort(); }, 200);
@@ -107,13 +119,18 @@ class DownloadManager {
       const res = await this.fetchImpl(url, {headers: req, signal: controller.signal, redirect: 'follow'});
       if (res.status === 401 || res.status === 403) throw Object.assign(new AppError(CODES.FORBIDDEN, `来源拒绝访问（HTTP ${res.status}）：可能需要登录凭据或先在网站上同意许可。`), {retryable: false});
       if (res.status === 404) throw Object.assign(new AppError(CODES.NOT_FOUND, '来源文件不存在（HTTP 404）。'), {retryable: false});
-      if (res.status === 416) { have = 0; fs.rmSync(d.tempPath, {force: true}); throw new AppError(CODES.CONFLICT, '续传位置无效，已清除临时文件重新下载。'); }
+      if (res.status === 416) { have = 0; fs.rmSync(d.tempPath, {force: true}); throw new AppError(CODES.CONFLICT, '续传位置无效，已清除临时文件重新下载。', {retryable: true}); }
       if (!res.ok) throw new AppError(CODES.SERVICE_UNAVAILABLE, `下载失败：HTTP ${res.status}`);
       const etag = res.headers.get('etag'), lastModified = res.headers.get('last-modified');
       let append = false;
       if (res.status === 206) {
-        const m = /bytes (\d+)-(\d+)\/(\d+|\*)/.exec(res.headers.get('content-range') ?? '');
-        if (!m || Number(m[1]) !== have) throw new AppError(CODES.CONFLICT, '服务器返回的续传范围不一致。');
+        const m = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec((res.headers.get('content-range') ?? '').trim());
+        const restart = msg => { fs.rmSync(d.tempPath, {force: true}); return new AppError(CODES.CONFLICT, `${msg}已清除临时文件，将从头重新下载。`, {retryable: true}); };
+        if (have === 0 || !m || Number(m[1]) !== have) throw restart('服务器返回的续传范围不一致，');
+        const end = Number(m[2]), total = m[3] === '*' ? null : Number(m[3]);
+        if (end < have || (total != null && end !== total - 1) || (total != null && d.totalBytes && total !== d.totalBytes)) throw restart('续传范围与文件总大小不符，');
+        if (d.etag && !sameEtag(d.etag, etag)) throw restart('来源 ETag 已变化，');
+        if (!d.etag && d.lastModified && lastModified && lastModified !== d.lastModified) throw restart('来源修改时间已变化，');
         append = true;
         if (m[3] !== '*') this._update(id, {totalBytes: Number(m[3])});
       } else {
@@ -145,4 +162,4 @@ class DownloadManager {
     } finally { clearInterval(timer); off?.(); }
   }
 }
-module.exports = {DownloadManager, ACTIVE};
+module.exports = {DownloadManager, ACTIVE, resumeValidator, sameEtag};
