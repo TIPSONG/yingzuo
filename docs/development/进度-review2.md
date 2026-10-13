@@ -8,4 +8,6 @@
 | --- | --- | --- | --- |
 | R15 / D14 | 206 续传核对来源身份（ETag/Last-Modified、Content-Range 完整校验），无可靠身份时从零重下 | desktop/services/online/downloader.cjs、tests/downloader-resume.test.cjs | 完成（7 项回归）|
 | R16 / D13 | 分享 JPEG 完整遍历标记（多 SOS、扫描间 APP/COM），Exif 方向非 1 时拒绝无损剥离 | desktop/core/image-meta.cjs、tests/image-meta-jpeg.test.cjs | 完成（6 项回归，sharp 真实夹具；方向策略=拒绝分享副本，不做像素旋转）|
-| R18（部分）/ D15 | 新增独立脱敏工具 shared/secret-fields.cjs（识别 password/已知 secret 字段，替换为 credentialRef 占位）+ 测试；接入快照存储留给主线 worker 决定 | shared/secret-fields.cjs、tests/secret-fields.test.cjs | 待做 |
+| R18（部分）/ D15 | 新增独立脱敏工具 shared/secret-fields.cjs（识别 password/已知 secret 字段，替换为 credentialRef 占位）+ 测试；接入快照存储留给主线 worker 决定 | shared/secret-fields.cjs、tests/secret-fields.test.cjs | 工具完成（3 项回归）；**未接入**快照存储/导出，需主线在 task-repo/提交路径调用 redactForStorage/resolveSecrets |
+
+全量：`npm test` 248 项，247 通过、1 跳过；`node tools/check.cjs` 通过。
