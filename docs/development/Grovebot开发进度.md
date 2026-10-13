@@ -36,7 +36,7 @@
 | D08 | P1 | 启动恢复没有持续跟踪存量任务 | 未开始 |  |  |  |
 | D09 | P1 | 取消后退出 15 秒超时当作可退出 | 程序完成 | 0fd23ab | quit-flow.test（4 项） | 退出流程抽到 desktop/services/quit-flow.cjs |
 | D10 | P1 | 目标中断未探测，可能中断下一项 | 程序完成 | 0fd23ab | queue.test D10 两项 | GET /api/jobs 探测；支持时用 /api/jobs/{id}/cancel（服务端原子）；旧后端发送前再核对，仍非原子 |
-| D11 | P1 | 服务归属与停止确认不严格 | 未开始 |  |  |  |
+| D11 | P1 | 服务归属与停止确认不严格 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
 | D12 | P1 | 模型移动未与任务/维护互斥 | 未开始 |  |  |  |
 | D13 | P2 | 分享 JPEG 元数据未遍历完整容器 | 未开始 |  |  |  |
 | D14 | P2 | 206 续传未核对旧文件身份 | 未开始 |  |  |  |
@@ -49,7 +49,7 @@
 | PR11-R01 | P1 | 维护状态与暂停租约 | 程序完成 | ea187ce | maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时 | 队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放 |
 | PR11-R02 | P1 | 首次/继续恢复走同一保护入口 | 程序完成 | 0fd23ab | maint-service.test D06 | 资源与维护页显示恢复失败暂停状态；maintenance.hold 事件全局提示 |
 | PR11-R03 | P1 | 补丁冲突不记为成功更新 | 未开始 |  |  |  |
-| PR11-R04 | P1 | 服务归属与停止闭环 | 未开始 |  |  |  |
+| PR11-R04 | P1 | 服务归属与停止闭环 | 程序完成 | d5c41b1 | services.test D11 两项 | LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部 |
 | PR11-R05 | P1 | 取消、退出和精确中断 | 程序完成 | 0fd23ab | quit-flow.test、queue.test D10 | 已做：取消退出超时不当作成功（D09）；未做：定向中断能力探测（D10）、prepareQuit 测试 |
 | PR11-R06 | P1 | 模型移动与环境操作共用锁 | 未开始 |  |  |  |
 | PR11-R07 | P1 | 真实五图适配和脱敏契约夹具 | 实现中 | fdbe85a | tests/fixtures/qwen21-gemma-api.json 脱敏夹具 | Qwen21/Primitive/Gemma/PreviewAny 已按源码适配；ResolutionSelector、SaveImageAdvanced 输入名未从源码核实（只读处理并标注来源），尚未用 object_info 校验绑定 |

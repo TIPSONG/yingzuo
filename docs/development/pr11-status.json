@@ -88,7 +88,10 @@
       "id": "D11",
       "level": "P1",
       "name": "服务归属与停止确认不严格",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "d5c41b1",
+      "tests": "services.test D11 两项",
+      "note": "LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部"
     },
     {
       "id": "D12",
@@ -145,7 +148,10 @@
       "id": "PR11-R04",
       "level": "P1",
       "name": "服务归属与停止闭环",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "d5c41b1",
+      "tests": "services.test D11 两项",
+      "note": "LM Studio 无可查询的实例标识，采用“本次应用会话 + 端口 + 就绪确认”的保守归属；跨重启一律按外部"
     },
     {
       "id": "PR11-R05",
