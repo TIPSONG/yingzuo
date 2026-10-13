@@ -24,10 +24,14 @@ function resolveDataRoot({isPackaged, exePath, userData, devRoot, env = process.
   }
   return {mode: 'installed', root: path.join(userData, 'data')};
 }
+/** RV05：只描述路径，不创建任何目录（恢复前使用，避免重建正在恢复的目标）。 */
+function describeLayout(root) {
+  return Object.fromEntries([['root', root], ...SUBDIRS.map(d => [d, path.join(root, d)]), ['config', path.join(root, 'config.json')], ['workspace', path.join(root, 'workspace.json')], ['database', path.join(root, 'yingzuo.sqlite')]]);
+}
 function ensureLayout(root) {
   fs.mkdirSync(root, {recursive: true});
   for (const d of SUBDIRS) fs.mkdirSync(path.join(root, d), {recursive: true});
-  return Object.fromEntries([['root', root], ...SUBDIRS.map(d => [d, path.join(root, d)]), ['config', path.join(root, 'config.json')], ['workspace', path.join(root, 'workspace.json')], ['database', path.join(root, 'yingzuo.sqlite')]]);
+  return describeLayout(root);
 }
 
 /**
@@ -83,4 +87,4 @@ function importLegacy({legacyDir, layout, writeWorkspace, readLegacyWorkspace, n
     throw new AppError(CODES.MIGRATION_FAILED, `旧数据导入失败，已恢复导入前状态，源文件未改动：${error.message}`, {details: {legacyDir}});
   }
 }
-module.exports = {resolveDataRoot, ensureLayout, importLegacy, SUBDIRS};
+module.exports = {describeLayout, resolveDataRoot, ensureLayout, importLegacy, SUBDIRS};

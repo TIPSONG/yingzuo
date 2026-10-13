@@ -14,17 +14,14 @@ if (target) {
   if (!app.requestSingleInstanceLock()) app.quit();
   else {
     // R13：已登记的应用数据恢复在打开数据库之前执行（没有登记时同步继续）
-    const fs = require('node:fs');
-    const {resolveDataRoot, ensureLayout} = require('./repositories/data-root.cjs');
-    let pending = null;
-    try {
-      const dr = resolveDataRoot({isPackaged: !!app.isPackaged, exePath: app.isPackaged ? process.execPath : null, userData: app.isPackaged ? app.getPath('userData') : null, devRoot: path.resolve(__dirname, '..')});
-      if (fs.existsSync(path.join(dr.root, 'pending-app-restore.json'))) pending = ensureLayout(dr.root);
-    } catch { /* 数据根问题由 main.cjs 正常报告 */ }
+    // RV05：恢复前不调用 ensureLayout（不重建受恢复目录）；恢复成功后 main.cjs 再创建布局
+    const {resolveDataRoot} = require('./repositories/data-root.cjs');
+    const {hasPending, runStartupRestore} = require('./startup-restore.cjs');
+    let root = null;
+    try { root = resolveDataRoot({isPackaged: !!app.isPackaged, exePath: app.isPackaged ? process.execPath : null, userData: app.isPackaged ? app.getPath('userData') : null, devRoot: path.resolve(__dirname, '..')}).root; }
+    catch { /* 数据根本身不可用：由 main.cjs 正常报告 */ }
     // C04：先决定 normal / recovery。恢复失败、标记损坏或未完成时进入独立恢复模式，不加载 main（不打开/迁移数据库、不组装写服务）
-    if (!pending) require('./main.cjs');
-    else require('./maintenance/app-backup.cjs').applyPendingAppRestore(pending)
-      .then(r => r, e => ({status: 'failed', recovery: true, error: e.message}))
-      .then(r => { globalThis.__yzAppRestore = r; if (r?.recovery) require('./recovery.cjs').startRecovery({layout: pending, result: r}); else require('./main.cjs'); });
+    if (!root || !hasPending(root)) require('./main.cjs');
+    else runStartupRestore(root).then(({mode, layout, result}) => { globalThis.__yzAppRestore = result; if (mode === 'recovery') require('./recovery.cjs').startRecovery({layout, result}); else require('./main.cjs'); });
   }
 }

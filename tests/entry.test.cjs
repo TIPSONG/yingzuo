@@ -29,7 +29,7 @@ test('C04：应用数据恢复失败→加载恢复模式而不是主进程；�
       if (req === 'electron') return {app};
       if (req === './main.cjs') { calls.push('main'); return {}; }
       if (req === './recovery.cjs') return {startRecovery: () => calls.push('recovery')};
-      if (req === './repositories/data-root.cjs') return {resolveDataRoot: () => ({root}), ensureLayout: r => ({root: r})};
+      if (req === './repositories/data-root.cjs') return {resolveDataRoot: () => ({root}), ensureLayout: r => ({root: r}), describeLayout: r => ({root: r})};
       if (req === './maintenance/app-backup.cjs') return {applyPendingAppRestore: async () => { if (!res) throw new Error('标记损坏'); return res; }};
       return orig.call(this, req, parent, ...rest);
     };

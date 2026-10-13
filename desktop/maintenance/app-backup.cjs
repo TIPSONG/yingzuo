@@ -87,12 +87,12 @@ async function scheduleAppRestore(layout, dir) {
  * S06：失败时不再改名丢弃，而是保留 pending（action=null、记录 journalId 与错误），应用以恢复模式启动：
  * 暂停提交、阻断维护与服务启动，直到用户选择继续或回退并重启。
  */
-async function applyPendingAppRestore(layout) {
+async function applyPendingAppRestore(layout, {hooks} = {}) {
   const f = pendingFile(layout); if (!fs.existsSync(f)) return null;
   const p = JSON.parse(fs.readFileSync(f, 'utf8'));
   const action = p.action === undefined ? 'restore' : p.action;
   if (!action) return {status: 'failed', recovery: true, dir: p.dir, journalId: p.journalId ?? null, error: p.error ?? null};
-  const engine = new RestoreEngine({journalDir: path.join(layout.migrations, 'app-restore')});
+  const engine = new RestoreEngine({journalDir: path.join(layout.migrations, 'app-restore'), hooks});
   let journalId = p.journalId ?? null;
   try {
     if (action === 'rollback') { if (!journalId) throw new AppError(CODES.INVALID_STATE, '没有可回退的恢复记录。'); await engine.rollback(journalId); fs.rmSync(f, {force: true}); return {status: 'rolled-back', dir: p.dir, journalId}; }
