@@ -82,6 +82,7 @@
       <header class="page-head"><div><span class="eyebrow">SERVICES</span><h1>服务与日志</h1></div><div class="header-actions"><button id="logs-refresh">刷新日志</button><button id="open-logs">打开日志目录</button><button id="export-diag" class="primary">导出诊断信息</button></div></header>
       <div class="page-body">
         <div id="service-detail" class="cards"></div>
+        <h2 class="section-title">版本与更新（只检测，不自动执行）</h2><div class="actions"><button id="up-check">检查 ComfyUI 与插件</button><button id="up-fetch">联网获取远端版本</button><button id="up-app">检查映作新版本</button></div><div id="up-result" class="list"></div>
         <h2 class="section-title">ComfyUI 输出（本应用启动时）</h2><pre id="comfy-log" class="log">—</pre>
         <h2 class="section-title">映作日志（已脱敏）</h2><pre id="app-log" class="log">—</pre>
       </div>
@@ -104,5 +105,6 @@
   <script src="ui/tasks.js"></script>
   <script src="ui/templates.js"></script>
   <script src="ui/online.js"></script>
+  <script src="ui/updates.js"></script>
 </body>
 </html>

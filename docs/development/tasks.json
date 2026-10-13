@@ -820,41 +820,44 @@
   "id": "U05",
   "name": "更新检测与页面",
   "batch": 5,
-  "status": "未开始",
+  "status": "实现中",
   "commit": "",
-  "files": [],
-  "checks": "",
-  "note": ""
+  "files": [
+   "desktop/services/update-check.cjs",
+   "desktop/ui/updates.js"
+  ],
+  "checks": "tests/update-check.test.cjs",
+  "note": "只读检测 ComfyUI/插件 git 版本、本地改动、落后提交（用户点击才联网 fetch）；渠道与频率配置未做"
  },
  {
   "id": "U06",
   "name": "Comfy／插件更新",
   "batch": 5,
-  "status": "未开始",
+  "status": "阻塞",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "执行更新必须在 U01–U04 环境备份/回滚事务内（feat/grovebot-maint），本分支未合入前不实现，避免无回滚的更新"
  },
  {
   "id": "U07",
   "name": "更新记录与保留",
   "batch": 5,
-  "status": "未开始",
+  "status": "阻塞",
   "commit": "",
   "files": [],
   "checks": "",
-  "note": ""
+  "note": "依赖 U01–U04 的备份包与恢复入口（feat/grovebot-maint）"
  },
  {
   "id": "U08",
   "name": "应用版本维护",
   "batch": 5,
-  "status": "未开始",
+  "status": "程序完成",
   "commit": "",
   "files": [],
-  "checks": "",
-  "note": ""
+  "checks": "tests/update-check.test.cjs",
+  "note": "读取 GitHub Releases、显示变更、显式下载并按 SHA256SUMS 校验、打开目录手动安装；未签名、不配自动更新 feed。仓库私有时提示手动流程"
  },
  {
   "id": "B01",
