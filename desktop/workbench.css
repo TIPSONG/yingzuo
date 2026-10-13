@@ -22,3 +22,4 @@
 .w70{width:70px}
 .w110{width:110px}
 .w220{width:220px}
+.tpl-thumb{width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none;display:inline-flex;align-items:center;justify-content:center}

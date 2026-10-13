@@ -9,7 +9,7 @@ const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
 const SF = require('../../shared/secret-fields.cjs');
 
-function createTemplateService({db, layout, editor, taskService, dialog, getWindow, builtins = () => []}) {
+function createTemplateService({db, layout, editor, taskService, dialog, getWindow, builtins = () => [], pool = null}) {
   const repo = new TemplateRepository(db, layout.templates);
   const tabGraph = tabId => editor.enqueue(() => editor.commands.tabGraph(tabId));
   // S05：存为模板前把敏感输入（如 API Key）转入系统加密存储，图中只保留占位；导出时占位清空、不导出凭据
@@ -103,6 +103,31 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       return pinned(tabId, id, repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: `重新绑定 ${fields[index].label ?? fields[index].fieldName} → 节点 ${nodeId}`}));
     },
   };
-  return {repo, methods};
+  /* ---------- T01/S10：模板缩略图（worker 内 sharp 生成 256px PNG） ---------- */
+  async function thumbnailFromImage(id, file) {
+    if (!repo.get(id)) throw new AppError(CODES.NOT_FOUND, '模板不存在。');
+    if (!pool) throw new AppError(CODES.UNSUPPORTED, '缩略图组件不可用。');
+    const tmp = path.join(layout.templates, `thumb-${process.pid}-${Date.now()}.tmp.png`);
+    try { await pool.run('thumbnail', {src: file, tmp, size: 256, format: 'png'}); return repo.setThumbnail(id, fs.readFileSync(tmp)); }
+    finally { fs.rmSync(tmp, {force: true}); }
+  }
+  /** 任务成功后：来自模板且模板还没有缩略图时，用第一张输出图生成。 */
+  async function autoThumbnail(templateId, file) {
+    const t = templateId && repo.get(templateId);
+    if (!t || t.thumbnail || !file || !fs.existsSync(file)) return null;
+    return thumbnailFromImage(templateId, file);
+  }
+  methods['templates.thumbnail'] = async id => {
+    const t = repo.get(id); if (!t) throw new AppError(CODES.NOT_FOUND, '模板不存在。');
+    if (!t.thumbnail || !/^thumbs\/[0-9a-f]{64}\.png$/.test(t.thumbnail)) return {dataUrl: null};
+    const file = path.join(layout.templates, ...t.thumbnail.split('/'));
+    return fs.existsSync(file) ? {dataUrl: `data:image/png;base64,${fs.readFileSync(file).toString('base64')}`} : {dataUrl: null};
+  };
+  methods['templates.setThumbnail'] = async id => {
+    const r = await dialog.showOpenDialog(getWindow(), {title: '选择模板缩略图', properties: ['openFile'], filters: [{name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp']}]});
+    if (r.canceled || !r.filePaths?.length) return {cancelled: true};
+    return thumbnailFromImage(id, r.filePaths[0]);
+  };
+  return {repo, methods, autoThumbnail, thumbnailFromImage};
 }
 module.exports = {createTemplateService};

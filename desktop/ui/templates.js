@@ -12,11 +12,14 @@ async function refresh() {
     list = r.templates;
     const sel = q('#tpl-folder'), cur = sel.value;
     sel.innerHTML = '<option value="">全部文件夹</option>' + r.folders.map(f => `<option ${f === cur ? 'selected' : ''}>${esc(f)}</option>`).join('');
-    q('#tpl-list').innerHTML = list.length ? list.map(t => `<div class="task"><span class="badge ${t.favorite ? 'ok' : ''}">${t.favorite ? '★ 收藏' : esc(t.folder || '未分组')}</span>
+    q('#tpl-list').innerHTML = list.length ? list.map(t => `<div class="task">${t.thumbnail ? `<img class="tpl-thumb" data-thumb="${t.id}" alt="" width="64" height="64">` : '<span class="tpl-thumb muted">无图</span>'}<span class="badge ${t.favorite ? 'ok' : ''}">${t.favorite ? '★ 收藏' : esc(t.folder || '未分组')}</span>
       <div><div>${esc(t.name)}</div><div class="meta">${esc(t.folder)} ${t.tags.map(x => `#${esc(x)}`).join(' ')} · 更新于 ${esc(new Date(t.updatedAt).toLocaleString())}${t.license ? ` · 许可 ${esc(t.license)}` : ''}</div></div>
-      <div class="actions"><button data-open="${t.id}" class="primary">打开</button><button data-fav="${t.id}">${t.favorite ? '取消收藏' : '收藏'}</button><button data-edit="${t.id}">信息</button><button data-versions="${t.id}">版本</button><button data-export="${t.id}">导出</button></div></div>`).join('') : '<p class="muted">没有模板。可以导入 JSON、导入内置模板，或在创作页“存为模板”。</p>';
+      <div class="actions"><button data-open="${t.id}" class="primary">打开</button><button data-fav="${t.id}">${t.favorite ? '取消收藏' : '收藏'}</button><button data-edit="${t.id}">信息</button><button data-versions="${t.id}">版本</button><button data-export="${t.id}">导出</button><button data-thumbset="${t.id}">设缩略图</button></div></div>`).join('') : '<p class="muted">没有模板。可以导入 JSON、导入内置模板，或在创作页“存为模板”。</p>';
+    // T01：缩略图按需读取（首个成功输出自动生成，或手动选择图片）
+    for (const img of document.querySelectorAll('#tpl-list [data-thumb]')) yz.templates.thumbnail(img.dataset.thumb).then(r => { if (r?.ok && r.data.dataUrl) img.src = r.data.dataUrl; }, () => {});
   } catch (e) { /* call 已提示 */ }
 }
+q('#tpl-list')?.addEventListener('click', e => { const b = e.target.closest('[data-thumbset]'); if (b) call(yz.templates.setThumbnail(b.dataset.thumbset), d => (d?.cancelled ? '已取消。' : '缩略图已更新。')).then(refresh, () => {}); });
 let timer; q('#tpl-search').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(refresh, 200); });
 q('#tpl-folder').addEventListener('change', refresh); q('#tpl-fav').addEventListener('change', refresh);
 q('#nav').addEventListener('click', e => { if (e.target.closest('[data-page="templates"]')) refresh(); });

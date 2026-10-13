@@ -287,3 +287,19 @@ test('S08：导出图包→导入为新标签并恢复参考关系；关闭归�
   assert.equal((await svc.methods['tasks.refs'](r.tabId)).length, 1);
   await assert.rejects(svc.methods['tasks.reopenClosed']('../x'), /无效/);
 });
+test('T01：模板缩略图——任务首个输出自动生成（worker 内 sharp → PNG），已有缩略图不覆盖，界面可读取', async t => {
+  const {editor, db, layout} = setup(t);
+  const {createTemplateService} = require('../desktop/services/template-service.cjs');
+  const {WorkerPool} = require('../desktop/core/worker-pool.cjs');
+  const pool = new WorkerPool({size: 1}); t.after(() => pool.close());
+  const ts = createTemplateService({db, layout, editor, taskService: null, dialog: {}, getWindow: () => null, pool});
+  const tpl = ts.repo.create({name: '模板', graph: {nodes: []}, source: 'test'});
+  const img = path.join(layout.root, 'out.png');
+  await require('sharp')({create: {width: 600, height: 300, channels: 3, background: '#335577'}}).png().toFile(img);
+  await ts.autoThumbnail(tpl.id, img);
+  const r = await ts.methods['templates.thumbnail'](tpl.id);
+  assert.match(r.dataUrl, /^data:image\/png;base64,/);
+  const first = ts.repo.get(tpl.id).thumbnail;
+  assert.equal(await ts.autoThumbnail(tpl.id, img), null, '已有缩略图不覆盖');
+  assert.equal(ts.repo.get(tpl.id).thumbnail, first);
+});

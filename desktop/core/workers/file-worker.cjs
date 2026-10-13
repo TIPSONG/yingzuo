@@ -29,12 +29,12 @@ function imageMeta({file, maxBytes = 200 << 20}) {
   return {format: detectFormat(buf), metadata: {generation: readGenerationInfo(buf), dimensions: imageSize(buf)}};
 }
 /** S09：缩略图在 worker 中由 sharp 生成（限制像素与输入大小），写到调用方给的临时文件。 */
-async function thumbnail({src, tmp, size, maxPixels = 268402689, maxBytes = 300 << 20}) {
+async function thumbnail({src, tmp, size, format = 'webp', maxPixels = 268402689, maxBytes = 300 << 20}) {
   const st = fs.statSync(src);
   if (st.size > maxBytes) throw Object.assign(new Error(`图片 ${st.size} 字节，超过缩略图上限。`), {code: 'TOO_LARGE'});
   let sharp; try { sharp = require('sharp'); } catch (e) { throw Object.assign(new Error(`缩略图组件不可用：${e.message}`), {code: 'UNSUPPORTED'}); }
   sharp.cache(false); sharp.concurrency(1);
-  await sharp(src, {limitInputPixels: maxPixels, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true}).webp({quality: 80}).toFile(tmp);
+  await sharp(src, {limitInputPixels: maxPixels, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true})[format === 'png' ? 'png' : 'webp'](format === 'png' ? {} : {quality: 80}).toFile(tmp);
   return {bytes: fs.statSync(tmp).size};
 }
 /** S09：大文件复制（流式，带进度）；目标先写临时名，完成后改名；excl 时目标已存在即失败。 */
