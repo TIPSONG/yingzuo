@@ -33,6 +33,8 @@
   --notice-fg: #9daf8b;
   --nav-hover: #1e231f;
   --nav-active: #d1ed8711;
+  --nav-active-fg: var(--accent);
+  --accent-fill: var(--accent);
   --tab-bar: #101211;
   --tab-active: #20281b;
   --mode-track: #0f120f;
@@ -107,6 +109,8 @@
   --notice-fg: #4a5c38;
   --nav-hover: #dde3d4;
   --nav-active: #5a7d2818;
+  --accent-fill: #527324; /* RV11：实色强调按钮底，白字对比度 ≥ 4.5:1 */
+  --nav-active-fg: #2f4512; /* RV11：浅色选中导航深绿字，对比度 ≥ 4.5:1 */
   --tab-bar: #e8ebe3;
   --tab-active: #ffffff;
   --mode-track: #dde3d4;
@@ -189,8 +193,8 @@ select:focus-visible,
   outline-offset: 2px;
 }
 button.primary, button.active {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
   color: var(--ink);
   font-weight: 600;
 }

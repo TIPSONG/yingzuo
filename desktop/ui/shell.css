@@ -115,13 +115,13 @@
 .titlebar-btn-close:hover { background: #e81123; color: #fff; border-color: transparent; }
 
 [data-skin="nasa-punk"] .titlebar {
-  background: #0b1424;
+  background: var(--nasa-chrome);
   border: 0;
   border-bottom: 0;
   box-shadow: none;
 }
 [data-skin="nasa-punk"] .titlebar-main {
-  background: #0b1424;
+  background: var(--nasa-chrome);
   border-bottom: 0; /* 底边改由色条承担，避免叠线 */
   box-shadow: none;
 }
@@ -130,35 +130,35 @@
   background: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%);
 }
 [data-skin="nasa-punk"] .titlebar-controls {
-  background: #0b1424;
+  background: var(--nasa-chrome);
   border: 0 !important;
-  border-left: 1px solid #2e4a6a !important;
+  border-left: 1px solid var(--line) !important;
   border-bottom: 0 !important;
   box-shadow: none !important;
   padding-bottom: 2px;
 }
 [data-skin="nasa-punk"] .titlebar-btn {
-  background: #0b1424;
-  color: #c8d4e4;
+  background: var(--nasa-chrome);
+  color: var(--nasa-nav-fg);
   border: 0 !important;
   box-shadow: none !important;
   height: 38px;
   padding-bottom: 10px;
 }
 [data-skin="nasa-punk"] .titlebar-title {
-  color: #e85d04;
+  color: var(--nasa-accent-text);
   letter-spacing: 0.16em;
   font-weight: 800;
   font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
   text-transform: uppercase;
 }
 [data-skin="nasa-punk"] .titlebar-sub {
-  color: #ffffff;
+  color: var(--nasa-fg);
   font-family: "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.22em;
   opacity: 0.9;
 }
-[data-skin="nasa-punk"] .titlebar-btn:hover { background: #1a2740; color: #ffffff; }
+[data-skin="nasa-punk"] .titlebar-btn:hover { background: var(--nasa-raise); color: var(--nasa-fg); }
 [data-skin="nasa-punk"] .titlebar-btn-close:hover { background: #e85d04; color: #ffffff; }
 
 [data-theme="light"] .titlebar-controls,
@@ -214,7 +214,7 @@ nav .nav:hover { background: var(--nav-hover); color: var(--text); border-color:
 nav .nav.active {
   background: var(--nav-active);
   border-color: transparent;
-  color: var(--accent);
+  color: var(--nav-active-fg);
 }
 button.ghost { background: transparent; }
 .side-bottom button + button { margin-top: 6px; }
@@ -719,9 +719,10 @@ button.theme-option.active {
 .settings fieldset:has(.setting-theme) {
   padding-bottom: 10px;
 }
+/* RV11：白字只用于实色强调底的按钮（primary 与普通 active 按钮）；导航、模式按钮、主题/皮肤卡各用自己的前景 token */
 [data-theme="light"] button.primary,
-[data-theme="light"] button.active {
-  color: #f4f9e8;
+[data-theme="light"] button.active:not(.nav):not(.theme-option):not(.mode-buttons button) {
+  color: var(--ink);
 }
 [data-theme="light"] .badge.ok {
   color: #f4f9e8;
@@ -804,6 +805,24 @@ button.theme-option.active {
   --warn-line: #ffd60a99;
   --bad-bg: #2a1418;
   --bad-line: #ff4d4d99;
+  /* RV12：NASA 组件 token（深色） */
+  --nasa-surface: rgba(22, 34, 56, 0.92);
+  --nasa-fg: #ffffff;
+  --nasa-nav-fg: #c8d4e4;
+  --nasa-raise: #1a2e4a;
+  --nasa-btn-bg: #122038;
+  --nasa-track: #0e1828;
+  --nasa-chrome: #0b1424;
+  --nasa-accent-text: #e85d04;
+  --nasa-warn-text: #ffd60a;
+  --nasa-bad-text: #ff4d4d;
+  --nasa-ok-bg: rgba(255,255,255,0.08);
+  --nasa-star: rgba(255,255,255,0.5);
+  --nasa-star-dim: rgba(255,255,255,0.35);
+  --nasa-body-grad: linear-gradient(180deg, #0f1c32 0%, #0b1424 45%, #09101c 100%);
+  --nasa-aside-grad: linear-gradient(180deg, #0d1628 0%, #09101c 100%);
+  --nasa-head-grad: linear-gradient(180deg, rgba(14, 24, 44, 0.92), rgba(11, 20, 36, 0.4));
+  --nav-active-fg: #ffffff;
 }
 [data-skin="nasa-punk"][data-theme="light"] {
   --accent: #d24f00;
@@ -817,25 +836,81 @@ button.theme-option.active {
   --line: #c5d0e0;
   --nav-active: #d24f0020;
   --primary-hover: #b84400;
-  --label-fg: #d24f00;
+  --label-fg: #a63d00;
   --focus: 2px solid #1e4d8c;
+  /* RV12：NASA-浅色 全部组件 token（与深色成对） */
+  --panel2: #f5f7fb;
+  --hover: #dde5f0;
+  --line-strong: #d24f0055;
+  --input: #ffffff;
+  --deep: #e6ecf4;
+  --status-bg: #e2e8f2;
+  --status-fg: #1c2a40;
+  --tab-bar: #e2e8f2;
+  --tab-active: #ffffff;
+  --mode-track: #e2e8f2;
+  --mode-active: #ffffff;
+  --mode-active-fg: #0b1424;
+  --entry-hover: #f5f8fc;
+  --row-hover: #f2f5fa;
+  --empty-bg: #f5f7fb;
+  --empty-line: #d24f0055;
+  --hero-surface: #fdf3ec;
+  --hero-line: #d24f0055;
+  --form-card: #ffffff;
+  --form-card-line: #d24f0044;
+  --field-line: #c5d0e0;
+  --field-fg: #0b1424;
+  --foot-bg: #e2e8f2;
+  --foot-fg: #4a5a70;
+  --sidebar-line: #d24f0055;
+  --divider: #d0d9e6;
+  --modal-bg: #ffffff;
+  --modal-line: #d24f0066;
+  --modal-back: #0b142466;
+  --scroll-thumb: #d24f0088;
+  --warn-bg: #fff6d6;
+  --warn-line: #c9a400;
+  --bad-bg: #fdecec;
+  --bad-line: #e09a9a;
+  --notice-bg: #fdf3ec;
+  --notice-line: #d24f0066;
+  --notice-fg: #3a2a1c;
+  --selection: #d24f0033;
+  --nasa-surface: #ffffff;
+  --nasa-fg: #0b1424;
+  --nasa-nav-fg: #3a4a60;
+  --nasa-raise: #dbe3ef;
+  --nasa-btn-bg: #ffffff;
+  --nasa-track: #e2e8f2;
+  --nasa-chrome: #e2e8f2;
+  --nasa-accent-text: #a63d00;
+  --nasa-warn-text: #7a5200;
+  --nasa-bad-text: #b3261e;
+  --nasa-ok-bg: #0b14240d;
+  --nasa-star: rgba(30, 77, 140, 0.22);
+  --nasa-star-dim: rgba(30, 77, 140, 0.14);
+  --nasa-body-grad: linear-gradient(180deg, #f6f8fc 0%, #eef2f8 45%, #e6ecf4 100%);
+  --nasa-aside-grad: linear-gradient(180deg, #e9eef6 0%, #dfe6f0 100%);
+  --nasa-head-grad: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(238, 242, 248, 0.4));
+  --nav-active-fg: #0b1424;
 }
 
 /* 深海军星空底（非纯黑） */
 [data-skin="nasa-punk"] body {
   background-color: var(--bg);
   background-image:
-    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255,255,255,0.55), transparent),
-    radial-gradient(1px 1px at 28% 62%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1.5px 1.5px at 44% 28%, rgba(255,255,255,0.5), transparent),
-    radial-gradient(1px 1px at 58% 78%, rgba(255,255,255,0.35), transparent),
-    radial-gradient(1.5px 1.5px at 72% 14%, rgba(255,255,255,0.45), transparent),
-    radial-gradient(1px 1px at 86% 48%, rgba(255,255,255,0.4), transparent),
-    radial-gradient(1px 1px at 18% 88%, rgba(255,255,255,0.3), transparent),
-    radial-gradient(1.5px 1.5px at 92% 72%, rgba(255,255,255,0.45), transparent),
-    radial-gradient(1px 1px at 36% 42%, rgba(255,255,255,0.35), transparent),
-    radial-gradient(1px 1px at 64% 56%, rgba(255,255,255,0.3), transparent),
-    linear-gradient(180deg, #0f1c32 0%, #0b1424 45%, #09101c 100%);
+    radial-gradient(1.5px 1.5px at 12% 18%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 28% 62%, var(--nasa-star-dim), transparent),
+    radial-gradient(1.5px 1.5px at 44% 28%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 58% 78%, var(--nasa-star-dim), transparent),
+    radial-gradient(1.5px 1.5px at 72% 14%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 86% 48%, var(--nasa-star-dim), transparent),
+    radial-gradient(1px 1px at 18% 88%, var(--nasa-star-dim), transparent),
+    radial-gradient(1.5px 1.5px at 92% 72%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 36% 42%, var(--nasa-star-dim), transparent),
+    radial-gradient(1px 1px at 64% 56%, var(--nasa-star-dim), transparent),
+    var(--nasa-body-grad);
   background-attachment: fixed;
 }
 [data-skin="nasa-punk"] #pages,
@@ -844,13 +919,13 @@ button.theme-option.active {
   background-color: transparent;
 }
 [data-skin="nasa-punk"] aside {
-  border-right: 1px solid #2e4a6a;
-  background: linear-gradient(180deg, #0d1628 0%, #09101c 100%);
+  border-right: 1px solid var(--line);
+  background: var(--nasa-aside-grad);
   box-shadow: inset -3px 0 0 var(--stripe-blue), inset -6px 0 0 var(--stripe-orange), inset -9px 0 0 var(--stripe-yellow);
 }
 [data-skin="nasa-punk"] .page-head {
-  border-bottom: 1px solid #2e4a6a;
-  background: linear-gradient(180deg, rgba(14, 24, 44, 0.92), rgba(11, 20, 36, 0.4));
+  border-bottom: 1px solid var(--line);
+  background: var(--nasa-head-grad);
   position: relative;
   gap: 12px;
 }
@@ -893,10 +968,10 @@ button.theme-option.active {
 [data-skin="nasa-punk"] .eyebrow,
 [data-skin="nasa-punk"] .entry .entry-kicker,
 [data-skin="nasa-punk"] .settings legend {
-  color: #ffffff;
+  color: var(--nasa-fg);
 }
 [data-skin="nasa-punk"] .section-title {
-  color: #e85d04;
+  color: var(--nasa-accent-text);
   border-left: 4px solid #1e4d8c;
   box-shadow: inset 4px 0 0 #e85d04, inset 8px 0 0 #ffd60a;
   padding-left: 14px;
@@ -909,10 +984,10 @@ button.theme-option.active {
   letter-spacing: 0.02em;
 }
 [data-skin="nasa-punk"] .brand {
-  color: #ffffff;
+  color: var(--nasa-fg);
 }
 [data-skin="nasa-punk"] .brand small {
-  color: #ffffff;
+  color: var(--nasa-fg);
   letter-spacing: 0.2em;
   opacity: 0.85;
 }
@@ -926,17 +1001,10 @@ button.theme-option.active {
 [data-skin="nasa-punk"] .task,
 [data-skin="nasa-punk"] .modal,
 [data-skin="nasa-punk"] .node-fields {
-  border: 1px solid #2e4a6a;
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(22, 34, 56, 0.92);
+  background: var(--nasa-surface);
   box-shadow: 0 1px 0 rgba(255,255,255,0.04);
-}
-[data-skin="nasa-punk"][data-theme="light"] .card,
-[data-skin="nasa-punk"][data-theme="light"] .row,
-[data-skin="nasa-punk"][data-theme="light"] .entry,
-[data-skin="nasa-punk"][data-theme="light"] .settings fieldset {
-  background: var(--panel);
-  box-shadow: none;
 }
 [data-skin="nasa-punk"] .entry:hover,
 [data-skin="nasa-punk"] .card:hover,
@@ -947,15 +1015,15 @@ button.theme-option.active {
 
 /* 导航选中：橙左边条 + 浅叠色 */
 [data-skin="nasa-punk"] nav .nav {
-  color: #c8d4e4;
+  color: var(--nasa-nav-fg);
   border-radius: 4px;
 }
 [data-skin="nasa-punk"] nav .nav:hover {
-  color: #ffffff;
-  background: #1a2e4a;
+  color: var(--nasa-fg);
+  background: var(--nasa-raise);
 }
 [data-skin="nasa-punk"] nav .nav.active {
-  color: #ffffff;
+  color: var(--nasa-fg);
   background: rgba(232, 93, 4, 0.14);
   border: 1px solid rgba(232, 93, 4, 0.55);
   border-left: 4px solid #e85d04;
@@ -968,18 +1036,18 @@ button.theme-option.active {
 [data-skin="nasa-punk"] .theme-option.active,
 [data-skin="nasa-punk"] button.theme-option.active {
   background: rgba(232, 93, 4, 0.12) !important;
-  color: #ffffff !important;
+  color: var(--nasa-fg) !important;
   border: 2px solid #e85d04 !important;
   box-shadow: 0 0 0 1px rgba(255, 214, 10, 0.45) !important;
 }
 [data-skin="nasa-punk"] .theme-option.active small {
-  color: #ffffff !important;
+  color: var(--nasa-fg) !important;
   font-weight: 700;
 }
 [data-skin="nasa-punk"] button.active:not(.theme-option):not(.primary):not(.nav) {
   border: 2px solid #e85d04;
   background: rgba(232, 93, 4, 0.12);
-  color: #ffffff;
+  color: var(--nasa-fg);
 }
 
 /* 主按钮：粗橙 + 白字 */
@@ -999,13 +1067,13 @@ button.theme-option.active {
 }
 [data-skin="nasa-punk"] button:not(.primary):not(.nav):not(.titlebar-btn):not(.theme-option) {
   border-radius: 4px;
-  border-color: #2e4a6a;
-  color: #ffffff;
-  background: #122038;
+  border-color: var(--line);
+  color: var(--nasa-fg);
+  background: var(--nasa-btn-bg);
 }
 [data-skin="nasa-punk"] button:not(.primary):not(.nav):not(.titlebar-btn):not(.theme-option):hover {
   border-color: #e85d04;
-  color: #ffffff;
+  color: var(--nasa-fg);
 }
 
 /* 状态徽章：白/橙高对比 */
@@ -1031,22 +1099,22 @@ button.theme-option.active {
   box-shadow: 0 0 6px currentColor;
 }
 [data-skin="nasa-punk"] .badge.ok {
-  background: rgba(255,255,255,0.08);
-  border: 1px solid #ffffff;
-  color: #ffffff;
+  background: var(--nasa-ok-bg);
+  border: 1px solid var(--nasa-fg);
+  color: var(--nasa-fg);
 }
 [data-skin="nasa-punk"] .badge.warn {
   background: rgba(232, 93, 4, 0.15);
   border: 1px solid #e85d04;
-  color: #ffd60a;
+  color: var(--nasa-warn-text);
 }
 [data-skin="nasa-punk"] .badge.bad {
   background: rgba(255, 77, 77, 0.12);
   border: 1px solid #ff4d4d;
-  color: #ff4d4d;
+  color: var(--nasa-bad-text);
 }
 [data-skin="nasa-punk"] .side-bottom strong {
-  color: #ffffff;
+  color: var(--nasa-fg);
 }
 [data-skin="nasa-punk"] .side-bottom strong::before {
   content: "";
@@ -1075,16 +1143,16 @@ button.theme-option.active {
 }
 [data-skin="nasa-punk"] .tab.active {
   border-bottom: 3px solid #e85d04;
-  color: #ffffff;
+  color: var(--nasa-fg);
 }
 [data-skin="nasa-punk"] .mode-buttons {
-  border: 1px solid #2e4a6a;
+  border: 1px solid var(--line);
   border-radius: 4px;
-  background: #0e1828;
+  background: var(--nasa-track);
 }
 [data-skin="nasa-punk"] .mode-buttons button.active {
   background: rgba(232, 93, 4, 0.18);
-  color: #ffffff;
+  color: var(--nasa-fg);
   border: 1px solid #e85d04 !important;
 }
 /* 任务章色条装饰：外观 fieldset 顶边 */
@@ -1097,13 +1165,17 @@ button.theme-option.active {
 /* 创作页工具条：NASA 皮肤同样不溢出 */
 [data-skin="nasa-punk"] .toolbar {
   background: transparent;
-  border-bottom-color: #2e4a6a;
+  border-bottom-color: var(--line);
   gap: 10px 12px;
 }
 [data-skin="nasa-punk"] .toolbar .run-bar > button {
   max-height: none;
 }
 [data-skin="nasa-punk"] #status {
-  background: #122038;
-  border-top-color: #2e4a6a;
+  background: var(--nasa-btn-bg);
+  border-top-color: var(--line);
 }
+
+/* RV12：NASA-浅色主按钮用更深的橙，白字对比度 ≥ 4.5:1 */
+[data-skin="nasa-punk"][data-theme="light"] button.primary { background: #b84400; border-color: #7a5200; }
+[data-skin="nasa-punk"][data-theme="light"] button.primary:hover { background: #9c3a00; }
