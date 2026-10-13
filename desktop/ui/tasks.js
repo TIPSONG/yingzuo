@@ -106,15 +106,19 @@ q('#run-batch').addEventListener('click', async () => {
   try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
   const origin = {tabId, revision: preview.revision, title: preview.title};
   const b = preview.bindings;
+  const varKeys = ['steps', 'cfg', 'denoise', 'width', 'height', 'sampler_name', 'scheduler'].filter(k => b[k] && !b[k].readonly && 'value' in b[k]);
   const spec = await modal(`<h3>批量运行</h3>
     <p class="muted">提示词输入：${b.prompt ? esc(`${b.prompt.nodeType} #${b.prompt.nodeId}`) : '未识别（不能批量替换提示词）'}；seed：${b.seed ? esc(`#${(b.seed.readonly ? b.seedSource : b.seed)?.nodeId ?? '—'}`) : '未识别'}</p>
     <label>提示词（每行一个，留空则使用当前提示词）</label><textarea id="b-prompts" ${b.prompt ? '' : 'disabled'}></textarea>
     <label>每个提示词运行次数</label><input id="b-count" type="number" min="1" max="100" value="2">
     <label>起始 seed（留空则不改 seed）</label><input id="b-seed" type="number" ${b.seed ? '' : 'disabled'}>
+    ${varKeys.length ? `<label>参数变化（逗号分隔，留空不变化；全部校验通过才会加入任何任务）</label>${varKeys.map(k => `<label class="field"><span>${esc(k)}（当前 ${esc(b[k].value)}）</span><input data-var="${esc(k)}" placeholder="例如 ${esc(b[k].value)}, ${esc(b[k].value)}"></label>`).join('')}` : ''}
     <p id="b-total" class="muted"></p>
     <div class="actions"><button data-x="no">取消</button><button data-x="yes" class="primary">加入队列</button></div>`, (back, done) => {
-    const read = () => { const prompts = back.querySelector('#b-prompts').value.split('\n').map(s => s.trim()).filter(Boolean); const seed = back.querySelector('#b-seed').value; return {prompts, count: Math.max(1, Number(back.querySelector('#b-count').value) || 1), seedStart: seed === '' ? null : Number(seed)}; };
-    const update = () => { const s = read(); const n = Math.max(1, s.prompts.length) * s.count; back.querySelector('#b-total').textContent = `共 ${n} 个任务（上限 100）${s.seedStart === null && s.count > 1 ? '；未设置起始 seed 时每次使用工作流当前 seed 设置' : ''}`; };
+    // R19：参数变化。数字按数字解析，无法解析的原样交给主进程校验并整体拒绝
+    const readVars = () => { const v = {}; for (const el of back.querySelectorAll('[data-var]')) { const list = el.value.split(/[,，]/).map(x => x.trim()).filter(Boolean); if (list.length) v[el.dataset.var] = list.map(x => (typeof b[el.dataset.var].value === 'number' && x !== '' && !Number.isNaN(Number(x))) ? Number(x) : x); } return v; };
+    const read = () => { const prompts = back.querySelector('#b-prompts').value.split('\n').map(s => s.trim()).filter(Boolean); const seed = back.querySelector('#b-seed').value; const variations = readVars(); return {prompts, count: Math.max(1, Number(back.querySelector('#b-count').value) || 1), seedStart: seed === '' ? null : Number(seed), ...(Object.keys(variations).length ? {variations} : {})}; };
+    const update = () => { const s = read(); const n = Math.max(1, s.prompts.length) * s.count * Object.values(s.variations ?? {}).reduce((m, l) => m * l.length, 1); back.querySelector('#b-total').textContent = `共 ${n} 个任务（上限 100）${s.seedStart === null && s.count > 1 ? '；未设置起始 seed 时每次使用工作流当前 seed 设置' : ''}`; };
     back.addEventListener('input', update); update();
     back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done(x.dataset.x === 'yes' ? read() : null); });
   });
