@@ -19,7 +19,7 @@
 
 <!-- TABLE -->
 
-统计：程序完成 63 / 实现中 9 / 阻塞 4 / 未开始 6（共 82）。“程序完成”不等于 Codex 验收通过。
+统计：程序完成 82 / 实现中 0 / 阻塞 0 / 未开始 0（共 82）。“程序完成”不等于 Codex 验收通过。
 
 ### 批次 1
 
@@ -55,7 +55,7 @@
 | E07 | 五图表单 | 程序完成 |  |  | tests/bindings.test.cjs | 按节点类型+连线推断（提示词/负面/seed/步数/cfg/尺寸/模型/参考图/Gemma），已连线只读；五个真实模板需 Codex 核对 |  |
 | E08 | 参考图管线 | 程序完成 |  |  | tests/bindings.test.cjs E08 | data/references 内容寻址；运行栏“参考图…”按 LoadImage 节点选择/移除，按标签保存，运行前上传并写回服务器返回名，重启后重跑自动补传；需真实 ComfyUI 验收 |  |
 | E09 | 编译与定位 | 程序完成 |  |  | tests/bindings.test.cjs E09 | compileTab：后台标签切换→graphToPrompt→切回；本地检查 object_info |  |
-| E10 | 原生视图行为 | 实现中 |  |  |  | 已有：弹窗/离开创作页隐藏原生视图、Ctrl+Enter 运行、聚焦节点桥接(focus)；未做：图片选择/下载、缩放快捷键统一 |  |
+| E10 | 原生视图行为 | 程序完成 | 27e15c4 | desktop/services/editor-session.cjs<br>desktop/ui/tasks.js | desktop-main.test：快捷键映射 | 弹窗/离开创作页隐藏原生视图；原生视图内 Ctrl+Enter 走映作队列、Ctrl +/-/0 缩放；图片下载保存到 exports 并提示；图片选择用 Comfy 原生文件框；需 Windows 实测 |  |
 | Q01 | 任务持久化 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q02 | Comfy HTTP/WS 客户端 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
 | Q03 | 单一串行调度器 | 程序完成 |  |  | tests/queue.test.cjs 13 项（ComfyUI 替身） | 真实 ComfyUI 下的提交/核对/中断需 Codex 验收 |  |
@@ -73,11 +73,11 @@
 | A01 | 输出索引 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A02 | 任务输出关联 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A03 | 日期／工作流输出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
-| A04 | 缩略图与查看器 | 实现中 |  |  |  | 后端完成（assets 分支），UI 本轮补 |  |
+| A04 | 缩略图与查看器 | 程序完成 | 5c7e40a | desktop/ui/assets.js | check：接口/元素/内联样式检查 | 作品网格+查看器：滚轮缩放、拖动、0/1/+/-、元数据如实显示缺失项、打开/定位/导出/分享副本/收藏；需 Windows 实测 |  |
 | A05 | 文件入口 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A06 | 原图导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
 | A07 | 分享副本导出 | 程序完成 |  |  |  | feat/grovebot-assets 合入；详见 进度-assets.md |  |
-| A08 | 收藏板 | 实现中 |  |  |  | 后端完成（assets 分支），UI 本轮补 |  |
+| A08 | 收藏板 | 程序完成 | 5c7e40a | desktop/ui/assets.js | favorites 单测（assets 分支） | 收藏板按 arrangeAlbum 等高行排列，取消收藏移到回收区；CSP 下位置用 CSSOM 设置 |  |
 | T01 | 模板仓库 | 程序完成 |  | desktop/repositories/template-repo.cjs<br>desktop/ui/templates.js | tests/templates.test.cjs | 导入/搜索/文件夹/标签/收藏/内置五模板只读导入；缩略图仅仓库方法 setThumbnail，界面未接（无缩略图生成来源） |  |
 | T02 | 保存与历史 | 程序完成 |  |  | tests/templates.test.cjs | 版本只追加、恢复生成新版本、另存、导出（含 .yingzuo-form.json）；原模板文件只读 |  |
 | T03 | 表单编辑器 | 程序完成 |  | shared/form-schema.cjs | tests/templates.test.cjs | 表单设置弹窗：名称/分组/顺序/范围/添加/移除；与 ParameterBinding schema 共用。参数表单页仍用 P0 画布读取，不读模板 schema |  |
@@ -87,22 +87,22 @@
 | T07 | 修复与撤销 | 程序完成 |  | desktop/services/diagnostics-service.cjs | tests/diagnostics.test.cjs | 单字段事务（版本号校验）→替换标签图→自动复查；撤销（被改动则拒绝）；导出修复副本。改连线类建议只给说明不提供直接应用 |  |
 | R01 | 目录扫描 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
 | R02 | 资源详情 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
-| R03 | 引用索引 | 实现中 |  |  |  | feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md |  |
-| R04 | 快捷使用 | 实现中 |  |  |  | feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md |  |
+| R03 | 引用索引 | 程序完成 | b9e2351 | desktop/services/maintenance-service.cjs<br>desktop/ui/resources.js | maint-service.test：草稿+任务快照引用 | 引用索引来自草稿标签、模板当前版本与最近 200 个任务快照；资源页“引用诊断”和详情显示 |  |
+| R04 | 快捷使用 | 程序完成 | 5c7e40a | desktop/services/maintenance-service.cjs<br>desktop/ui/resources.js | quick-use 单测（maint 分支） | resources.quickUse：编译当前标签→planQuickUse→确认后 applyPlan 入队，不改原工作流 |  |
 | R05 | 插件清单 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
 | U01 | 环境清单 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
 | U02 | 可恢复备份 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
 | U03 | 恢复引擎 | 程序完成 |  |  |  | feat/grovebot-maint 合入；详见 进度-maint.md |  |
-| U04 | 维护事务与锁 | 实现中 |  |  |  | feat/grovebot-maint 合入（后端完成），本轮接入中；详见 进度-maint.md |  |
+| U04 | 维护事务与锁 | 程序完成 | b9e2351 | desktop/services/maintenance-service.cjs | maint-service.test：锁占用阻止、apply 失败自动恢复、env_transactions 记录 | 已接入主进程：环境锁 createLocks().environment、暂停队列等待空闲、只停本应用拥有的 ComfyUI、备份→staging→apply→检查，失败自动恢复 |  |
 
 ### 批次 4
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | T08 | 依赖补齐计划 | 程序完成 |  | desktop/services/online/dependency-plan.cjs | tests/dependency.test.cjs | 缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺节点给手动处理说明（插件安装待 R07） |  |
-| R06 | Manager 适配 | 实现中 |  |  |  | 只读探测 Manager 目录/版本/cm-cli 已实现；调用 CLI 执行操作依赖 R07 环境事务（maint 分支 U01–U04），未做 |  |
-| R07 | 插件操作事务 | 阻塞 |  |  |  | 依赖 U01–U04 环境备份/事务（feat/grovebot-maint 负责），未合入本分支前实现会重复造轮子或绕过备份 |  |
-| R08 | 模型位置管理 | 阻塞 |  |  |  | 依赖 R01–R05 资源清单与引用（feat/grovebot-maint）及文件事务；本分支不实现以免冲突 |  |
+| R06 | Manager 适配 | 程序完成 | 27e15c4 | desktop/services/online/dependency-plan.cjs | dependency.test：Manager 探测 | 只读探测 Manager/cm-cli；因各版本 CLI/HTTP 不一致不做猜测调用，插件操作统一走受限 Git 事务（规格允许的后备）；不安装另一个 Manager |  |
+| R07 | 插件操作事务 | 程序完成 | b9e2351 | desktop/maintenance/plugin-ops.cjs<br>desktop/services/maintenance-service.cjs | maint-service.test：https 限制、安装→移除到回收区 | 仅 https 无账号 Git 地址；staging 克隆固定 revision；可选 pip（Python 环境纳入备份）；移除前列出使用者并需确认，移到回收区 |  |
+| R08 | 模型位置管理 | 程序完成 | b9e2351 | desktop/services/maintenance-service.cjs | maint-service.test：非登记目录拒绝、移动成功 | 只在同用途已登记目录间移动（相对名不变）；跨盘复制+sha256 校验后切换；有任务运行时拒绝；LM Studio 模型不在范围 |  |
 | O01 | 来源接口 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 统一 search/detail/listFiles/resolveDownload/parseLink，内存 TTL 缓存、AbortSignal 取消、429/5xx 退避；联网失败只影响在线页 |  |
 | O02 | Hugging Face | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 仓库/固定 revision/具体文件/大小/sha256/许可/gated；Link 头分页；box 上实测搜索+详情+下载 README 成功 |  |
 | O03 | Civitai | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 模型/版本/文件/底模/触发词/授权错误/分页；box 上实测搜索成功；下载需用户凭据，需 Codex 验收 |  |
@@ -110,26 +110,26 @@
 | O05 | 通用下载器 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 流式 .part、Range/If-Range 续传、并发、取消、退避重试、大小与 sha256、原子改名；本机 HTTP 服务测试 |  |
 | O06 | 下载恢复 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | 启动时中断任务置暂停并按 .part 大小续传；源变化从头下载；每次重新解析 URL，令牌不入库 |  |
 | O07 | 在线模板导入 | 程序完成 |  | desktop/services/online | tests/online.test.cjs、tests/downloader.test.cjs | HF/GitHub/https JSON 链接 → 校验 UI 格式 → 存模板（作者/许可/revision）+本地缓存；不安装不执行 |  |
-| O08 | 联合补齐 | 实现中 |  |  |  | 模型部分已实现：确认后逐项加入下载并逐项报告，完成后需手动重新诊断；插件安装部分阻塞于 U01–U04/R07（maint 分支环境事务） |  |
+| O08 | 联合补齐 | 程序完成 | 27e15c4 | desktop/ui/online.js<br>desktop/services/maintenance-service.cjs | maint-service.test（安装路径） | 模型逐项下载+插件按用户填写的 Git 地址逐个经事务安装，逐项报告；装后重新生成计划；插件需重启 ComfyUI 后才被识别 |  |
 
 ### 批次 5
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Q10 | 批量与重启恢复 | 程序完成 |  |  | tests/queue.test.cjs、task-service | 批量弹窗（提示词×次数×seed，上限100）、暂停/继续、重启后未提交默认暂停 |  |
-| U05 | 更新检测与页面 | 实现中 |  | desktop/services/update-check.cjs<br>desktop/ui/updates.js | tests/update-check.test.cjs | 只读检测 ComfyUI/插件 git 版本、本地改动、落后提交（用户点击才联网 fetch）；渠道与频率配置未做 |  |
-| U06 | Comfy／插件更新 | 阻塞 |  |  |  | 执行更新必须在 U01–U04 环境备份/回滚事务内（feat/grovebot-maint），本分支未合入前不实现，避免无回滚的更新 |  |
-| U07 | 更新记录与保留 | 阻塞 |  |  |  | 依赖 U01–U04 的备份包与恢复入口（feat/grovebot-maint） |  |
+| U05 | 更新检测与页面 | 程序完成 | 5c7e40a | desktop/services/update-check.cjs<br>desktop/ui/updates.js | update-check.test：频率与渠道 | 渠道 stable/beta（beta 含预发布）、频率 manual/daily/weekly 后台只检测只提示；定时检查不 git fetch |  |
+| U06 | Comfy／插件更新 | 程序完成 | b9e2351 | desktop/maintenance/plugin-ops.cjs | maint-service.test：补丁重放成功/冲突列入待处理 | ComfyUI/插件按指定 revision 更新；本地改动（Gemma 补丁）存补丁文件并 3-way 重放，冲突保留补丁列入待处理；requirements 变化才 pip |  |
+| U07 | 更新记录与保留 | 程序完成 | b9e2351 | desktop/services/maintenance-service.cjs<br>desktop/ui/resources.js | maint-service.test：保留策略 | 备份列表/校验/恢复/继续未完成恢复/维护记录；保留最近 N 份且每来源保留最近完整备份，使用中不清理，清理=移到回收区 |  |
 | U08 | 应用版本维护 | 程序完成 |  |  | tests/update-check.test.cjs | 读取 GitHub Releases、显示变更、显式下载并按 SHA256SUMS 校验、打开目录手动安装；未签名、不配自动更新 feed。仓库私有时提示手动流程 |  |
 
 ### 批次 6
 
 | 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| B01 | 正式数据接入清理 | 未开始 |  |  |  |  |  |
-| B02 | 必要开发检查 | 未开始 |  |  |  |  |  |
-| B03 | Windows 构建 | 未开始 |  |  |  |  |  |
-| B04 | 分发与升级脚本 | 未开始 |  |  |  |  |  |
-| B05 | 程序交付记录 | 未开始 |  |  |  |  |  |
-| B06 | 验收交接材料 | 未开始 |  |  |  |  |  |
+| B01 | 正式数据接入清理 | 程序完成 | 5c7e40a | tools/check.cjs<br>desktop/ui | check：假数据/随机数/内联样式扫描 | 正式页面全部接真实接口，服务不可用显示空/错误状态；保留侧栏明确标注的“A 测界面预览”；修正 CSP 拦截的内联样式 |  |
+| B02 | 必要开发检查 | 程序完成 | 5c7e40a | tools/check.cjs<br>tests/maint-service.test.cjs | npm run check 214 项 | 新增 UI 接口白名单、元素存在、内联样式（CSP）、假数据扫描；状态机/迁移/任务恢复/下载续传/备份事务均有自动测试 |  |
+| B03 | Windows 构建 | 程序完成 | edfb45a | .github/workflows/windows-build.yml<br>desktop/entry.cjs<br>desktop/smoke.cjs | Actions run 38371603344 成功：便携+NSIS 构建，打包自检 ok=true，驱动 better-sqlite3，sharp 可用 | 双击运行、中文路径、安装升级保留数据需 Codex 在真机验收；未签名 |  |
+| B04 | 分发与升级脚本 | 程序完成 | edfb45a | tools/build-win.cjs | Actions 产物含 artifacts.json/SHA256SUMS.txt/smoke-result.json | 版本号取 package.json；如实写未签名；升级不覆盖 userData（安装版 %APPDATA%\映作\data，便携 data\） |  |
+| B05 | 程序交付记录 | 程序完成 |  | docs/development/交付记录.md<br>README.md | 文档 | README 更新当前能力；交付记录含阶段提交、依赖、迁移、构建命令、检查结果与限制 |  |
+| B06 | 验收交接材料 | 程序完成 |  | docs/development/待Codex验收.md<br>docs/development/交接-下一个agent.md | 文档 | 待验收清单覆盖全部需要真实环境的功能，人工验收栏全部留空；日志入口与样本数据位置写在清单“通用准备” |  |
 

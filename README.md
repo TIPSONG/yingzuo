@@ -2,8 +2,23 @@
 
 面向 Windows 的本地 AI 绘图工作台，让启动服务、切换工作流、生成、找图和管理资源在一个应用中完成。
 
-> **当前版本：0.1.0-alpha.1，A 测原型与 Windows 桌面接入验证版。**
-> 已加入独立 Electron 窗口的开发入口，真实 ComfyUI 桥接正在进行 UI 验收，**P0 尚未标记完成**。原 A 测 WebUI 保留；其中绘图、润色和队列仍为演示。服务控制、托盘及正式桌面安装包尚未交付。
+> **当前版本：0.1.0-alpha.1（`feat/grovebot-impl` 开发分支）。**
+> 82 项计划中的程序功能已在该分支实现并通过自动检查（见[开发进度](./docs/development/Grovebot开发进度.md)），**均未经过人工验收**；需要 Windows、ComfyUI、LM Studio 的验证列在[待 Codex 验收清单](./docs/development/待Codex验收.md)。安装包未签名。原 A 测 WebUI 保留，其中的演示数据只在明确标注的“A 测界面预览”中出现。
+
+## 桌面版当前能力（程序完成，待人工验收）
+
+| 页面 | 能做什么 |
+| --- | --- |
+| 首页 / 服务与日志 | 探测并按需启动/停止本应用启动的 ComfyUI、LM Studio API；日志、诊断导出；ComfyUI/插件/映作版本检测（stable/beta 渠道、manual/daily/weekly 频率，只提示不自动执行） |
+| 创作工作区 | 真实 ComfyUI 原生画布 + 参数表单；多标签草稿；运行（Ctrl+Enter，焦点在画布内也走映作队列）、批量、参考图上传、仅润色（Gemma）；输出前缀（设置 `output.prefixMode`） |
+| 模板库 | 版本化模板、表单设置与映射检查、诊断与可撤销修复、在线 JSON 导入 |
+| 在线资源 | Hugging Face / Civitai 搜索、断点续传与 sha256 校验下载、补齐依赖（模型下载 + 插件经维护事务安装） |
+| 作品与收藏 | 任务完成自动入库、输出目录扫描、查看器（缩放/平移/元数据/导出原图/分享副本）、收藏副本与等高收藏板 |
+| 资源与维护 | 本地模型扫描/详情/引用诊断/一键使用/在已登记目录间移动；插件启用/禁用/安装/更新/移除；备份、校验、恢复、未完成恢复续跑、维护记录、保留策略。所有改动环境的操作都经维护事务：环境锁 → 暂停队列 → 停止本应用启动的服务 → 备份 → 执行 → 检查，失败自动恢复 |
+| 任务队列 | 串行 GPU 队列、取消/重试/核对、重启恢复（未知状态不自动重发） |
+| 设置 | 路径、凭据（系统加密）、行为、更新渠道与频率 |
+
+构建：Windows 上 `npm ci && npm run build:win`，产出便携 exe 与 NSIS 安装包（未签名）及 `dist/artifacts.json`、`dist/SHA256SUMS.txt`。打包后可运行 `映作.exe --yz-smoke=结果.json` 自检原生模块（不触碰用户数据）。GitHub Actions “Windows build” 会实际构建并运行该自检。升级安装不会覆盖 `%APPDATA%\映作\data`；便携版在 exe 旁放 `portable.flag` 后数据存于 `data\`。交付记录见 [交付记录](./docs/development/交付记录.md)。
 
 ## 为什么做这个项目
 
@@ -41,7 +56,7 @@ npm ci
 npm run desktop
 ```
 
-安装依赖后，也可双击 `Start-Desktop.cmd` 打开独立应用窗口。目前是开发运行方式，尚不提供安装包。
+安装依赖后，也可双击 `Start-Desktop.cmd` 打开独立应用窗口。安装包由 `npm run build:win`（需在 Windows 上）或 Actions 产物获得。
 
 P0 连接已运行的本机 ComfyUI，默认路径为 `D:/agent/ComfyUI`，地址为 `http://127.0.0.1:8188/`。请先使用已有启动脚本启动服务，再在桌面窗口中选择“连接已有服务”。需要改变本机配置时，新建 `desktop/config.local.json`：
 

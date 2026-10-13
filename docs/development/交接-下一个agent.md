@@ -37,14 +37,45 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 见 `docs/development/Grovebot开发进度.md`（权威）。概要写在文末“检查点记录”。
 
-## 5. 下一步（按顺序）
+## 5. 现状与下一步
 
-并行分工：`feat/grovebot-assets`（A01–A08）与 `feat/grovebot-maint`（U01–U04、R01–R05）由其他 worker 负责，本分支**不实现、不改它们在进度表中的行**（它们用 `docs/development/进度-assets.md` / `进度-maint.md`）。
+82 项全部为“程序完成”（未经人工验收）。并行分支 `feat/grovebot-maint`（PR #12）与 `feat/grovebot-assets`（PR #13）已用本地 `git merge` 合入本分支（a8eec65、a668600），两个 PR 保持打开未动；`进度-maint.md`、`进度-assets.md` 保留作历史，状态已并入主进度表。
 
-1. E10 剩余（图片选择/下载、缩放快捷键统一）。
-2. 等 `feat/grovebot-maint` 合入 U01–U04（环境备份/事务）和 R01–R05 后：R07（插件事务）、R08（模型位置）、R06 的 CLI 执行、O08 插件部分、U06（执行更新）、U07（更新记录与保留）、U05 渠道/频率配置。这些现在标为“阻塞”或“实现中”，原因写在进度表。
-3. 批次 6（B01–B06）未开始。
-4. 草稿 PR #11 已开，继续推送到同一分支；不要再开 PR、不要合并。
+下一步建议（按价值）：
+1. 等 Codex 在 Windows 真机按 `待Codex验收.md` 验收，修复反馈。最可能出问题：Gemma 节点输入名推断（bindings.cjs）、原生视图快捷键与焦点、插件 pip 安装路径、恢复时文件被占用（Windows 下 ComfyUI 未完全退出时 rename 会 EBUSY/EPERM）。
+2. 恢复引擎在 Windows 上对“正在被占用的目录”只会报错并保留 journal，可从资源页“继续恢复”。可以考虑加重试/等待进程退出。
+3. R06 若用户希望走 ComfyUI-Manager：需先在真机确认 cm-cli 的确切命令与输出，再加到 `plugin-ops.cjs` 作为可选后端（仍需在事务内）。
+4. 收藏板、查看器在大量图片时只做了分页（60/页）和逐个缩略图加载；如有性能问题可加虚拟滚动。
+5. 仍不要合并 PR、不要再开 PR；草稿 PR #11 继续推送。
+
+## 6d. 本轮新增（合并后接线、维护、批次 6）
+
+- `desktop/services/maintenance-service.cjs`：组装 maintenance.*（manifest/backups/createBackup/verifyBackup/restoreBackup/pendingRestores/resumeRestore/transactions/pruneBackups/updateComfy/updatePlugin）与 resources.*（scan/detail/setNote/hash/references/impact/quickUse/plugins/enable/disable/install/removePlugin/modelRoots/moveModel），以及 `templates.installMissingPlugins`（O08）。`runTransaction(plan)` 用 maint 分支的 `MaintenanceTransaction`，锁是 api 共用的 `createLocks().environment`，队列钩子来自 taskService.hooks，每次写 `env_transactions`。main.cjs 在 createApi 之后 `Object.assign(api.methods, m.methods)`。
+- `desktop/maintenance/plugin-ops.cjs`：installPlan/removePlan/updatePlan，都是 `{title, kind, roots, stage, apply, check, cleanup, result}`，必须交给 runTransaction。更新时本地 diff 存 `<数据>/patches/*.patch`，`checkout --force` 到目标后 `git apply --3way` 重放，冲突则 `result.pending`（不回滚更新本身，补丁保留）。没有用 stash（避免依赖 git 用户身份）。
+- R03 引用来源：编辑器 `workspace.tabs`（草稿）、模板当前版本、最近 200 个任务快照的 apiPrompt。
+- 队列 → 作品：`createTaskService({onTerminal})`，main 里传 `task => api.methods['assets.linkTask'](task.id)`，只在 succeeded 时调用，失败只记日志。
+- A03：`tasks.run/runBatch` 按 `config.output.prefixMode`（或单次 `options.prefixMode`）调用 `applyOutputPrefix`，改动写进快照 `outputPrefix`。默认 none。
+- UI：`desktop/ui/assets.js`（作品与收藏页，A04 查看器、A08 收藏板）、`desktop/ui/resources.js`（资源与维护页）；online.js 补齐依赖可填插件地址安装。
+- E10：`editor-session.cjs` 的 `shortcutFor` + 原生视图 `before-input-event`：Ctrl+Enter 通过 `notify({shortcut:'run'})` 交给 tasks.js 的映作队列，Ctrl +/-/0 调 `setZoomFactor`。
+- U05：`update-check.cjs` 的 `dueForCheck`、`startSchedule`（启动后及每小时判断一次；只查发行版与本地 git 状态，不 fetch），结果写 `update-check.json` 并发 `maintenance.updates` 事件。
+- B02：`tools/check.cjs` 新增界面检查：`yz.<组>.<方法>(` 必须在 GROUPS 中、`q('#id')` 必须存在、禁止内联 `style="`（CSP `style-src 'self'` 会拦截，以前的几处已改成 class）、禁止 mock/fake/Math.random。
+- B03：`package.json` main 改为 `desktop/entry.cjs`，带 `--yz-smoke=<file>` 时只跑 `desktop/smoke.cjs`（临时目录内验证 SQLite、sharp、模块加载）。Actions 构建后实际运行，并要求驱动为 better-sqlite3。run 38371603344 已通过。
+
+## 6e. 坑
+
+- `desktop-main.test` 用 vm 执行 main.cjs：main.cjs 顶层不能写 `return`，所以自检做成了独立入口 entry.cjs。
+- CSP 不允许内联 style 属性，所以动态定位要用 `el.style.x = ...`（CSSOM）。
+- `extraModelPaths` 参数是 yaml 路径而不是解析结果；用 `buildFolderMap({comfyRoot})` 即可（默认读取 `<root>/extra_model_paths.yaml`）。
+- `ResourceNotes.set` 只接受白名单字段（没有 note，用 description）。
+- `call(promise, okMessage)` 的第二个参数是成功提示，不是选项；需要静默时直接用 `yz.x.y().then(r => r.ok ? ... : ...)`。
+- `workbench.js` 顶层 `let current` 是全局词法绑定，不在 `window.current` 上。
+- 维护事务的备份不含应用自身的 SQLite（应用一直打开着，恢复它会出问题）；只覆盖 ComfyUI 与 Python 环境目录。
+
+## 6f. 我的想法
+
+- 最大的风险不在代码量，而在三个外部契约：ComfyUI 前端 `graphToPrompt/loadApiJson` 的行为、Gemma 节点的输入名、Windows 文件锁。三者都有替身测试，但替身只能证明“按我的理解是对的”。验收应先跑这三条主链（运行、仅润色、更新/恢复），再看边角功能。
+- `api.methods` 后挂载的方式（Object.assign）比在 createApi 里继续加参数更不容易冲突，但这样一来 `tools/check.cjs` 只能按字符串搜方法名；如果以后重构，最好让每个服务导出方法清单，在一处汇总。
+- 恢复/更新涉及删除和移动大目录。我刻意让所有“删除”都变成“移到回收区”，并且清理备份也只是移动；回收区目前没有自动清空入口，磁盘会慢慢涨，后面需要一个带确认的“清空回收区”。
 
 ## 6c. 批次 4/5（本分支部分）
 
@@ -73,9 +104,6 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 ## 7. 检查点记录
 
+- 2026-10-13 本轮：合入 maint/assets；接线完成；R07、R08、U05、U06、U07、R06、O08、E10 与 B01–B06 全部程序完成。最后推送的提交见 `git log -1`；`npm run check`：214 项，213 通过，1 跳过，0 失败；Windows Actions run 38371603344 成功（含打包自检）。
 - 批次 1：全部程序完成（F08：GitHub Actions Windows 构建在 cd4862b 首次全绿；之前 Windows 上的测试因 SQLite 文件句柄未关闭导致 EBUSY 失败，已修复）。
-- 批次 2：Q01–Q10、E07–E09 程序完成（ComfyUI 为替身，Gemma 节点输入名为推断，需 Codex 用真实工作流验收）；E10 实现中。
-- 批次 3（本分支部分）：T01–T07 程序完成。
-- 批次 4：O01–O07、T08 程序完成；O08、R06 实现中（插件部分阻塞）；R07、R08 阻塞（依赖 maint 分支）。
-- 批次 5：Q10、U08 程序完成；U05 实现中；U06、U07 阻塞（依赖 U01–U04）。
-- 最近提交见 `git log`；`npm run check`：173 项，172 通过，1 跳过，0 失败。
+- 批次 2–5：见进度表。
