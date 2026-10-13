@@ -108,6 +108,30 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 批次 1：全部程序完成（F08：GitHub Actions Windows 构建在 cd4862b 首次全绿；之前 Windows 上的测试因 SQLite 文件句柄未关闭导致 EBUSY 失败，已修复）。
 - 批次 2–5：见进度表。
 
+## UI 视觉抛光（2026-10-13，无新功能）
+- 提交：`ca2f8db`（`feat/grovebot-impl`）。仅 CSS / 少量空状态文案与 class，不改 IPC、API、业务逻辑。
+- 方向：对齐根目录 A 测（`index.html` + `style.css`）——暗色、苔绿强调色 `--accent:#d1ed87`、圆角与间距、焦点环。
+- 改动文件：
+  - `desktop/workbench.css`：设计令牌、侧栏/标签/模式切换/表单卡片/作品网格/查看器/页脚
+  - `desktop/ui/shell.css`：首页入口卡、导航 hover/active、列表行、空状态、对话框、队列任务卡、设置、起始页
+  - `desktop/workbench.html`：资源页空状态、在线页说明改为 `.notice`
+  - `desktop/ui/{assets,templates,tasks,online}.js`：空列表改为 `.empty-state` 结构（中文）
+- CSP：未使用 HTML `style=` 属性；收藏板高度与查看器缩放仍走 CSSOM（`element.style`），符合约定。
+- 未做：独立浅色主题（桌面端原本只有 dark / `color-scheme:dark`）；未改 A 测预览站本身。
+- 截图（静态打开 `workbench.html`，无真实 IPC，故服务卡/列表多为空状态；分辨率 1440×960）：
+  - `/workspace/yingzuo-ui-shots/01-home.png`
+  - `/workspace/yingzuo-ui-shots/02-create.png`
+  - `/workspace/yingzuo-ui-shots/02b-create-start.png`
+  - `/workspace/yingzuo-ui-shots/03-templates.png`
+  - `/workspace/yingzuo-ui-shots/04-online.png`
+  - `/workspace/yingzuo-ui-shots/05-assets.png`
+  - `/workspace/yingzuo-ui-shots/06-resources.png`
+  - `/workspace/yingzuo-ui-shots/07-queue.png`
+  - `/workspace/yingzuo-ui-shots/08-services.png`
+  - `/workspace/yingzuo-ui-shots/09-settings.png`
+- 测试：`npm run check` → 339 / 338 通过 / 1 跳过 / 0 失败（抛光前后一致）。
+- PR #11 仍为草稿。
+
 ## 当前状态（第六轮：PR11 第三轮审阅 C01–C09，以此为准）— 2026-10-13
 - 审阅原文：docs/development/PR11第三轮代码审阅与最终收尾计划.md（审阅 head f493fce）。状态表：`node tools/pr11.cjs render`（Grovebot开发进度.md 的 C01–C09 区块）。
 - **范围冻结**：本轮之后不再加功能；剩下的只有 Codex 在 Windows 上的人工验收与验收中发现的问题修复。
