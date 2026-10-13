@@ -84,6 +84,24 @@ class RestoreEngine {
     }
   }
 
+  /** S06：回退一次未完成的恢复——把已切换的目标移为 .yz-failed-<id>，把保留的现场移回；每步幂等，不删除任何内容。 */
+  async rollback(id) {
+    const j = this.load(id);
+    if (j.status === 'done') throw new AppError(CODES.INVALID_STATE, '恢复已完成，不能回退；可另行恢复到更早的备份。');
+    for (const item of [...j.items].reverse()) {
+      const pairs = item.type === 'database' ? ['', '-wal', '-shm'] : [''];
+      for (const suf of pairs) {
+        const target = item.target + suf, scene = item.scene + suf;
+        if (!fs.existsSync(scene)) continue;
+        if (fs.existsSync(target)) fs.renameSync(target, `${target}.yz-failed-${id}`);
+        fs.renameSync(scene, target);
+      }
+      if (fs.existsSync(item.staged)) fs.renameSync(item.staged, `${item.staged}.yz-failed`);
+    }
+    j.status = 'aborted'; j.rolledBackAt = this.now(); this.save(j);
+    return j;
+  }
+
   _source(item, rec) { return item.type === 'source' ? rec.sources.find(s => s.id === item.id) : rec.databases.find(d => d.id === item.id); }
 
   async _stage(item, rec, j) {

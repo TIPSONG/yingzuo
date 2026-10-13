@@ -67,7 +67,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
   // 每条阻断绑定事务、备份与受影响目录；只有恢复了同一备份才解除对应阻断。
   const holdsFile = path.join(layout.root, 'maintenance-holds.json');
   const holds = [];
-  const persistHolds = () => { fs.mkdirSync(path.dirname(holdsFile), {recursive: true}); const tmp = `${holdsFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(holds.map(({lease, ...h}) => h), null, 2)); fs.renameSync(tmp, holdsFile); };
+  const persistHolds = () => { fs.mkdirSync(path.dirname(holdsFile), {recursive: true}); const tmp = `${holdsFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(holds.filter(h => !h.derived).map(({lease, ...h}) => h), null, 2)); fs.renameSync(tmp, holdsFile); };
   (function loadHolds() {
     let saved = [];
     try { if (fs.existsSync(holdsFile)) saved = JSON.parse(fs.readFileSync(holdsFile, 'utf8')); }
@@ -83,6 +83,8 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     for (let i = holds.length - 1; i >= 0; i--) if (holds[i].backupDir && path.resolve(holds[i].backupDir) === key) { const [h] = holds.splice(i, 1); if (typeof h.lease === 'function') h.lease(); n++; }
     persistHolds(); return n;
   }
+  const appRec = appBackup.appRecoveryState?.(layout);
+  if (appRec) holds.push({id: 'app-restore', reason: `应用数据恢复未完成：${appRec.error ?? ''}`, backupDir: null, roots: [], at: appRec.failedAt, derived: true, lease: taskService?.hooks.pauseSubmissions('app-restore') ?? null});
   const gate = () => (holds.length ? new AppError(CODES.INVALID_STATE, '上一次维护恢复失败，环境处于不确定状态。请先在“维护”页完成恢复。', {details: {holds: holds.map(h => h.id)}}) : null);
   async function guardedRestore(run, {backupDir = null} = {}) {
     const release = locks.environment.tryAcquire('restore'); if (!release) throw new AppError(CODES.LOCKED, '环境维护锁正被占用。');
@@ -101,6 +103,13 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       release();
     }
   }
+  /** S06：环境备份按登记的模型/输入/输出目录排除，而不是按目录名或扩展名（Python 包内的 models/、data.bin 必须可回滚）。 */
+  function envBackupScope() {
+    const root = comfyRoot(), cfg = configRepo.config.comfy ?? {};
+    let modelRoots = []; try { modelRoots = Object.values(folderMap()).flat(); } catch { /* 无法解析时只排除默认目录 */ }
+    const excludePaths = [...modelRoots, cfg.outputDir || (root && path.join(root, 'output')), cfg.inputDir || (root && path.join(root, 'input')), root && path.join(root, 'temp'), root && path.join(root, 'models')].filter(Boolean);
+    return {excludeDirs: new Set(['__pycache__']), excludeExt: [], excludePaths, protectedPaths: [layout.trash, path.join(layout.root, 'staging'), path.join(layout.root, 'migrations'), layout.root]};
+  }
   async function runTransaction(plan) {
     if (gate()) throw gate();
     let txBackupDir = null;
@@ -113,7 +122,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       startService: async () => { await comfy.ensureRunning(configRepo.config); },
       queue: taskService ? {pauseSubmissions: r => taskService.hooks.pauseSubmissions(r), waitForIdle: o => taskService.hooks.waitForIdle(o)} : null,
       onHold: h => holdAfterFailure({...h, backupDir: txBackupDir, roots: plan.roots ?? []}),
-      backup: async p => { const r = await createBackup({backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile}); txBackupDir = r.dir; return {dir: r.dir}; },
+      backup: async p => { const r = await createBackup({...envBackupScope(), backupRoot: backupsDir(), manifest: await collectManifest({comfyRoot: configRepo.config.comfy.root, python: configRepo.config.comfy.python}).catch(() => null), sources: p.roots.filter(fs.existsSync).map((r, i) => ({id: `r${i}-${path.basename(r)}`, path: r})), id: `bk-${id}`, hashImpl: hashFile}); txBackupDir = r.dir; return {dir: r.dir}; },
       restore: async dir => { const j = await restore.prepare(dir); return restore.run(j.id); },
       onEvent: e => { journal.push(e); record(id, {phase: ['plan', 'disk', 'services', 'lock', 'pause', 'stop'].includes(e.phase) ? 'plan' : e.phase === 'backup' ? 'backup' : e.phase === 'staging' ? 'staging' : e.phase === 'apply' ? 'apply' : e.phase === 'check' ? 'healthcheck' : e.phase === 'done' ? 'done' : e.phase === 'restore' ? 'restore' : e.phase === 'restore-check' ? (e.state === 'done' ? 'restored' : 'failed') : 'failed', journal}); events.emit('maintenance.progress', id, e); },
     });
@@ -228,7 +237,9 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     },
     'maintenance.pendingRestores': async () => restore.pending(),
     // ----- R13：应用数据备份（与环境备份分开；恢复在下次启动、打开数据库之前执行） -----
-    'maintenance.appBackup': async () => { const r = await appBackup.createAppBackup({layout, hashImpl: hashFile}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
+    'maintenance.appRecovery': async () => appBackup.appRecoveryState(layout),
+    'maintenance.chooseAppRecovery': async action => appBackup.chooseAppRecovery(layout, action),
+    'maintenance.appBackup': async () => { if (gate()) throw gate(); const r = await appBackup.createAppBackup({layout, hashImpl: hashFile, barrier: async f => { const lease = taskService?.hooks.pauseSubmissions('app-backup'); try { return editor?.enqueue ? await editor.enqueue(f) : await f(); } finally { lease?.(); } }}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
     'maintenance.appBackups': async () => ({backups: appBackup.listAppBackups(layout), lastRestore: globalThis.__yzAppRestore ?? null}),
     'maintenance.scheduleAppRestore': async dir => appBackup.scheduleAppRestore(layout, dir),
     'maintenance.resumeRestore': async id => guardedRestore(() => restore.resume(id), {backupDir: restore.pending().find(j => j.id === id)?.backupDir ?? null}),
@@ -236,6 +247,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     /** S02：来源不明（无对应备份）的阻断只能由用户明确确认后解除。 */
     'maintenance.clearHold': async (id, {confirm = false} = {}) => {
       const i = holds.findIndex(h => h.id === id); if (i < 0) throw new AppError(CODES.NOT_FOUND, '阻断不存在。');
+      if (holds[i].derived) throw new AppError(CODES.INVALID_STATE, '应用数据恢复未完成，请选择“继续恢复”或“回退”后重启。');
       if (holds[i].backupDir && confirm !== 'force') throw new AppError(CODES.INVALID_STATE, '该阻断有对应备份，请通过“恢复”或“继续恢复”解除。', {details: {backupDir: holds[i].backupDir}});
       if (!confirm) throw new AppError(CODES.INVALID_STATE, '需要确认：已手动检查环境可用。', {details: {needsConfirm: true}});
       const [h] = holds.splice(i, 1); if (typeof h.lease === 'function') h.lease(); persistHolds();

@@ -10,7 +10,8 @@ const {WEIGHT_EXTENSIONS} = require('./env-manifest.cjs');
 const BACKUP_VERSION = 1;
 const DEFAULT_EXCLUDE_DIRS = new Set(['__pycache__', 'models', 'output', 'input', 'temp']);
 
-function shouldExclude(rel, name, isDir, {excludeDirs, excludeExt}) {
+function shouldExclude(rel, name, isDir, {excludeDirs, excludeExt, excludePaths, root}) {
+  if (excludePaths?.size && excludePaths.has(path.resolve(root, rel))) return true;
   if (isDir) return excludeDirs.has(name);
   return excludeExt.includes(path.extname(name).toLowerCase());
 }
@@ -20,7 +21,7 @@ function walk(root, opts, out = [], rel = '') {
   for (const d of fs.readdirSync(path.join(root, rel), {withFileTypes: true})) {
     const r = rel ? path.join(rel, d.name) : d.name;
     if (d.isSymbolicLink()) { out.push({rel: r, type: 'symlink', target: fs.readlinkSync(path.join(root, r))}); continue; }
-    if (shouldExclude(r, d.name, d.isDirectory(), opts)) { out.push({rel: r, type: 'excluded', dir: d.isDirectory()}); continue; }
+    if (shouldExclude(r, d.name, d.isDirectory(), {...opts, root})) { out.push({rel: r, type: 'excluded', dir: d.isDirectory()}); continue; }
     if (d.isDirectory()) { out.push({rel: r, type: 'dir'}); walk(root, opts, out, r); }
     else if (d.isFile()) out.push({rel: r, type: 'file'});
   }
@@ -50,8 +51,14 @@ function backupSqlite(src, dest, {driver} = {}) {
  * @param {{id:string,path:string,kind?:string}[]} o.sources  要备份的目录或文件（原绝对路径）
  * @param {{id:string,path:string}[]} [o.databases] SQLite 数据库
  */
-async function createBackup({backupRoot, manifest, sources = [], databases = [], id, excludeDirs = DEFAULT_EXCLUDE_DIRS, excludeExt = WEIGHT_EXTENSIONS, driver, token, hashImpl = sha256File, now = () => new Date().toISOString()}) {
+async function createBackup({backupRoot, manifest, sources = [], databases = [], id, excludeDirs = DEFAULT_EXCLUDE_DIRS, excludeExt = WEIGHT_EXTENSIONS, excludePaths = null, protectedPaths = [], databasesFirst = false, postCheck = null, driver, token, hashImpl = sha256File, now = () => new Date().toISOString()}) {
   if (!sources.length && !databases.length) throw new AppError(CODES.INVALID_ARGUMENT, '备份内容为空。');
+  // S06：备份根、journal、staging、回收区等不能位于被备份来源之内（也不能反过来包含来源）
+  const inside = (a, b) => { const rel = path.relative(path.resolve(b), path.resolve(a)); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
+  for (const s of sources) for (const p of [backupRoot, ...protectedPaths].filter(Boolean)) {
+    if (inside(p, s.path) || inside(s.path, p)) throw new AppError(CODES.INVALID_PATH, `备份/恢复使用的目录 ${p} 与备份来源 ${s.path} 重叠，拒绝备份。`, {details: {source: s.path, conflict: p}});
+  }
+  const exPaths = excludePaths ? new Set([...excludePaths].map(p => path.resolve(p))) : null;
   const backupId = id ?? `bk-${now().replace(/[:.]/g, '-')}`;
   const dir = path.join(backupRoot, backupId);
   if (fs.existsSync(dir)) throw new AppError(CODES.CONFLICT, `备份目录已存在：${backupId}`);
@@ -60,6 +67,16 @@ async function createBackup({backupRoot, manifest, sources = [], databases = [],
   fs.mkdirSync(path.join(staging, 'data'), {recursive: true});
   const record = {backupVersion: BACKUP_VERSION, id: backupId, createdAt: now(), platform: process.platform, environment: manifest ?? null, sources: [], databases: [], excluded: {dirs: [...excludeDirs], extensions: excludeExt}};
   const seen = new Set();
+  const doDbs = async () => {
+  for (const d of databases) {
+    if (!d.id || seen.has(d.id) || !/^[\w.-]+$/.test(d.id)) throw new AppError(CODES.INVALID_ARGUMENT, `数据库 id 无效或重复：${d.id}`);
+    seen.add(d.id);
+    const dst = path.join(staging, 'db', d.id + '.sqlite');
+    backupSqlite(path.resolve(d.path), dst, {driver});
+    record.databases.push({id: d.id, originalPath: path.resolve(d.path), file: path.relative(staging, dst), size: fs.statSync(dst).size, sha256: await hashImpl(dst), method: 'VACUUM INTO'});
+  }
+  };
+  const doSources = async () => {
   for (const s of sources) {
     if (!s.id || seen.has(s.id) || !/^[\w.-]+$/.test(s.id)) throw new AppError(CODES.INVALID_ARGUMENT, `来源 id 无效或重复：${s.id}`);
     seen.add(s.id);
@@ -70,7 +87,7 @@ async function createBackup({backupRoot, manifest, sources = [], databases = [],
     const entry = {id: s.id, kind: s.kind ?? 'dir', originalPath: abs, isDirectory: st.isDirectory(), files: [], dirs: [], symlinks: [], excluded: [], bytes: 0};
     if (st.isDirectory()) {
       fs.mkdirSync(destBase, {recursive: true});
-      for (const e of walk(abs, {excludeDirs, excludeExt})) {
+      for (const e of walk(abs, {excludeDirs, excludeExt, excludePaths: exPaths})) {
         if (token?.cancelled) throw new AppError(CODES.CANCELLED, token.reason ?? '已取消');
         if (e.type === 'dir') { entry.dirs.push(e.rel); fs.mkdirSync(path.join(destBase, e.rel), {recursive: true}); }
         else if (e.type === 'symlink') entry.symlinks.push({rel: e.rel, target: e.target});
@@ -89,13 +106,9 @@ async function createBackup({backupRoot, manifest, sources = [], databases = [],
     }
     record.sources.push(entry);
   }
-  for (const d of databases) {
-    if (!d.id || seen.has(d.id) || !/^[\w.-]+$/.test(d.id)) throw new AppError(CODES.INVALID_ARGUMENT, `数据库 id 无效或重复：${d.id}`);
-    seen.add(d.id);
-    const dst = path.join(staging, 'db', d.id + '.sqlite');
-    backupSqlite(path.resolve(d.path), dst, {driver});
-    record.databases.push({id: d.id, originalPath: path.resolve(d.path), file: path.relative(staging, dst), size: fs.statSync(dst).size, sha256: await hashImpl(dst), method: 'VACUUM INTO'});
-  }
+  };
+  if (databasesFirst) { await doDbs(); await doSources(); } else { await doSources(); await doDbs(); }
+  if (postCheck) await postCheck(staging, record);
   record.prerequisites = {
     basePython: manifest?.external?.basePython ?? null,
     modelDirs: manifest?.external?.modelDirs ?? [],
