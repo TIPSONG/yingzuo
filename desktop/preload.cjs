@@ -1,11 +1,30 @@
 'use strict';
+// 固定方法白名单。不暴露通用 exec/readFile/writeFile；每个方法都由主进程再次校验来源与参数。
 const {contextBridge, ipcRenderer} = require('electron');
-const methods = ['boot','connect','openTemplate','activateTab','duplicateTab','closeTab','importWorkflow','newBlank','snapshot','applyParameters','setMode','save','exportWorkflow','showPreview','showEditor'];
+const methods = ['boot','connect','openTemplate','activateTab','duplicateTab','closeTab','renameTab','importWorkflow','newBlank','snapshot','applyParameters','setMode','save','exportWorkflow','showPreview','showEditor'];
 const api = Object.fromEntries(methods.map(method => [method, (...args) => ipcRenderer.invoke('yingzuo:p0', {method,args})]));
 api.setBounds = bounds => ipcRenderer.send('yingzuo:p0-bounds', bounds);
+api.setOverlay = value => ipcRenderer.send('yingzuo:overlay', value === true);
 api.onStatus = callback => {
   const listener = (_event, data) => callback(data);
   ipcRenderer.on('yingzuo:p0-status', listener);
   return () => ipcRenderer.removeListener('yingzuo:p0-status', listener);
 };
+const GROUPS = {
+  services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
+  settings: ['get','update','pickPath','setCredential','removeCredential'],
+  maintenance: ['info','eventsSince','openLocation','exportDiagnostics','importAlphaDrafts'],
+};
+let counter = 0;
+const call = (method, args) => ipcRenderer.invoke('yingzuo:api', {requestId:`r${Date.now().toString(36)}${(counter++).toString(36)}`, method, args});
+const grouped = Object.fromEntries(Object.entries(GROUPS).map(([group, names]) => [group, Object.freeze(Object.fromEntries(names.map(name => [name, (...args) => call(`${group}.${name}`, args)])))]));
+grouped.events = Object.freeze({
+  /** 订阅事件，返回取消函数。 */
+  subscribe(callback) {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('yingzuo:event', listener);
+    return () => ipcRenderer.removeListener('yingzuo:event', listener);
+  },
+});
 contextBridge.exposeInMainWorld('yingzuoDesktop', Object.freeze(api));
+contextBridge.exposeInMainWorld('yingzuo', Object.freeze(grouped));

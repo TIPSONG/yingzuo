@@ -1,0 +1,822 @@
+[
+ {
+  "id": "F01",
+  "name": "现状登记",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "F02",
+  "name": "主进程拆分",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "F03",
+  "name": "公共 schema",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "F04",
+  "name": "数据根与迁移",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "F05",
+  "name": "存储仓库",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "F06",
+  "name": "事件与锁",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "F07",
+  "name": "凭据与日志",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "F08",
+  "name": "开发脚本",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E01",
+  "name": "版本适配层",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E02",
+  "name": "正式页面融合",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E03",
+  "name": "工作流标签",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E04",
+  "name": "新建起始页",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E05",
+  "name": "导入管线",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E06",
+  "name": "根图与串写保护",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E07",
+  "name": "五图表单",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E08",
+  "name": "参考图管线",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E09",
+  "name": "编译与定位",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "E10",
+  "name": "原生视图行为",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S01",
+  "name": "统一配置",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S02",
+  "name": "服务探测",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S03",
+  "name": "按需启动 ComfyUI",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S04",
+  "name": "LM Studio 适配",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S05",
+  "name": "停止与显存",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S06",
+  "name": "托盘与单实例",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S07",
+  "name": "正确退出",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "S08",
+  "name": "状态与设置页面接入",
+  "batch": 1,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q01",
+  "name": "任务持久化",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q02",
+  "name": "Comfy HTTP/WS 客户端",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q03",
+  "name": "单一串行调度器",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q04",
+  "name": "提交与断连核对",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q05",
+  "name": "真实状态与错误",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q06",
+  "name": "统一运行入口",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q07",
+  "name": "取消与重试",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q08",
+  "name": "手动润色与单独润色",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q09",
+  "name": "自动润色生成",
+  "batch": 2,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "Q10",
+  "name": "批量与重启恢复",
+  "batch": 5,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A01",
+  "name": "输出索引",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A02",
+  "name": "任务输出关联",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A03",
+  "name": "日期／工作流输出",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A04",
+  "name": "缩略图与查看器",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A05",
+  "name": "文件入口",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A06",
+  "name": "原图导出",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A07",
+  "name": "分享副本导出",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "A08",
+  "name": "收藏板",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T01",
+  "name": "模板仓库",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T02",
+  "name": "保存与历史",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T03",
+  "name": "表单编辑器",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T04",
+  "name": "映射失效处理",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T05",
+  "name": "实时诊断清单",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T06",
+  "name": "替代建议",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T07",
+  "name": "修复与撤销",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "T08",
+  "name": "依赖补齐计划",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R01",
+  "name": "目录扫描",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R02",
+  "name": "资源详情",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R03",
+  "name": "引用索引",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R04",
+  "name": "快捷使用",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R05",
+  "name": "插件清单",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R06",
+  "name": "Manager 适配",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R07",
+  "name": "插件操作事务",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "R08",
+  "name": "模型位置管理",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O01",
+  "name": "来源接口",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O02",
+  "name": "Hugging Face",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O03",
+  "name": "Civitai",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O04",
+  "name": "下载规划",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O05",
+  "name": "通用下载器",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O06",
+  "name": "下载恢复",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O07",
+  "name": "在线模板导入",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "O08",
+  "name": "联合补齐",
+  "batch": 4,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U01",
+  "name": "环境清单",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U02",
+  "name": "可恢复备份",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U03",
+  "name": "恢复引擎",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U04",
+  "name": "维护事务与锁",
+  "batch": 3,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U05",
+  "name": "更新检测与页面",
+  "batch": 5,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U06",
+  "name": "Comfy／插件更新",
+  "batch": 5,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U07",
+  "name": "更新记录与保留",
+  "batch": 5,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "U08",
+  "name": "应用版本维护",
+  "batch": 5,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "B01",
+  "name": "正式数据接入清理",
+  "batch": 6,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "B02",
+  "name": "必要开发检查",
+  "batch": 6,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "B03",
+  "name": "Windows 构建",
+  "batch": 6,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "B04",
+  "name": "分发与升级脚本",
+  "batch": 6,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "B05",
+  "name": "程序交付记录",
+  "batch": 6,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ },
+ {
+  "id": "B06",
+  "name": "验收交接材料",
+  "batch": 6,
+  "status": "未开始",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": ""
+ }
+]

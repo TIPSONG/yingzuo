@@ -22,8 +22,10 @@ async function fixture(t,initial=workspace(),options={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'yingzuo-main-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   fs.mkdirSync(path.join(root,'desktop'),{recursive:true});
-  fs.mkdirSync(path.join(root,'.local'),{recursive:true});
-  const file=path.join(root,'.local','desktop-workspace.json');
+  fs.mkdirSync(path.join(root,'.local','data'),{recursive:true});
+  const file=path.join(root,'.local','data','workspace.json');
+  // 测试关闭行为时不缩到托盘（mock 中也没有 Tray）。
+  fs.writeFileSync(path.join(root,'.local','data','config.json'),JSON.stringify({version:1,tray:{closeToTray:false,showNotifications:false}}));
   if(options.rawWorkspace!==undefined)fs.writeFileSync(file,options.rawWorkspace);
   else if(initial)Store.writeWorkspace(file,initial);
   const comfyRoot=path.join(root,'comfy');
@@ -44,7 +46,7 @@ async function fixture(t,initial=workspace(),options={}) {
     isDestroyed(){return this.destroyed;}
     getURL(){return this.url;}
     setWindowOpenHandler(fn){this.openHandler=fn;}
-    send(channel,value){state.statuses.push({channel,...plain(value)});}
+    send(channel,value){if(channel==='yingzuo:event')(state.appEvents??=[]).push(plain(value));else state.statuses.push({channel,...plain(value)});}
     async loadURL(url){
       state.loads.push(url);this.emit('did-start-navigation',{url,isSameDocument:false,isMainFrame:true});this.url=url;this.mainFrame.url=url;
       if(state.loadHook)await state.loadHook(url,this);
@@ -71,18 +73,20 @@ async function fixture(t,initial=workspace(),options={}) {
     setBounds(value){this.bounds=value;}
   }
   const protocol=()=>({handlers:new Map(),handle(name,fn){this.handlers.set(name,fn);},isProtocolHandled(name){return this.handlers.has(name);},registerSchemesAsPrivileged(){}});
-  const app=new EventEmitter();Object.assign(app,{setName(){},setPath(){},requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),quit(){state.quit++;}});
+  const app=new EventEmitter();Object.assign(app,{isPackaged:false,getVersion:()=>'test',getPath:()=>root,setName(){},setPath(){},requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),quit(){state.quit++;}});
   const handlers=new Map(),ipcMain=new EventEmitter();ipcMain.handle=(name,handler)=>handlers.set(name,handler);
   const electron={app,BrowserWindow:Window,WebContentsView:View,ipcMain,protocol:protocol(),net:{fetch:async url=>({url})},dialog:{
     showOpenDialog:async()=>state.openResults.shift()||{canceled:true,filePaths:[]},
     showSaveDialog:async()=>state.saveResults.shift()||{canceled:true},
-    showErrorBox:(title,message)=>state.errors.push({title,message})
-  },session:{fromPartition(name){if(!state.partitions.has(name)){const ses=new EventEmitter();Object.assign(ses,{protocol:protocol(),setPermissionRequestHandler(fn){this.permissionRequest=fn;},setPermissionCheckHandler(fn){this.permissionCheck=fn;}});state.partitions.set(name,ses);}return state.partitions.get(name);}}};
+    showErrorBox:(title,message)=>state.errors.push({title,message}),
+    showMessageBox:async()=>({response:2})
+  },shell:{openPath:async()=>''},safeStorage:{isEncryptionAvailable:()=>false},session:{fromPartition(name){if(!state.partitions.has(name)){const ses=new EventEmitter();Object.assign(ses,{protocol:protocol(),setPermissionRequestHandler(fn){this.permissionRequest=fn;},setPermissionCheckHandler(fn){this.permissionCheck=fn;}});state.partitions.set(name,ses);}return state.partitions.get(name);}}};
   const bridge={};
   for(const [name,op] of Object.entries({getCapabilitiesSource:'capabilities',loadGraphSource:'load',snapshotSource:'snapshot',applyParametersSource:'parameters'}))bridge[name]=(payload={})=>JSON.stringify({op,payload});
   bridge.setModeSource=(mode,expectedName)=>JSON.stringify({op:'mode',payload:{mode,expectedName}});
   const store={...Store,writeWorkspace(target,data){state.writeCount++;if(state.writeHook)state.writeHook(target,data,state.writeCount);return Store.writeWorkspace(target,data);}};
-  const requireMock=name=>name==='electron'?electron:name==='./workspace-store.cjs'?store:name==='./comfy-bridge-source.cjs'?bridge:require(name);
+  const desktopDir=path.join(__dirname,'..','desktop');
+  const requireMock=name=>name==='electron'?electron:name==='./workspace-store.cjs'?store:name==='./comfy-bridge-source.cjs'?bridge:name.startsWith('./')?require(path.join(desktopDir,name)):require(name);
   vm.runInNewContext(source,{require:requireMock,__dirname:path.join(root,'desktop'),URL,Response,AbortSignal,structuredClone,fetch:async url=>state.fetchHook?state.fetchHook(url):({ok:true,json:async()=>({system:{},devices:[]})}),setTimeout(fn,ms){const id={};state.timers.set(id,{fn,ms});if(ms===500)queueMicrotask(()=>{if(state.timers.delete(id))fn();});return id;},clearTimeout:id=>state.timers.delete(id),setInterval(fn){state.intervals.push(fn);return {unref(){}};}},{filename:'desktop/main.cjs'});
   await tick();
   assert.equal(state.errors.length,0,'mock application starts successfully');
@@ -90,7 +94,7 @@ async function fixture(t,initial=workspace(),options={}) {
   state.send=(method,...args)=>handlers.get('yingzuo:p0')({sender:state.window.webContents,senderFrame:state.window.webContents.mainFrame},{method,args}).then(plain);
   state.rawSend=(event,message)=>handlers.get('yingzuo:p0')(event,message).then(plain);
   state.bounds=value=>ipcMain.emit('yingzuo:p0-bounds',{sender:state.window.webContents,senderFrame:state.window.webContents.mainFrame},value);
-  state.read=()=>JSON.parse(fs.readFileSync(file,'utf8'));
+  state.read=()=>Store.readWorkspace(file);
   state.editor=()=>state.views.find(view=>view.options.webPreferences.session===state.partitions.get('persist:yingzuo-p0-comfy'));
   state.snapshot=snapshot;state.bridgeDefault=bridgeDefault;
   return state;
@@ -147,7 +151,7 @@ test('failed tab load restores selection, hides uncertain editor and reconnects 
 
 test('closing active tab rolls back membership when replacement fails and preserves archive',async t=>{
   const f=await connected(t);f.nativeGraph=graph('latest a');f.bridgeHook=async(op,payload,next)=>op==='load'&&payload.name==='yingzuo-b'?{ok:false,error:{code:'LOAD_FAILED',message:'replacement failed'}}:next(op,payload);
-  const result=await f.send('closeTab','a');assert.equal(result.ok,false);assert.deepEqual(result.state.tabs.map(tab=>tab.id),['a','b']);assert.equal(result.state.activeId,'a');assert.equal(result.state.connected,false);assert.equal(f.read().tabs.length,2);assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'.local/closed-workflows/a.json'),'utf8')).nodes[0].widgets_values[0],'latest a');
+  const result=await f.send('closeTab','a');assert.equal(result.ok,false);assert.deepEqual(result.state.tabs.map(tab=>tab.id),['a','b']);assert.equal(result.state.activeId,'a');assert.equal(result.state.connected,false);assert.equal(f.read().tabs.length,2);assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'.local/data/closed-workflows/a.json'),'utf8')).nodes[0].widgets_values[0],'latest a');
   f.bridgeHook=null;assert.equal((await f.send('connect')).ok,true);const closed=await f.send('closeTab','a');assert.equal(closed.ok,true);assert.equal(closed.state.activeId,'b');assert.equal(closed.state.tabs.length,1);
 });
 
@@ -198,13 +202,13 @@ test('preview load failure returns to editor without poisoning retries',async t=
 
 test('native workflow mismatch archives foreign graph without overwriting host draft',async t=>{
   const f=await connected(t);f.nativeName='foreign';f.nativeGraph=graph('foreign unsaved');const result=await f.send('save');assert.equal(result.ok,false);assert.equal(result.state.connected,false);assert.equal(f.read().tabs[0].graph.nodes[0].widgets_values[0],'a');
-  const files=fs.readdirSync(path.join(f.root,'.local/closed-workflows'));assert.equal(files.length,1);assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'.local/closed-workflows',files[0]),'utf8')).nodes[0].widgets_values[0],'foreign unsaved');
+  const files=fs.readdirSync(path.join(f.root,'.local/data/closed-workflows'));assert.equal(files.length,1);assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'.local/data/closed-workflows',files[0]),'utf8')).nodes[0].widgets_values[0],'foreign unsaved');
 });
 
 test('native downloads use distinct paths, report completion only at done and handle failures',async t=>{
   const f=await connected(t);const ses=f.partitions.get('persist:yingzuo-p0-comfy');
   const item=()=>{const value=new EventEmitter();Object.assign(value,{getFilename:()=> '中文图像.png',setSavePath(target){this.target=target;},cancel(){this.cancelled=true;}});return value;};
-  const first=item(),second=item();ses.emit('will-download',{},first);ses.emit('will-download',{},second);assert.notEqual(first.target,second.target);assert.equal(path.dirname(first.target),path.join(f.root,'.local/exports'));assert.equal(f.statuses.some(status=>status.download),false);
+  const first=item(),second=item();ses.emit('will-download',{},first);ses.emit('will-download',{},second);assert.notEqual(first.target,second.target);assert.equal(path.dirname(first.target),path.join(f.root,'.local/data/exports'));assert.equal(f.statuses.some(status=>status.download),false);
   fs.writeFileSync(first.target,'mock image bytes');first.emit('done',{},'completed');assert.equal(f.statuses.at(-1).download.status,'completed');assert.equal(fs.readFileSync(f.statuses.at(-1).download.path,'utf8'),'mock image bytes');
   second.emit('done',{},'interrupted');assert.match(f.statuses.at(-1).error,/interrupted/);
   const third=item();third.setSavePath=()=>{throw new Error('disk full');};assert.doesNotThrow(()=>ses.emit('will-download',{},third));assert.equal(third.cancelled,true);assert.match(f.statuses.at(-1).error,/disk full/);
@@ -216,7 +220,7 @@ test('window close waits for save and refuses to exit on a write failure',async 
 });
 
 test('failed foreign archive keeps graph recoverable and blocks reconnect and exit until durable',async t=>{
-  const f=await connected(t);const archive=path.join(f.root,'.local/closed-workflows');fs.writeFileSync(archive,'blocks directory creation');
+  const f=await connected(t);const archive=path.join(f.root,'.local/data/closed-workflows');fs.rmSync(archive,{recursive:true,force:true});fs.writeFileSync(archive,'blocks directory creation');
   f.nativeName='foreign';f.nativeGraph=graph('foreign unsaved');const failed=await f.send('save');assert.equal(failed.ok,false);assert.equal(failed.state.recoveryPending,true);assert.equal(failed.state.connected,false);assert.equal(f.editor().visible,true);assert.equal(failed.snapshot,null);
   const loads=f.loads.length;assert.equal((await f.send('connect')).ok,false);assert.equal(f.loads.length,loads);assert.equal(f.nativeGraph.nodes[0].widgets_values[0],'foreign unsaved');
   f.window.close();await tick();assert.equal(f.window.destroyed,undefined);assert.equal(f.quit,0);assert.equal(f.read().tabs[0].graph.nodes[0].widgets_values[0],'a');
@@ -248,7 +252,7 @@ test('modern navigation details invalidate document reloads but preserve same-do
 });
 
 test('foreign recovery retries also archive edits made while the disk was unavailable',async t=>{
-  const f=await connected(t);const archive=path.join(f.root,'.local/closed-workflows');fs.writeFileSync(archive,'blocks recovery');
+  const f=await connected(t);const archive=path.join(f.root,'.local/data/closed-workflows');fs.rmSync(archive,{recursive:true,force:true});fs.writeFileSync(archive,'blocks recovery');
   f.nativeName='foreign';f.nativeGraph=graph('first foreign edit');assert.equal((await f.send('save')).ok,false);
   f.nativeGraph=graph('newer foreign edit');fs.unlinkSync(archive);assert.equal((await f.send('connect')).ok,true);
   const prompts=fs.readdirSync(archive).map(file=>JSON.parse(fs.readFileSync(path.join(archive,file),'utf8')).nodes[0].widgets_values[0]).sort();assert.deepEqual(prompts,['first foreign edit','newer foreign edit']);assert.equal(f.read().tabs[0].graph.nodes[0].widgets_values[0],'a');

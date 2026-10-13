@@ -2,16 +2,85 @@
   "name": "yingzuo",
   "version": "0.1.0-alpha.1",
   "private": true,
-  "description": "映作：Windows 本地绘图工作台，桌面接入验证版",
+  "description": "映作：Windows 本地绘图工作台（Electron + ComfyUI）",
   "main": "desktop/main.cjs",
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "desktop": "electron ."
+    "check": "node tools/check.cjs && npm test",
+    "desktop": "electron .",
+    "build:win": "node tools/build-win.cjs",
+    "rebuild:electron": "electron-builder install-app-deps",
+    "progress": "node tools/progress.cjs render"
   },
   "engines": {
     "node": ">=22.12"
   },
   "devDependencies": {
-    "electron": "44.4.3"
+    "@electron/rebuild": "4.2.1",
+    "electron": "44.4.3",
+    "electron-builder": "26.15.3"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1",
+    "sharp": "0.34.5"
+  },
+  "build": {
+    "appId": "com.tipsong.yingzuo",
+    "productName": "映作",
+    "copyright": "TIPSONG",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "desktop/**/*",
+      "shared/**/*",
+      "assets/**/*",
+      "*.js",
+      "*.css",
+      "index.html",
+      "package.json",
+      "!**/*.local.*",
+      "!tests/**",
+      "!docs/**",
+      "!tools/**",
+      "!.local/**"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**",
+      "node_modules/sharp/**",
+      "node_modules/@img/**"
+    ],
+    "npmRebuild": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon-256.png",
+      "artifactName": "Yingzuo-${version}-${arch}-${env.YINGZUO_ARTIFACT_KIND}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Yingzuo-Setup-${version}-x64.${ext}",
+      "shortcutName": "映作"
+    },
+    "portable": {
+      "artifactName": "Yingzuo-Portable-${version}-x64.${ext}"
+    },
+    "publish": null
   }
 }
