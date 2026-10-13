@@ -37,13 +37,18 @@
       "id": "D05",
       "level": "P1",
       "name": "维护失败仍启动服务、继续队列",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "ea187ce",
+      "tests": "maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时",
+      "note": "队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放"
     },
     {
       "id": "D06",
       "level": "P1",
       "name": "继续恢复绕开运行保护",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "ea187ce",
+      "note": "restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds"
     },
     {
       "id": "D07",
@@ -61,7 +66,9 @@
       "id": "D09",
       "level": "P1",
       "name": "取消后退出 15 秒超时当作可退出",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "ea187ce",
+      "note": "取消后 15 秒未结束改为提示：继续等待/仍然退出（不标记完成）/返回；缺 prepareQuit 自动测试。D10 定向中断探测未开始"
     },
     {
       "id": "D10",
@@ -103,13 +110,18 @@
       "id": "PR11-R01",
       "level": "P1",
       "name": "维护状态与暂停租约",
-      "status": "未开始"
+      "status": "程序完成",
+      "commit": "ea187ce",
+      "tests": "maint.test：恢复失败不 start/不释放租约；task-service.test：维护租约不解除用户暂停、waitForIdle 超时",
+      "note": "队列改为租约计数；restore-failed 后新维护被拒绝，直到受保护恢复成功才释放"
     },
     {
       "id": "PR11-R02",
       "level": "P1",
       "name": "首次/继续恢复走同一保护入口",
-      "status": "未开始"
+      "status": "实现中",
+      "commit": "ea187ce",
+      "note": "restoreBackup 与 resumeRestore 共用 guardedRestore（锁、外部服务检查、租约、等待空闲、停 owned）；失败保留租约。尚缺针对 resumeRestore 的自动测试与 UI 提示 maintenance.holds"
     },
     {
       "id": "PR11-R03",
