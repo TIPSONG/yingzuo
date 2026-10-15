@@ -588,3 +588,26 @@ test('replacing an installed native load method invalidates prior canvas authori
   f.app.loadGraphData=async()=>true;
   assert.equal((await f.run(bridge.snapshotSource({expectedName:name}))).error?.code,'WORKFLOW_CHANGED');
 });
+
+test('E09/E10：compile 使用官方 graphToPrompt 且必须带身份；focus 定位子图节点；viewport 随快照保存并在加载时恢复', async () => {
+  const f = fixture();
+  const name = 'yingzuo-tab-c';
+  f.app.canvas.ds = { scale: 1, offset: [0, 0] };
+  assert.equal((await f.run(bridge.loadGraphSource({ graph: { nodes: [] }, name, viewport: { scale: 2, offset: [5, -3] } }))).ok, true);
+  assert.deepEqual([f.app.canvas.ds.scale, ...f.app.canvas.ds.offset], [2, 5, -3]);
+  const snap = await f.run(bridge.snapshotSource({ expectedName: name }));
+  assert.deepEqual(snap.viewport, { scale: 2, offset: [5, -3] });
+  assert.equal((await f.run(bridge.compileSource({ expectedName: name }))).error.code, 'COMPILE_UNAVAILABLE');
+  f.app.graphToPrompt = async () => ({ output: { 7: { class_type: 'CLIPTextEncode', inputs: { text: 'old' } } }, workflow: { nodes: [] } });
+  const compiled = await f.run(bridge.compileSource({ expectedName: name }));
+  assert.equal(compiled.ok, true); assert.equal(compiled.prompt['7'].class_type, 'CLIPTextEncode');
+  assert.equal((await f.run(bridge.compileSource({}))).error.code, 'IDENTITY_REQUIRED');
+  assert.equal((await f.run(bridge.compileSource({ expectedName: 'yingzuo-other' }))).error.code, 'WORKFLOW_CHANGED');
+  const selected = [];
+  f.app.canvas.selectNode = n => selected.push(n); f.app.canvas.centerOnNode = () => {}; f.app.canvas.setGraph = g => selected.push(g.id);
+  assert.equal((await f.run(bridge.focusNodeSource({ expectedName: name, scopePath: ['child'], nodeId: '7' }))).ok, true);
+  assert.equal(selected[0], 'child'); assert.equal(selected[1].title, 'Inner');
+  assert.equal((await f.run(bridge.focusNodeSource({ expectedName: name, scopePath: [], nodeId: '99' }))).error.code, 'NODE_NOT_FOUND');
+  const caps = await f.run(bridge.getCapabilitiesSource());
+  assert.equal(caps.compile, true); assert.equal(caps.focusNode, true);
+});

@@ -15,7 +15,7 @@ const graph = prompt => ({version:0.4,nodes:[{id:1,type:'CLIPTextEncode',widgets
 
 test('missing workspace is empty; saved active draft survives a round trip', t => {
   const {file} = temporary(t);
-  assert.deepEqual(Store.readWorkspace(file), {version:1,activeId:null,tabs:[]});
+  assert.deepEqual(Store.readWorkspace(file), {version:2,activeId:null,tabs:[]});
   const workspace = Store.emptyWorkspace();
   const tab = Store.addTab(workspace,'文生图',graph('keep this prompt'),'text');
   workspace.activeId = tab.id;
@@ -121,7 +121,7 @@ test('invalid writes cannot replace an existing readable workspace', t => {
   Store.writeWorkspace(file,workspace);
   const original = fs.readFileSync(file);
   const invalid = [
-    null, [], {version:2,tabs:[]}, {version:1,tabs:[null]},
+    null, [], {version:99,tabs:[]}, {version:1,tabs:[null]},
     {...workspace,tabs:[tab,tab]},
     {...workspace,tabs:[{...tab,id:'../outside'}]},
     {...workspace,tabs:[{...tab,graph:{nodes:[{id:1}]}}]},
@@ -145,8 +145,8 @@ test('writes and reads normalize metadata consistently without changing the call
   tab.title = 'CON.txt... '; tab.mode = 'future-mode'; workspace.activeId='missing';
   const before = JSON.stringify(workspace);
   Store.writeWorkspace(file,workspace);
-  const saved = JSON.parse(fs.readFileSync(file,'utf8'));
-  assert.deepEqual(Store.readWorkspace(file),saved);
+  const saved = Store.readWorkspace(file);
+  assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).tabs[0].graphRef,`drafts/${tab.id}.json`);
   assert.equal(saved.activeId,tab.id);
   assert.equal(saved.tabs[0].title,'_CON.txt');
   assert.equal(saved.tabs[0].mode,'graph');

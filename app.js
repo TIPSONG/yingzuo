@@ -148,7 +148,7 @@ function renderSettings(){
  const tab=state.settingTab;
  const row=(title,desc,control)=>`<div class="settings-row"><div><strong>${title}</strong><p>${desc}</p></div>${control}</div>`;
  let content='';
- if(tab==='外观与布局')content=`<h2 class="setting-section-head">让工作空间更像你</h2><div class="settings-group"><div style="padding:23px"><h3>强调色</h3><p class="subtext" style="margin-top:6px">同一套布局，两种视觉气质。点击即可切换。</p><div class="theme-options">${[['green','青柠 · 创作室'],['cool','雾紫 · 暗房']].map(([id,name])=>`<button class="theme-option ${state.theme===id?'active':''}" data-theme="${id}"><span class="theme-swatch"><span></span><span></span><span style="background:${id==='green'?'#d1ed87':'#c8c2f3'}"></span></span><small>${name}</small>${state.theme===id?icon('check'):''}</button>`).join('')}</div></div>${row('图片展示密度','切换作品缩略图大小',`<select id="density" aria-label="图片展示密度"><option value="comfortable" ${state.density==='comfortable'?'selected':''}>舒展</option><option value="compact" ${state.density==='compact'?'selected':''}>紧凑</option></select>`)}${row('界面语言','本版预览使用中文','<span class="chip">简体中文</span>')}</div><div class="notice">${icon('info')} “映作”为暂定名称，颜色和布局都可在 A 测评审后调整。</div>`;
+ if(tab==='外观与布局')content=`<h2 class="setting-section-head">让工作空间更像你</h2><div class="settings-group"><div style="padding:23px"><h3>强调色</h3><p class="subtext" style="margin-top:6px">同一套布局，两种视觉气质。点击即可切换。</p><div class="theme-options">${[['green','青柠 · 创作室'],['cool','雾紫 · 暗房']].map(([id,name])=>`<button class="theme-option ${state.theme===id?'active':''}" data-theme="${id}"><span class="theme-swatch"><span></span><span></span><span style="background:${id==='green'?'#d1ed87':'#c8c2f3'}"></span></span><small>${name}</small>${state.theme===id?icon('check'):''}</button>`).join('')}</div></div>${row('图片展示密度','切换作品缩略图大小',`<select id="density" aria-label="图片展示密度"><option value="comfortable" ${state.density==='comfortable'?'selected':''}>舒展</option><option value="compact" ${state.density==='compact'?'selected':''}>紧凑</option></select>`)}${row('界面语言','本版预览使用中文','<span class="chip">简体中文</span>')}${row('导出草稿到桌面版','把本页保存在浏览器里的草稿导出为 JSON，再在桌面版“设置 → 迁移”中导入。临时上传的参考图无法导出，导入后需要重新选择。','<button class="btn small" data-action="export-alpha">导出草稿</button>')}</div><div class="notice">${icon('info')} “映作”为暂定名称，颜色和布局都可在 A 测评审后调整。</div>`;
  if(tab==='路径与输出')content=`<h2 class="setting-section-head">文件各就各位</h2><div class="settings-group">${row('ComfyUI 目录','沿用已部署环境','<input aria-label="ComfyUI 目录" value="D:\\agent\\ComfyUI" readonly>')}${row('作品输出','已有作品留在原位置','<input aria-label="作品输出目录" value="D:\\agent\\ComfyUI\\output" readonly>')}${row('新作品归档','启动台生成任务的保存规则','<span class="chip">日期 / 工作流</span>')}${row('导出选项','原图与分享副本分别处理','<span class="subtext">每次导出时选择</span>')}</div><div class="notice">${icon('info')} 路径是预览信息；此页面不会移动或修改现有文件。</div>`;
  if(tab==='模型与服务')content=`<h2 class="setting-section-head">按需启动，把显存留给创作</h2><div class="settings-group">${row('ComfyUI','本地绘图服务','<input aria-label="ComfyUI 地址" value="http://127.0.0.1:8188" readonly>')}${row('LM Studio','Gemma 润色接口','<input aria-label="LM Studio 地址" value="http://127.0.0.1:1234/v1" readonly>')}${row('启动方式','打开首页时不加载模型','<span class="chip">选工作流后按需启动</span>')}${row('Gemma 显存协调','润色结束后卸载本次模型实例','<span class="chip">保留现有配置</span>')}</div><div class="notice">${icon('info')} A 测前端不连接或控制以上服务。</div>`;
  if(tab==='下载与账户')content=`<h2 class="setting-section-head">连接你的模型来源</h2><div class="settings-group">${row('Hugging Face','公开资源与需要授权的模型',button('账户设置预览','account-hf','','link'))}${row('Civitai','模型与 LoRA 社区',button('账户设置预览','account-civitai','','link'))}${row('下载位置','根据模型用途自动选择目录','<span class="subtext">下载前可以修改</span>')}</div><div class="notice">${icon('info')} A 测不收集 API Key。正式版将使用系统凭据存储或系统加密。</div>`;
@@ -296,6 +296,7 @@ document.addEventListener('click',e=>{
  if(t.dataset.page){navigate(t.dataset.page);return;}
  if(t.dataset.workflow){openWorkflow(t.dataset.workflow);return;}
  if(t.dataset.view){openPicture(t.dataset.view);return;}
+ if(t.dataset.action==='export-alpha'){exportAlphaDrafts();return;}
  if(t.dataset.favorite){const id=t.dataset.favorite;favorites.has(id)?favorites.delete(id):favorites.add(id);save('favorites',[...favorites].filter(id=>pictures.some(p=>p.id===id)));const box=t.dataset.lightbox;render();if(box)openPicture(id);else toast(favorites.has(id)?'已加入收藏板。':'已取消收藏。');return;}
  if(t.dataset.flowFavorite){const id=t.dataset.flowFavorite;workflowFavorites.has(id)?workflowFavorites.delete(id):workflowFavorites.add(id);save('workflow-favorites',[...workflowFavorites]);render();return;}
  if(t.dataset.export){exportDialog(t.dataset.export);return;}
@@ -353,3 +354,12 @@ initializeWorkspace();bindWorkspaceActions();bindWorkflowStartActions();bindComp
 state.page=[...pages.map(p=>p.id),'settings'].includes(location.hash.slice(1))?location.hash.slice(1):'home';
 if(state.page==='canvas'||state.page==='create'){state.mode=state.page==='canvas'?'canvas':'form';save('editor-mode',state.mode);}
 render();setInterval(tickQueue,600);
+
+// F04：A 测浏览器草稿显式导出（桌面版通过“设置 → 迁移”导入）。blob: 引用无法持久化，只记录数量。
+function exportAlphaDrafts(){
+ const tabs=(load('workspace-tabs',{tabs:[]}).tabs||[]).map(tab=>({...tab,refs:(tab.refs||[]).filter(u=>!String(u).startsWith('blob:')),refsDropped:(tab.refs||[]).filter(u=>String(u).startsWith('blob:')).length}));
+ const data={kind:'yingzuo-alpha-export',version:1,exportedAt:new Date().toISOString(),drafts:load('drafts',{}),workspaceTabs:tabs,favorites:load('favorites',[]),workflowFavorites:load('workflow-favorites',[])};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+ const a=document.createElement('a');a.href=url;a.download='yingzuo-alpha-drafts.json';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ toast('草稿已导出。');
+}

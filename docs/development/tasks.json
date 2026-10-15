@@ -1,0 +1,970 @@
+[
+ {
+  "id": "F01",
+  "name": "现状登记",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/environment-record.cjs",
+   "tools/env-record.cjs"
+  ],
+  "checks": "npm run check；node tools/env-record.cjs 在 Linux 实跑",
+  "note": "诊断导出与命令行均可生成；不含凭据。12 文件基线仍由 tools/p0_baseline.py 维护，未改动"
+ },
+ {
+  "id": "F02",
+  "name": "主进程拆分",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/main.cjs",
+   "desktop/services/editor-session.cjs",
+   "desktop/services/api.cjs"
+  ],
+  "checks": "desktop-main.test.cjs 22 项（mock Electron）",
+  "note": "main.cjs 只做组装；原 P0 编辑器逻辑整体移入 editor-session（依赖注入，行为与测试保持）"
+ },
+ {
+  "id": "F03",
+  "name": "公共 schema",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "shared/schema.cjs",
+   "desktop/core/errors.cjs"
+  ],
+  "checks": "foundation.test.cjs",
+  "note": "8 类核心记录、任务状态机、IPC 信封与错误代码"
+ },
+ {
+  "id": "F04",
+  "name": "数据根与迁移",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/repositories/data-root.cjs",
+   "app.js"
+  ],
+  "checks": "foundation.test.cjs：导入、只导入一次、失败回滚",
+  "note": "安装版 userData/data、便携版 exe 旁 portable.flag→data/、开发 .local/data；A 测草稿走显式导出/导入，blob 参考图计数并提示重选"
+ },
+ {
+  "id": "F05",
+  "name": "存储仓库",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/repositories/database.cjs",
+   "desktop/core/fs-atomic.cjs",
+   "desktop/workspace-store.cjs"
+  ],
+  "checks": "foundation.test.cjs：两种 SQLite 驱动的迁移/事务/保存点/VACUUM INTO 备份/损坏只读",
+  "note": "better-sqlite3 优先；Electron 未重建时回退 node:sqlite。工作区改为 v2（drafts/ + graphHash + revision）"
+ },
+ {
+  "id": "F06",
+  "name": "事件与锁",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/core/locks.cjs",
+   "desktop/core/events.cjs"
+  ],
+  "checks": "foundation.test.cjs",
+  "note": ""
+ },
+ {
+  "id": "F07",
+  "name": "凭据与日志",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/core/logger.cjs",
+   "desktop/core/credentials.cjs"
+  ],
+  "checks": "foundation.test.cjs：脱敏、轮转、加密不可用拒绝明文",
+  "note": "Windows DPAPI 实际加密需 Codex 验收"
+ },
+ {
+  "id": "F08",
+  "name": "开发脚本",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "package.json",
+   "tools/check.cjs",
+   "tools/build-win.cjs",
+   ".github/workflows/"
+  ],
+  "checks": "GitHub Actions windows-build 运行 38370113540 成功（npm run check + build:win 产出安装包/便携版）",
+  "note": "安装包实际安装、启动、卸载需 Codex 在 Windows 验收；未签名"
+ },
+ {
+  "id": "E01",
+  "name": "版本适配层",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/adapters/comfy-editor-adapter.cjs",
+   "desktop/comfy-bridge-source.cjs"
+  ],
+  "checks": "services.test.cjs、comfy-bridge-source.test.cjs",
+  "note": "能力探测给出具体限制；旧桥接测试全部保留"
+ },
+ {
+  "id": "E02",
+  "name": "正式页面融合",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/workbench.html",
+   "desktop/ui/shell.js",
+   "desktop/ui/shell.css"
+  ],
+  "checks": "check 语法；无 DOM 自动测试",
+  "note": "首页优先，节点/表单入口并列，A 测仅保留预览入口；需 Codex 实机看界面"
+ },
+ {
+  "id": "E03",
+  "name": "工作流标签",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/editor-session.cjs",
+   "desktop/workspace-store.cjs"
+  ],
+  "checks": "desktop-main.test.cjs、workspace-store.test.cjs",
+  "note": "新增重命名、viewport 持久化、revision；模板标签复用"
+ },
+ {
+  "id": "E04",
+  "name": "新建起始页",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/ui/shell.js"
+  ],
+  "checks": "",
+  "note": "起始页：拖入/选文件/粘贴/模板/空白；需 Codex 实机"
+ },
+ {
+  "id": "E05",
+  "name": "导入管线",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "shared/import-pipeline.cjs",
+   "desktop/services/editor-session.cjs"
+  ],
+  "checks": "pipeline 单测见 batch2 补充",
+  "note": "API 格式用前端官方 loadApiJson 转换并核对缺失节点类型，原文件另存"
+ },
+ {
+  "id": "E06",
+  "name": "根图与串写保护",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/editor-session.cjs"
+  ],
+  "checks": "desktop-main.test.cjs",
+  "note": "applyParameters 支持 expectedRevision 拒绝串写"
+ },
+ {
+  "id": "E07",
+  "name": "五图表单",
+  "batch": 2,
+  "status": "有限支持",
+  "commit": "",
+  "files": [],
+  "checks": "tests/bindings.test.cjs",
+  "note": "程序按节点类型+连线推断并对官方模板夹具核对；五个本机真实模板需用真实 object_info 核对——交 Codex Windows 验收"
+ },
+ {
+  "id": "E08",
+  "name": "参考图管线",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/bindings.test.cjs E08",
+  "note": "内容寻址素材；关系持久化到 reference-relations.json（PR11-R11），旧 localStorage 迁移，复制标签复制关系，素材丢失拒绝提交。导出未带素材 manifest"
+ },
+ {
+  "id": "E09",
+  "name": "编译与定位",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/bindings.test.cjs E09",
+  "note": "compileTab：后台标签切换→graphToPrompt→切回；本地检查 object_info"
+ },
+ {
+  "id": "E10",
+  "name": "原生视图行为",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "27e15c4",
+  "files": [
+   "desktop/services/editor-session.cjs",
+   "desktop/ui/tasks.js"
+  ],
+  "checks": "desktop-main.test：快捷键映射",
+  "note": "弹窗/离开创作页隐藏原生视图；原生视图内 Ctrl+Enter 走映作队列、Ctrl +/-/0 缩放；图片下载保存到 exports 并提示；图片选择用 Comfy 原生文件框；需 Windows 实测"
+ },
+ {
+  "id": "S01",
+  "name": "统一配置",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/repositories/config-repo.cjs"
+  ],
+  "checks": "foundation.test.cjs",
+  "note": ""
+ },
+ {
+  "id": "S02",
+  "name": "服务探测",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/service-probe.cjs"
+  ],
+  "checks": "services.test.cjs（本机 HTTP 替身）",
+  "note": "真实 ComfyUI/LM Studio 需 Codex"
+ },
+ {
+  "id": "S03",
+  "name": "按需启动 ComfyUI",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/comfy-process.cjs",
+   "desktop/services/process-utils.cjs"
+  ],
+  "checks": "services.test.cjs",
+  "note": "Windows 进程身份查询用 PowerShell Get-CimInstance，未在 Windows 实跑"
+ },
+ {
+  "id": "S04",
+  "name": "LM Studio 适配",
+  "batch": 1,
+  "status": "有限支持",
+  "commit": "",
+  "files": [
+   "desktop/services/lmstudio.cjs"
+  ],
+  "checks": "services.test.cjs（CLI 替身）",
+  "note": "lms ps --json 输出格式按文档假设，解析失败时明确报告而不猜测；服务归属限本次会话+端口+就绪确认——真实 LM Studio 契约交 Codex 核对"
+ },
+ {
+  "id": "S05",
+  "name": "停止与显存",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/comfy-process.cjs",
+   "desktop/services/api.cjs"
+  ],
+  "checks": "services.test.cjs：PID 复用不误停",
+  "note": ""
+ },
+ {
+  "id": "S06",
+  "name": "托盘与单实例",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/main.cjs",
+   "assets/tray-16.png"
+  ],
+  "checks": "",
+  "note": "单实例锁先于数据迁移（entry.cjs，PR11-R21）；托盘需 Windows 实机"
+ },
+ {
+  "id": "S07",
+  "name": "正确退出",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/main.cjs",
+   "desktop/services/api.cjs"
+  ],
+  "checks": "tests/task-service.test.cjs S07",
+  "note": "退出：等待/取消后退出/返回；取消超时不当作成功（D09，quit-flow.cjs）；按任务取消接口优先（D10）"
+ },
+ {
+  "id": "S08",
+  "name": "状态与设置页面接入",
+  "batch": 1,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/ui/shell.js"
+  ],
+  "checks": "",
+  "note": "首页服务卡、设置页、日志页接真实接口"
+ },
+ {
+  "id": "Q01",
+  "name": "任务持久化",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
+ },
+ {
+  "id": "Q02",
+  "name": "Comfy HTTP/WS 客户端",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
+ },
+ {
+  "id": "Q03",
+  "name": "单一串行调度器",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
+ },
+ {
+  "id": "Q04",
+  "name": "提交与断连核对",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
+ },
+ {
+  "id": "Q05",
+  "name": "真实状态与错误",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
+ },
+ {
+  "id": "Q06",
+  "name": "统一运行入口",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/ui/tasks.js",
+   "desktop/services/task-service.cjs"
+  ],
+  "checks": "tests/task-service.test.cjs；box 上 Electron 启动无报错",
+  "note": "运行栏/Ctrl+Enter/任务队列页；空图与本地检查不通过时拒绝并说明"
+ },
+ {
+  "id": "Q07",
+  "name": "取消与重试",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/queue.test.cjs 13 项（ComfyUI 替身）",
+  "note": "真实 ComfyUI 下的提交/核对/中断需 Codex 验收"
+ },
+ {
+  "id": "Q08",
+  "name": "手动润色与单独润色",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "shared/bindings.cjs"
+  ],
+  "checks": "tests/bindings.test.cjs、task-service",
+  "note": "仅润色子图+PreviewAny 读文本，采用后 enable_llm=false；润色节点真实类名/输入名需 Codex 用真实工作流验收"
+ },
+ {
+  "id": "Q09",
+  "name": "自动润色生成",
+  "batch": 2,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/bindings.test.cjs",
+  "note": "执行原图含 Gemma；8192 与 2 张参考图检查；显存提示"
+ },
+ {
+  "id": "Q10",
+  "name": "批量与重启恢复",
+  "batch": 5,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/queue.test.cjs、task-service",
+  "note": "批量：提示词×次数×seed×参数变化，全量校验后单事务整组登记（PR11-R19）；重启恢复 ready + 存量任务独立跟踪（PR11-R12）"
+ },
+ {
+  "id": "A01",
+  "name": "输出索引",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
+ },
+ {
+  "id": "A02",
+  "name": "任务输出关联",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
+ },
+ {
+  "id": "A03",
+  "name": "日期／工作流输出",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
+ },
+ {
+  "id": "A04",
+  "name": "缩略图与查看器",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "5c7e40a",
+  "files": [
+   "desktop/ui/assets.js"
+  ],
+  "checks": "check：接口/元素/内联样式检查",
+  "note": "作品网格+查看器：滚轮缩放、拖动、0/1/+/-、元数据如实显示缺失项、打开/定位/导出/分享副本/收藏；需 Windows 实测"
+ },
+ {
+  "id": "A05",
+  "name": "文件入口",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
+ },
+ {
+  "id": "A06",
+  "name": "原图导出",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
+ },
+ {
+  "id": "A07",
+  "name": "分享副本导出",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-assets 合入；详见 进度-assets.md"
+ },
+ {
+  "id": "A08",
+  "name": "收藏板",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "5c7e40a",
+  "files": [
+   "desktop/ui/assets.js"
+  ],
+  "checks": "favorites 单测（assets 分支）",
+  "note": "收藏板按 arrangeAlbum 等高行排列，取消收藏移到回收区；CSP 下位置用 CSSOM 设置"
+ },
+ {
+  "id": "T01",
+  "name": "模板仓库",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "14ef487",
+  "files": [
+   "desktop/repositories/template-repo.cjs",
+   "desktop/ui/templates.js"
+  ],
+  "checks": "tests/templates.test.cjs",
+  "note": "缩略图：任务首个成功输出在 worker 内由 sharp 生成 256px PNG，或手动选择；模板库显示（task-service.test T01）"
+ },
+ {
+  "id": "T02",
+  "name": "保存与历史",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/templates.test.cjs",
+  "note": "版本只追加、恢复生成新版本、另存、导出（含 .yingzuo-form.json）；原模板文件只读"
+ },
+ {
+  "id": "T03",
+  "name": "表单编辑器",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "e6d2d80",
+  "files": [
+   "shared/form-schema.cjs"
+  ],
+  "checks": "tests/templates.test.cjs",
+  "note": "表单编辑器保存；左侧正式参数面板按表单显示并写回画布；运行/快捷键/批量/润色共用同一工作副本；标签固定模板版本（S07）"
+ },
+ {
+  "id": "T04",
+  "name": "映射失效处理",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/templates.test.cjs",
+  "note": "删除/改类/缺字段/改连线判失效，候选仅同类型同字段，服务端再校验"
+ },
+ {
+  "id": "T05",
+  "name": "实时诊断清单",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/diagnostics-service.cjs"
+  ],
+  "checks": "tests/diagnostics.test.cjs",
+  "note": "实时诊断：object_info/模型目录/LM Studio 合并，单独采集时间，离线缓存标注；插件版本号需 R01（maint 分支）提供，当前只列插件模块与节点数"
+ },
+ {
+  "id": "T06",
+  "name": "替代建议",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/diagnostics-service.cjs"
+  ],
+  "checks": "tests/diagnostics.test.cjs",
+  "note": "沿用 compatibility.js 规则，按用途/格式/加载器/架构给候选；未知保持待核实"
+ },
+ {
+  "id": "T07",
+  "name": "修复与撤销",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/diagnostics-service.cjs"
+  ],
+  "checks": "tests/diagnostics.test.cjs",
+  "note": "单字段事务（版本号校验）→替换标签图→自动复查；撤销（被改动则拒绝）；导出修复副本。改连线类建议只给说明不提供直接应用"
+ },
+ {
+  "id": "T08",
+  "name": "依赖补齐计划",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/online/dependency-plan.cjs"
+  ],
+  "checks": "tests/dependency.test.cjs",
+  "note": "缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺节点给手动处理说明（插件安装待 R07）"
+ },
+ {
+  "id": "R01",
+  "name": "目录扫描",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
+ },
+ {
+  "id": "R02",
+  "name": "资源详情",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
+ },
+ {
+  "id": "R03",
+  "name": "引用索引",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "b9e2351",
+  "files": [
+   "desktop/services/maintenance-service.cjs",
+   "desktop/ui/resources.js"
+  ],
+  "checks": "maint-service.test：草稿+任务快照引用",
+  "note": "引用索引来自草稿标签、模板当前版本与最近 200 个任务快照；资源页“引用诊断”和详情显示"
+ },
+ {
+  "id": "R04",
+  "name": "快捷使用",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "5c7e40a",
+  "files": [
+   "desktop/services/maintenance-service.cjs",
+   "desktop/ui/resources.js"
+  ],
+  "checks": "quick-use 单测（maint 分支）",
+  "note": "resources.quickUse：编译当前标签→planQuickUse→确认后 applyPlan 入队，不改原工作流"
+ },
+ {
+  "id": "R05",
+  "name": "插件清单",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
+ },
+ {
+  "id": "R06",
+  "name": "Manager 适配",
+  "batch": 4,
+  "status": "有限支持",
+  "commit": "27e15c4",
+  "files": [
+   "desktop/services/online/dependency-plan.cjs"
+  ],
+  "checks": "dependency.test：Manager 探测",
+  "note": "范围明确：插件安装/更新/启用/禁用/移除统一走受限 Git 维护事务（原方案允许）；Manager/cm-cli 只做只读探测，不调用 Manager 安装"
+ },
+ {
+  "id": "R07",
+  "name": "插件操作事务",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "b9e2351",
+  "files": [
+   "desktop/maintenance/plugin-ops.cjs",
+   "desktop/services/maintenance-service.cjs"
+  ],
+  "checks": "maint-service.test：https 限制、安装→移除到回收区",
+  "note": "仅 https 无账号 Git 地址；staging 克隆固定 revision；可选 pip（Python 环境纳入备份）；移除前列出使用者并需确认，移到回收区"
+ },
+ {
+  "id": "R08",
+  "name": "模型位置管理",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "b9e2351",
+  "files": [
+   "desktop/services/maintenance-service.cjs"
+  ],
+  "checks": "maint-service.test：非登记目录拒绝、移动成功",
+  "note": "只在同用途已登记目录间移动（相对名不变）；跨盘复制+sha256 校验后切换；有任务运行时拒绝；LM Studio 模型不在范围"
+ },
+ {
+  "id": "O01",
+  "name": "来源接口",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "统一 search/detail/listFiles/resolveDownload/parseLink，内存 TTL 缓存、AbortSignal 取消、429/5xx 退避；联网失败只影响在线页"
+ },
+ {
+  "id": "O02",
+  "name": "Hugging Face",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "仓库/固定 revision/具体文件/大小/sha256/许可/gated；Link 头分页；box 上实测搜索+详情+下载 README 成功"
+ },
+ {
+  "id": "O03",
+  "name": "Civitai",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "模型/版本/文件/底模/触发词/授权错误/分页；box 上实测搜索成功；下载需用户凭据，需 Codex 验收"
+ },
+ {
+  "id": "O04",
+  "name": "下载规划",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "按用途选 ComfyUI models 子目录或自选目录、空间（保留 1GB）、重名与 .part 提示、Windows 文件名校验"
+ },
+ {
+  "id": "O05",
+  "name": "通用下载器",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "流式 .part、Range/If-Range 续传、并发、取消、退避重试、大小与 sha256、原子改名；本机 HTTP 服务测试"
+ },
+ {
+  "id": "O06",
+  "name": "下载恢复",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "启动时中断任务置暂停并按 .part 大小续传；源变化从头下载；每次重新解析 URL，令牌不入库"
+ },
+ {
+  "id": "O07",
+  "name": "在线模板导入",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "5028971",
+  "files": [
+   "desktop/services/online"
+  ],
+  "checks": "tests/online.test.cjs、tests/downloader.test.cjs",
+  "note": "链接导入 + 在线模板库浏览：官方 Comfy-Org/workflow_templates 索引（样本夹具来自该仓库）、可在设置 onlineTemplates.sources 增加同格式 https 源；搜索/分类/分页、6 小时缓存、离线显示缓存；导入后同一诊断入口（online.test O07/S10）"
+ },
+ {
+  "id": "O08",
+  "name": "联合补齐",
+  "batch": 4,
+  "status": "程序完成",
+  "commit": "27e15c4",
+  "files": [
+   "desktop/ui/online.js",
+   "desktop/services/maintenance-service.cjs"
+  ],
+  "checks": "maint-service.test（安装路径）",
+  "note": "模型逐项下载+插件按用户填写的 Git 地址逐个经事务安装，逐项报告；装后重新生成计划；插件需重启 ComfyUI 后才被识别"
+ },
+ {
+  "id": "U01",
+  "name": "环境清单",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
+ },
+ {
+  "id": "U02",
+  "name": "可恢复备份",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
+ },
+ {
+  "id": "U03",
+  "name": "恢复引擎",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "",
+  "note": "feat/grovebot-maint 合入；详见 进度-maint.md"
+ },
+ {
+  "id": "U04",
+  "name": "维护事务与锁",
+  "batch": 3,
+  "status": "程序完成",
+  "commit": "b9e2351",
+  "files": [
+   "desktop/services/maintenance-service.cjs"
+  ],
+  "checks": "maint-service.test：锁占用阻止、apply 失败自动恢复、env_transactions 记录",
+  "note": "已接入主进程：环境锁 createLocks().environment、暂停队列等待空闲、只停本应用拥有的 ComfyUI、备份→staging→apply→检查，失败自动恢复"
+ },
+ {
+  "id": "U05",
+  "name": "更新检测与页面",
+  "batch": 5,
+  "status": "程序完成",
+  "commit": "5c7e40a",
+  "files": [
+   "desktop/services/update-check.cjs",
+   "desktop/ui/updates.js"
+  ],
+  "checks": "update-check.test：频率与渠道",
+  "note": "渠道 stable/beta（beta 含预发布）、频率 manual/daily/weekly 后台只检测只提示；定时检查不 git fetch"
+ },
+ {
+  "id": "U06",
+  "name": "Comfy／插件更新",
+  "batch": 5,
+  "status": "程序完成",
+  "commit": "b9e2351",
+  "files": [
+   "desktop/maintenance/plugin-ops.cjs"
+  ],
+  "checks": "maint-service.test：补丁重放成功/冲突列入待处理",
+  "note": "按 revision 更新；本地补丁先在目标版本临时索引预检，不能重放或未跟踪文件冲突则阻止更新（PR11-R03）"
+ },
+ {
+  "id": "U07",
+  "name": "更新记录与保留",
+  "batch": 5,
+  "status": "程序完成",
+  "commit": "b9e2351",
+  "files": [
+   "desktop/services/maintenance-service.cjs",
+   "desktop/ui/resources.js"
+  ],
+  "checks": "maint-service.test：保留策略",
+  "note": "备份列表/校验/恢复/继续未完成恢复/维护记录；保留最近 N 份且每来源保留最近完整备份，使用中不清理，清理=移到回收区"
+ },
+ {
+  "id": "U08",
+  "name": "应用版本维护",
+  "batch": 5,
+  "status": "程序完成",
+  "commit": "",
+  "files": [],
+  "checks": "tests/update-check.test.cjs",
+  "note": "读取 GitHub Releases、显示变更、显式下载并按 SHA256SUMS 校验、打开目录手动安装；未签名、不配自动更新 feed。仓库私有时提示手动流程"
+ },
+ {
+  "id": "B01",
+  "name": "正式数据接入清理",
+  "batch": 6,
+  "status": "程序完成",
+  "commit": "5c7e40a",
+  "files": [
+   "tools/check.cjs",
+   "desktop/ui"
+  ],
+  "checks": "check：假数据/随机数/内联样式扫描",
+  "note": "正式页面全部接真实接口，服务不可用显示空/错误状态；保留侧栏明确标注的“A 测界面预览”；修正 CSP 拦截的内联样式"
+ },
+ {
+  "id": "B02",
+  "name": "必要开发检查",
+  "batch": 6,
+  "status": "程序完成",
+  "commit": "5c7e40a",
+  "files": [
+   "tools/check.cjs",
+   "tests/maint-service.test.cjs"
+  ],
+  "checks": "npm run check 214 项",
+  "note": "新增 UI 接口白名单、元素存在、内联样式（CSP）、假数据扫描；状态机/迁移/任务恢复/下载续传/备份事务均有自动测试"
+ },
+ {
+  "id": "B03",
+  "name": "Windows 构建",
+  "batch": 6,
+  "status": "程序完成",
+  "commit": "edfb45a",
+  "files": [
+   ".github/workflows/windows-build.yml",
+   "desktop/entry.cjs",
+   "desktop/smoke.cjs"
+  ],
+  "checks": "Actions run 38371603344 成功：便携+NSIS 构建，打包自检 ok=true，驱动 better-sqlite3，sharp 可用",
+  "note": "双击运行、中文路径、安装升级保留数据需 Codex 在真机验收；未签名"
+ },
+ {
+  "id": "B04",
+  "name": "分发与升级脚本",
+  "batch": 6,
+  "status": "程序完成",
+  "commit": "edfb45a",
+  "files": [
+   "tools/build-win.cjs"
+  ],
+  "checks": "Actions 产物含 artifacts.json/SHA256SUMS.txt/smoke-result.json",
+  "note": "版本号取 package.json；如实写未签名；升级不覆盖 userData（安装版 %APPDATA%\\映作\\data，便携 data\\）"
+ },
+ {
+  "id": "B05",
+  "name": "程序交付记录",
+  "batch": 6,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "docs/development/交付记录.md",
+   "README.md"
+  ],
+  "checks": "文档",
+  "note": "README 更新当前能力；交付记录含阶段提交、依赖、迁移、构建命令、检查结果与限制"
+ },
+ {
+  "id": "B06",
+  "name": "验收交接材料",
+  "batch": 6,
+  "status": "程序完成",
+  "commit": "",
+  "files": [
+   "docs/development/待Codex验收.md",
+   "docs/development/交接-下一个agent.md"
+  ],
+  "checks": "文档",
+  "note": "待验收清单覆盖全部需要真实环境的功能，人工验收栏全部留空；日志入口与样本数据位置写在清单“通用准备”"
+ }
+]
