@@ -184,8 +184,10 @@ test('S05：快捷使用 / 批量 / 统一入口都经同一脱敏政策；生�
 });
 test('S05：存为模板时敏感值转入凭据存储，模板图只留占位；导出时清空占位', async t => {
   const store = new Map();
-  const credentials = {available: () => true, set: (n, v) => store.set(n, v), get: n => store.get(n) ?? null};
+  const items = {};
+  const credentials = {available: () => true, read: () => ({items}), set: (n, v, opts) => { store.set(n, v); items[n] = {...opts}; }, get: n => store.get(n) ?? null};
   const {svc, editor, db, layout} = setup(t, {credentials});
+  editor.exportCopy = require('../shared/graph-storage-policy.cjs').createGraphStoragePolicy({credentials}).stripForExport;
   const KEY = 'sk-fictional-template-2222';
   const ui = {nodes: [{id: 3, type: 'LMStudioPromptEnhancer', widgets_values: ['猫', KEY]}], links: []};
   editor.commands.compileTab = async id => { const p = prompt(); p[3].inputs.lmstudio_api_key = KEY; return {tabId: id, title: 'T', revision: 3, uiGraph: ui, apiPrompt: p}; };

@@ -1,6 +1,6 @@
 'use strict';
 // RV13（及 RV11/RV12 实测）：在真实浏览器中加载 workbench.html + 替身 preload。
-// 需要 puppeteer-core 与本机 Chrome（CHROME_PATH）；缺少时跳过（Windows CI 只跑静态检查 review-rv11-12）。
+// REQUIRE_BROWSER_TESTS=1 的 CI 必须实际执行；缺依赖时直接失败，不能用 SKIP 掩盖。
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -10,6 +10,7 @@ const root = path.join(__dirname, '..');
 const chrome = process.env.CHROME_PATH || ['/usr/bin/google-chrome', 'C:/Program Files/Google/Chrome/Application/chrome.exe'].find(p => fs.existsSync(p));
 let puppeteer = null; try { puppeteer = require('puppeteer-core'); } catch { /* 未安装 */ }
 const skip = !puppeteer || !chrome ? '需要 puppeteer-core 与 Chrome' : false;
+if (skip && process.env.REQUIRE_BROWSER_TESTS === '1') throw new Error(skip);
 const stubSource = require('../tools/ui-shots/stub.cjs');
 const fixtures = JSON.parse(fs.readFileSync(path.join(root, 'tools/ui-shots/fixtures.json'), 'utf8'));
 
@@ -26,7 +27,7 @@ async function open(t, opts) {
   return page;
 }
 const settle = page => page.evaluate(() => new Promise(r => setTimeout(r, 50)).then(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => {})))));
-const typeInto = async (page, key, text) => { const sel = `#settings-form [data-key="${key}"]`; await page.click(sel, {clickCount: 3}); await page.type(sel, text); };
+const typeInto = async (page, key, text) => { const sel = `#settings-form [data-key="${key}"]`; await page.focus(sel); await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control'); await page.keyboard.press('Backspace'); await page.type(sel, text); };
 const val = (page, key) => page.$eval(`#settings-form [data-key="${key}"]`, el => el.value);
 
 test('RV13：编辑多个字段后切主题与皮肤，未保存输入保留；继续编辑后保存提交全部字段', {skip}, async t => {

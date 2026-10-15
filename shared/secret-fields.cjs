@@ -67,4 +67,4 @@ function findPlaintextSecrets(prompt, objectInfo = null) {
     if (typeof v === 'string' && v && !isPlaceholder(v) && isSecretInput(node.class_type, input, defOf(objectInfo, node.class_type, input))) hits.push({nodeId, input});
   return hits;
 }
-module.exports = {PLACEHOLDER_PREFIX, isSecretInput, redactForStorage, redactValues, resolveSecrets, findPlaintextSecrets, isPlaceholder};
+module.exports = {PLACEHOLDER_PREFIX, isSecretInput, defOf, redactForStorage, redactValues, resolveSecrets, findPlaintextSecrets, isPlaceholder};

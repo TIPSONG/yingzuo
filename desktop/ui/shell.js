@@ -230,7 +230,7 @@ function applyTheme(theme) {
   }
 }
 function onSystemTheme() {
-  const pref = settings?.config?.ui?.theme;
+  const pref = displaySettingsConfig()?.ui?.theme;
   if (pref === 'system') document.documentElement.dataset.theme = resolvedTheme('system');
 }
 function applySkin(skin) {
@@ -243,10 +243,10 @@ function applyAppearance(cfg) {
   applySkin(cfg?.ui?.skin);
 }
 async function loadSettings() {
-  try { settings = await call(yz.settings.get()); applyAppearance(settings?.config); renderSettings(); } catch (e) { swallow(e); }
+  try { await queueSettingsOperation(async () => { settings = await call(yz.settings.get()); applyAppearance(displaySettingsConfig()); renderSettings(); }); } catch (e) { swallow(e); }
 }
 function renderSettings() {
-  const c = settings.config;
+  const c = displaySettingsConfig();
   q('#settings-issues').innerHTML = (settings.loadError ? `<div class="issue error">配置文件读取失败，已用默认值启动（原文件已另存）：${esc(settings.loadError)}</div>` : '') + settings.issues.map(i => `<div class="issue ${i.severity}">${esc(i.field)}：${esc(i.message)}</div>`).join('');
   q('#settings-form').innerHTML = FIELDS.map(([legend, items]) => `<fieldset><legend>${esc(legend)}</legend>${items.map(([key, label, type, hint]) => {
     const v = getPath(c, key); let input;
@@ -282,19 +282,45 @@ function renderCredentials() {
   const cred = settings.credentials;
   q('#credentials').innerHTML = cred.available ? ['huggingface', 'civitai'].map(n => `<div class="row"><span>${n === 'huggingface' ? 'Hugging Face 令牌' : 'Civitai API Key'}：${cred.configured[n] ? '已保存（系统加密）' : '未设置'}</span><span><input type="password" data-cred="${n}" placeholder="粘贴后保存" class="w220"> <button data-cred-save="${n}">保存</button> ${cred.configured[n] ? `<button data-cred-remove="${n}">删除</button>` : ''}</span></div>`).join('') : '<div class="issue error">系统加密存储不可用，为避免明文保存，映作不会保存在线来源凭据。公开资源仍可下载。</div>';
 }
-/* RV13：设置草稿。记录用户已修改但未保存的字段；任何局部刷新（外观、路径选择、凭据）后都恢复草稿，只有“保存”成功才清空。 */
+/* RR07：每次编辑有独立版本。响应只能确认其提交的版本，不清除等待期间产生的新输入。
+ * 设置写入和读取串行执行，避免连续保存、外观与目录选择的完整配置响应乱序覆盖。 */
 const settingsDraft = new Map();
+let settingsEditRevision = 0, settingsOperationTail = Promise.resolve();
+function queueSettingsOperation(operation) {
+  const result = settingsOperationTail.then(operation);
+  settingsOperationTail = result.catch(() => {});
+  return result;
+}
+function setSettingsDraft(key, value) {
+  const entry = {value, revision: ++settingsEditRevision};
+  settingsDraft.set(key, entry);
+  return entry;
+}
+function acknowledgeDraft(submitted) {
+  for (const [key, entry] of submitted) {
+    if (settingsDraft.get(key)?.revision === entry?.revision) settingsDraft.delete(key);
+  }
+}
+function displaySettingsConfig() {
+  const config = settings?.config;
+  if (!config) return config;
+  const ui = {...config.ui};
+  for (const key of ['theme', 'skin']) {
+    if (settingsDraft.has(`ui.${key}`)) ui[key] = settingsDraft.get(`ui.${key}`).value;
+  }
+  return {...config, ui};
+}
 const draftValue = el => (el.dataset.type === 'bool' ? el.checked : el.value);
 function restoreDraft() {
   for (const el of qa('#settings-form [data-key]')) {
-    if (!settingsDraft.has(el.dataset.key) || el.type === 'hidden') continue;
-    const v = settingsDraft.get(el.dataset.key);
+    if (!settingsDraft.has(el.dataset.key)) continue;
+    const v = settingsDraft.get(el.dataset.key).value;
     if (el.dataset.type === 'bool') el.checked = !!v; else el.value = v;
     el.classList.add('dirty');
   }
 }
-q('#settings-form').addEventListener('input', e => { const el = e.target.closest('[data-key]'); if (el && el.type !== 'hidden') { settingsDraft.set(el.dataset.key, draftValue(el)); el.classList.add('dirty'); } });
-q('#settings-form').addEventListener('change', e => { const el = e.target.closest('[data-key]'); if (el && el.type !== 'hidden') { settingsDraft.set(el.dataset.key, draftValue(el)); el.classList.add('dirty'); } });
+q('#settings-form').addEventListener('input', e => { const el = e.target.closest('[data-key]'); if (el && el.type !== 'hidden') { setSettingsDraft(el.dataset.key, draftValue(el)); el.classList.add('dirty'); } });
+q('#settings-form').addEventListener('change', e => { const el = e.target.closest('[data-key]'); if (el && el.type !== 'hidden') { setSettingsDraft(el.dataset.key, draftValue(el)); el.classList.add('dirty'); } });
 /** RV13：外观选择只更新选中卡，不重建表单。 */
 function syncAppearanceCards(cfg) {
   const theme = cfg?.ui?.theme === 'light' || cfg?.ui?.theme === 'system' ? cfg.ui.theme : 'dark';
@@ -304,21 +330,23 @@ function syncAppearanceCards(cfg) {
   const th = q('#settings-form [data-key="ui.theme"]'); if (th) th.value = theme;
   const sk = q('#settings-form [data-key="ui.skin"]'); if (sk) sk.value = skin;
 }
-let appearanceSeq = 0;
-/** RV13：外观即时保存；按最新一次操作收敛（迟到的旧响应被忽略）；失败时恢复到已保存的外观。 */
+/** 外观即时预览；保存失败只撤销该次外观操作，较新的外观选择和普通字段草稿继续保留。 */
 async function saveAppearance(patch, msg) {
-  const seq = ++appearanceSeq;
-  const want = {...settings.config, ui: {...settings.config.ui, ...patch}};
-  applyAppearance(want); syncAppearanceCards(want);
+  const submitted = new Map(Object.entries(patch).map(([key, value]) => [`ui.${key}`, setSettingsDraft(`ui.${key}`, value)]));
+  applyAppearance(displaySettingsConfig()); syncAppearanceCards(displaySettingsConfig());
   try {
-    const r = await call(yz.settings.update({ui: patch}), msg);
-    if (seq !== appearanceSeq) return;
-    settings = {...settings, config: {...settings.config, ui: r.config?.ui ?? want.ui}, issues: r.issues ?? settings.issues};
+    await queueSettingsOperation(async () => {
+      try {
+        const r = await call(yz.settings.update({ui: patch}), msg);
+        settings = {...settings, ...r};
+      } finally {
+        acknowledgeDraft(submitted);
+        applyAppearance(displaySettingsConfig()); syncAppearanceCards(displaySettingsConfig());
+      }
+    });
   } catch (err) {
     swallow(err);
-    if (seq !== appearanceSeq) return;
   }
-  applyAppearance(settings.config); syncAppearanceCards(settings.config);
 }
 function collectPatch() {
   const patch = {};
@@ -329,7 +357,16 @@ function collectPatch() {
   }
   return patch;
 }
-q('#settings-save').addEventListener('click', async () => { try { const r = await call(yz.settings.update(collectPatch()), '设置已保存。'); settings = {...settings, ...r}; settingsDraft.clear(); applyAppearance(settings?.config); renderSettings(); refreshStatus(); } catch (e) { swallow(e); } });
+q('#settings-save').addEventListener('click', async () => {
+  const patch = collectPatch(), submitted = new Map(settingsDraft);
+  try {
+    await queueSettingsOperation(async () => {
+      const r = await call(yz.settings.update(patch), '设置已保存。');
+      settings = {...settings, ...r}; acknowledgeDraft(submitted);
+      applyAppearance(displaySettingsConfig()); renderSettings(); refreshStatus();
+    });
+  } catch (e) { swallow(e); }
+});
 q('#settings-reload').addEventListener('click', () => { settingsDraft.clear(); loadSettings(); }); // RV13：显式重新加载才丢弃草稿
 q('#settings-form').addEventListener('click', async e => {
   const themeBtn = e.target.closest('[data-theme-set]');
@@ -343,7 +380,14 @@ q('#settings-form').addEventListener('click', async e => {
     const skin = skinBtn.dataset.skinSet === 'nasa-punk' ? 'nasa-punk' : 'default';
     return saveAppearance({skin}, skin === 'nasa-punk' ? '已套用 NASA 朋克皮肤。' : '已恢复默认皮肤。');
   }
-  const b = e.target.closest('[data-pick]'); if (!b) return; try { const r = await call(yz.settings.pickPath(b.dataset.pick)); if (!r.cancelled) { settingsDraft.delete(b.dataset.pick); settings = {...settings, ...r}; renderSettings(); } /* RV13：其他字段的草稿由 renderSettings 内 restoreDraft 恢复 */ } catch (err) { swallow(err); }
+  const b = e.target.closest('[data-pick]'); if (!b) return;
+  const key = b.dataset.pick, submitted = new Map([[key, settingsDraft.get(key)]]);
+  try {
+    await queueSettingsOperation(async () => {
+      const r = await call(yz.settings.pickPath(key));
+      if (!r.cancelled) { acknowledgeDraft(submitted); settings = {...settings, ...r}; applyAppearance(displaySettingsConfig()); renderSettings(); }
+    });
+  } catch (err) { swallow(err); }
 });
 q('#credentials').addEventListener('click', async e => {
   const s = e.target.closest('[data-cred-save]'), r = e.target.closest('[data-cred-remove]');

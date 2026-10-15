@@ -1,4 +1,5 @@
 'use strict';
+const {createGraphStoragePolicy, assertSafeExport} = require('../../shared/graph-storage-policy.cjs');
 // T05–T07：实时诊断清单、替代建议、单字段修复与撤销。
 // 清单来源：ComfyUI object_info（节点类型与所属插件模块）、/models/<目录>（模型文件）、LM Studio /v1/models。
 // 每个来源单独记录采集时间；离线时使用上次缓存并标注“缓存”。替代建议沿用 compatibility.js 的保守规则。
@@ -104,7 +105,7 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
       const t = await tabGraph(tabId);
       const r = await dialog.showSaveDialog(getWindow(), {title: '导出修复副本', defaultPath: `${t.title}-修复.json`, filters: [{name: 'ComfyUI 工作流', extensions: ['json']}]});
       if (r.canceled || !r.filePath) return {cancelled: true};
-      const ex = editor?.exportCopy ? editor.exportCopy(t.graph) : {graph: t.graph, refill: []};
+      const ex = assertSafeExport(editor?.exportCopy ? editor.exportCopy(t.graph) : createGraphStoragePolicy().stripForExport(t.graph));
       fs.writeFileSync(r.filePath, JSON.stringify(ex.graph, null, 2));
       return {path: r.filePath, refill: ex.refill};
     },

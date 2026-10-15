@@ -293,7 +293,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       const policy = editor?.graphPolicy?.();
       if (policy) {
         const rep = await (editor?.enqueue ? editor.enqueue(async () => migrateStoredGraphs({db, layout, repo: templateRepo, policy, credentials: credentials ?? null, persistDrafts: () => editor.persist()})) : migrateStoredGraphs({db, layout, repo: templateRepo, policy, credentials: credentials ?? null}));
-        if (rep.pending.length) throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, `有 ${rep.pending.length} 处已保存的图含敏感输入明文，且系统加密存储不可用；为避免写入备份，已停止。`, {details: {pending: rep.pending}});
+        if (rep.pending.length) throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, `有 ${rep.pending.length} 处数据尚未完成敏感字段检查或安全迁移；为避免将未检查的内容写入备份，已停止。请处理待办记录后重试。`, {details: {pending: rep.pending}});
       }
       const r = await appBackup.createAppBackup({layout, hashImpl: hashFile, barrier: async f => { const lease = taskService?.hooks.pauseSubmissions('app-backup'); try { return editor?.enqueue ? await editor.enqueue(f) : await f(); } finally { lease?.(); } }}); return {dir: r.dir, sources: r.record.sources.map(s => s.id), databases: r.record.databases.map(d => d.id)}; },
     'maintenance.appBackups': async () => ({backups: appBackup.listAppBackups(layout), lastRestore: globalThis.__yzAppRestore ?? null}),

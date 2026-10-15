@@ -30,20 +30,19 @@ test('RV02：seed 控制位 + 子图；转换为输入的 widget 仍占位', () 
   const wv = ex.graph.definitions.subgraphs[0].nodes[0].widgets_values;
   assert.deepEqual(wv, [7, 'fixed', '', '提示词 原文']);
 });
-test('RV02：位数与 object_info 不一致时不清空猜测位置，报告 uncertain；格式明显的密钥仍移除', () => {
+test('RR02：位数不一致时整次导出失败，不能带着 uncertain 输出明文', () => {
   const g = {nodes: [{id: 1, type: 'LLM', widgets_values: ['额外', SECRET, 'gemma-4']}, {id: 2, type: 'LLM', widgets_values: ['x', 'sk-FICTIONAL0000000000000000', 'y']}]};
-  const ex = createGraphStoragePolicy({objectInfo: () => info}).stripForExport(g);
-  assert.deepEqual(ex.graph.nodes[0].widgets_values, ['额外', SECRET, 'gemma-4'], '不按猜测清空提示词/模型');
-  assert.ok(ex.uncertain.some(u => u.nodeId === '1' && u.field === 'api_key'));
-  assert.equal(ex.graph.nodes[1].widgets_values[1], '', '密钥格式仍可确定移除');
+  const p = createGraphStoragePolicy({objectInfo: () => info});
+  assert.throws(() => p.stripForExport(g), e => e.code === 'INVALID_STATE' && e.details.uncertain.length === 2);
+  assert.deepEqual(g.nodes[0].widgets_values, ['额外', SECRET, 'gemma-4'], '保留内存原图供用户校正');
 });
-test('RV02：内部保存在位数不一致时仍引用化候选值（可还原，不丢数据）', t => {
+test('RR01：位数不一致时阻止保存，不再将普通模型名称猜成凭据', t => {
   const d = tmp(t);
   const p = createGraphStoragePolicy({credentials: new CredentialStore(path.join(d, 'c.json'), safe()), objectInfo: () => info});
   const g = {nodes: [{id: 1, type: 'LLM', widgets_values: ['额外 文本', SECRET, 'gemma-4']}]};
-  const disk = p.secureForStorage(g);
-  assert.ok(!JSON.stringify(disk).includes(SECRET));
-  assert.deepEqual(p.resolveInMemory(disk).graph, g);
+  assert.throws(() => p.secureForStorage(g), e => e.code === 'INVALID_STATE');
+  assert.equal(fs.existsSync(path.join(d, 'c.json')), false);
+  assert.equal(g.nodes[0].widgets_values[2], 'gemma-4');
 });
 test('RV02：离线首次保存——task-service 读取落盘的 object_info 缓存', t => {
   const d = tmp(t);

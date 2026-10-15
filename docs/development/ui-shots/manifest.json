@@ -1,8 +1,31 @@
 {
-  "generatedAt": "2026-10-13T13:35:15.752Z",
-  "head": "41e19722f992702b63bb185a12d0269b86b0a22d",
-  "desktopDirty": false,
-  "browser": "Chrome/154.0.8037.97",
+  "status": "complete",
+  "evidence": "static workbench with explicit preload fixtures; not manual acceptance",
+  "generatedAt": "2026-10-15T05:18:54.572Z",
+  "head": "ed068da5e72418737083e52bd407380c045a776a",
+  "sourceDirty": true,
+  "sourceHash": "14da075a70e557a0149c6bfbad1f55c66966c7421f8e1b706fe9b5cfc9143cb3",
+  "sourceFiles": {
+    "assets/editorial.png": "8208b3149c222e0dd2b41ef5848b489291209c20a7e6efcce9947630b64a72b2",
+    "assets/mark.svg": "f33fce9ce3df6e8a842a3ef37299ebc5cabd571dbdd464c3c998bea9228f9a35",
+    "assets/portrait.png": "d888e9396587a3fd4ad500bbf5988fed0f7ba60ffa71628c29fced78bece3ac6",
+    "assets/watercolor-cat.png": "58bc495faa6be5ae3bde1c60113902666f1a8b9d4e79e9ab8d2f2ff92e86f8b1",
+    "desktop/ui/assets.js": "5b9c2aa2f227276a94cf7cf3fd5068a77b67d274eda402b23a90ef307013bf82",
+    "desktop/ui/online.js": "f1fecac31e82676860e47e12c78584d29dd4ff85bd87ecc8584361ef9689fef3",
+    "desktop/ui/resources.js": "8720b37089525fa0daa0446946e1ade0259f71ef7a1e9199c5eda07366292d7f",
+    "desktop/ui/shell.css": "6ba47d4c72bc9a05e0dd61b1646c23be2bc53ca4297a163c82d6b5324000b7af",
+    "desktop/ui/shell.js": "034e7d580924b39a2cb0ff7727ea29a785bb98d16ffbc2d733db5085cbfcd9e5",
+    "desktop/ui/tasks.js": "4ae267a4a1b88918384a5eab7250cb265349539ab1b71932ad6360e449ae5064",
+    "desktop/ui/templates.js": "b6a2ec5a3996c4e29532289aa5a679586e78ba3f3d4e2293b15ccf57a0f8b11e",
+    "desktop/ui/updates.js": "b8b77e09b4ac13f0c22521ebb0af476c04129228f188cafd65160138efca6e6a",
+    "desktop/workbench.css": "d29cc364d2dcafe02b9a24a13494155b164b090e408c9e4251dfb85b919d7b22",
+    "desktop/workbench.html": "3d7d74bfcaf9354f73de77d1e10b4a8c9e4e912a836efb7968e609bd3254b84d",
+    "desktop/workbench.js": "18c46189c3dbe7fb87a716b145c5c71ae5b5c0f1346f35c139cbcd888eda5df1",
+    "tools/ui-shots.mjs": "656124f377ba8fbc8568a34c5f86cacf9b4a65965bbe3a8c7e4a3224acb3fda7",
+    "tools/ui-shots/fixtures.json": "41e5034f76e8f1befa8ba7de6916680bca536ad2cf2e82d9863fc75fb5ee77b8",
+    "tools/ui-shots/seed.cjs": "a0ab2fde45b710c6f93fc276ceab984698f2e28edea8f86a24011fe1648d124b",
+    "tools/ui-shots/stub.cjs": "3ca75c75efd3cfa6478d30f4b096ab9c86b26890d0a2013f2e67328dc2693d0a"
+  },
   "viewport": {
     "width": 1440,
     "height": 960,
@@ -12,363 +35,972 @@
   "shots": [
     {
       "file": "default-home.png",
-      "page": "home",
+      "scenario": "home",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "default-create.png",
-      "page": "create",
+      "scenario": "create",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "default-create-start.png",
-      "page": "create-start",
+      "scenario": "create-start",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "default-templates.png",
-      "page": "templates",
+      "scenario": "templates",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "templates.list"
+      ]
     },
     {
       "file": "default-online.png",
-      "page": "online",
+      "scenario": "online",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "downloads.list"
+      ]
     },
     {
       "file": "default-assets.png",
-      "page": "assets",
+      "scenario": "assets",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail"
+      ]
+    },
+    {
+      "file": "default-assets-empty.png",
+      "scenario": "assets-empty",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list"
+      ]
+    },
+    {
+      "file": "default-favorites.png",
+      "scenario": "favorites",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.favorites",
+        "assets.favoriteLayout"
+      ]
+    },
+    {
+      "file": "default-assets-viewer.png",
+      "scenario": "assets-viewer",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.get",
+        "assets.shareSupport"
+      ]
     },
     {
       "file": "default-resources.png",
-      "page": "resources",
+      "scenario": "resources",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "maintenance.pendingRestores",
+        "maintenance.holds",
+        "maintenance.appRecovery",
+        "resources.scan"
+      ]
     },
     {
       "file": "default-queue.png",
-      "page": "queue",
+      "scenario": "queue",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "default-services.png",
-      "page": "services",
+      "scenario": "services",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "services.logs"
+      ]
     },
     {
       "file": "default-settings.png",
-      "page": "settings",
+      "scenario": "settings",
       "theme": "dark",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
+    },
+    {
+      "file": "default-settings-lower.png",
+      "scenario": "settings-lower",
+      "theme": "dark",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "light-home.png",
-      "page": "home",
+      "scenario": "home",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "light-create.png",
-      "page": "create",
+      "scenario": "create",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "light-create-start.png",
-      "page": "create-start",
+      "scenario": "create-start",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "light-templates.png",
-      "page": "templates",
+      "scenario": "templates",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "templates.list"
+      ]
     },
     {
       "file": "light-online.png",
-      "page": "online",
+      "scenario": "online",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "downloads.list"
+      ]
     },
     {
       "file": "light-assets.png",
-      "page": "assets",
+      "scenario": "assets",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail"
+      ]
+    },
+    {
+      "file": "light-assets-empty.png",
+      "scenario": "assets-empty",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list"
+      ]
+    },
+    {
+      "file": "light-favorites.png",
+      "scenario": "favorites",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.favorites",
+        "assets.favoriteLayout"
+      ]
+    },
+    {
+      "file": "light-assets-viewer.png",
+      "scenario": "assets-viewer",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.get",
+        "assets.shareSupport"
+      ]
     },
     {
       "file": "light-resources.png",
-      "page": "resources",
+      "scenario": "resources",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "maintenance.pendingRestores",
+        "maintenance.holds",
+        "maintenance.appRecovery",
+        "resources.scan"
+      ]
     },
     {
       "file": "light-queue.png",
-      "page": "queue",
+      "scenario": "queue",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "light-services.png",
-      "page": "services",
+      "scenario": "services",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "services.logs"
+      ]
     },
     {
       "file": "light-settings.png",
-      "page": "settings",
+      "scenario": "settings",
       "theme": "light",
       "skin": "default",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
+    },
+    {
+      "file": "light-settings-lower.png",
+      "scenario": "settings-lower",
+      "theme": "light",
+      "skin": "default",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-home.png",
-      "page": "home",
+      "scenario": "home",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-create.png",
-      "page": "create",
+      "scenario": "create",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-create-start.png",
-      "page": "create-start",
+      "scenario": "create-start",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-templates.png",
-      "page": "templates",
+      "scenario": "templates",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "templates.list"
+      ]
     },
     {
       "file": "nasa-online.png",
-      "page": "online",
+      "scenario": "online",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "downloads.list"
+      ]
     },
     {
       "file": "nasa-assets.png",
-      "page": "assets",
+      "scenario": "assets",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail"
+      ]
+    },
+    {
+      "file": "nasa-assets-empty.png",
+      "scenario": "assets-empty",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list"
+      ]
+    },
+    {
+      "file": "nasa-favorites.png",
+      "scenario": "favorites",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.favorites",
+        "assets.favoriteLayout"
+      ]
+    },
+    {
+      "file": "nasa-assets-viewer.png",
+      "scenario": "assets-viewer",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.get",
+        "assets.shareSupport"
+      ]
     },
     {
       "file": "nasa-resources.png",
-      "page": "resources",
+      "scenario": "resources",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "maintenance.pendingRestores",
+        "maintenance.holds",
+        "maintenance.appRecovery",
+        "resources.scan"
+      ]
     },
     {
       "file": "nasa-queue.png",
-      "page": "queue",
+      "scenario": "queue",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-services.png",
-      "page": "services",
+      "scenario": "services",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "services.logs"
+      ]
     },
     {
       "file": "nasa-settings.png",
-      "page": "settings",
+      "scenario": "settings",
       "theme": "dark",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
+    },
+    {
+      "file": "nasa-settings-lower.png",
+      "scenario": "settings-lower",
+      "theme": "dark",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-light-home.png",
-      "page": "home",
+      "scenario": "home",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-light-create.png",
-      "page": "create",
+      "scenario": "create",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-light-create-start.png",
-      "page": "create-start",
+      "scenario": "create-start",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-light-templates.png",
-      "page": "templates",
+      "scenario": "templates",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "templates.list"
+      ]
     },
     {
       "file": "nasa-light-online.png",
-      "page": "online",
+      "scenario": "online",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "downloads.list"
+      ]
     },
     {
       "file": "nasa-light-assets.png",
-      "page": "assets",
+      "scenario": "assets",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail"
+      ]
+    },
+    {
+      "file": "nasa-light-assets-empty.png",
+      "scenario": "assets-empty",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list"
+      ]
+    },
+    {
+      "file": "nasa-light-favorites.png",
+      "scenario": "favorites",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.favorites",
+        "assets.favoriteLayout"
+      ]
+    },
+    {
+      "file": "nasa-light-assets-viewer.png",
+      "scenario": "assets-viewer",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "assets.list",
+        "assets.thumbnail",
+        "assets.get",
+        "assets.shareSupport"
+      ]
     },
     {
       "file": "nasa-light-resources.png",
-      "page": "resources",
+      "scenario": "resources",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "maintenance.pendingRestores",
+        "maintenance.holds",
+        "maintenance.appRecovery",
+        "resources.scan"
+      ]
     },
     {
       "file": "nasa-light-queue.png",
-      "page": "queue",
+      "scenario": "queue",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     },
     {
       "file": "nasa-light-services.png",
-      "page": "services",
+      "scenario": "services",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list",
+        "services.logs"
+      ]
     },
     {
       "file": "nasa-light-settings.png",
-      "page": "settings",
+      "scenario": "settings",
       "theme": "light",
       "skin": "nasa-punk",
       "dpr": 1,
       "w": 1440,
-      "h": 960
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
+    },
+    {
+      "file": "nasa-light-settings-lower.png",
+      "scenario": "settings-lower",
+      "theme": "light",
+      "skin": "nasa-punk",
+      "dpr": 1,
+      "w": 1440,
+      "h": 960,
+      "calls": [
+        "desktop.boot",
+        "maintenance.info",
+        "services.status",
+        "settings.get",
+        "tasks.list"
+      ]
     }
-  ]
+  ],
+  "browser": "Chrome/155.0.8059.41"
 }

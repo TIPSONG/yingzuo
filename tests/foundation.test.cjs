@@ -88,7 +88,7 @@ test('路径校验：穿越、保留名、尾随点、绝对路径、大小写�
 });
 test('符号链接逃逸被 realpath 检查拦截', t => {
   const d = tmp(t); const inside = path.join(d, 'root'); fs.mkdirSync(inside); fs.mkdirSync(path.join(d, 'secret'));
-  fs.symlinkSync(path.join(d, 'secret'), path.join(inside, 'link'));
+  fs.symlinkSync(path.join(d, 'secret'), path.join(inside, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
   assert.throws(() => P.resolveInside(inside, 'link', {realpath: true}), e => e.code === 'PATH_OUTSIDE_ROOT');
 });
 test('uniqueName 生成不覆盖的文件名', t => {

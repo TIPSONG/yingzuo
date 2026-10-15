@@ -112,7 +112,6 @@ q('#rs-prune').addEventListener('click', async () => { try { const r = await cal
 q('#rs-update-comfy').addEventListener('click', async () => { const o = await askRevision('更新 ComfyUI', '先在“服务与日志”里检查可用版本。会备份 ComfyUI（不含模型权重）和 Python 环境，本地修改（如 Gemma 补丁）保存为补丁并重放。'); if (o) try { report(await call(yz.maintenance.updateComfy(o))); } catch (e) { swallow(e); } });
 q('#rs-tx').addEventListener('click', async () => { try { const t = await call(yz.maintenance.transactions()); q('#rs-maint').innerHTML = t.map(x => `<div class="row"><span>${esc(x.createdAt)} · ${esc(x.target?.title ?? x.scope)} <small class="muted">${esc(x.phase)}${x.error ? ` · ${esc(x.error.message)}` : ''}</small></span></div>`).join('') || '<p class="muted">没有维护记录。</p>'; } catch (e) { swallow(e); } });
 q('#nav').addEventListener('click', e => { if (e.target.closest('[data-page="resources"]')) pending().catch(() => {}); });
-})();
 
 yz.events.subscribe(ev => { if (ev.type === 'maintenance.hold') { toast('维护恢复失败：任务已暂停、服务未启动。请到“资源与维护”完成恢复。', true); pending().catch(() => {}); } });
 // R14：回收区（只显示本应用登记的条目；永久清理需确认，执行时再核对）
@@ -147,3 +146,4 @@ q('#rs-maint').addEventListener('click', async e => {
     if (await confirmBox('恢复应用数据', '<p>恢复会在退出并重新打开映作时、打开数据库之前执行。当前数据会保留为失败现场，不会删除。恢复后旧任务只核对状态，不会自动重新生成。</p>')) { const r = await call(yz.maintenance.scheduleAppRestore(b.dataset.d)); toast(r.note); }
   } catch (er) { swallow(er); }
 });
+})();

@@ -8,6 +8,8 @@
   align-items: stretch;
   height: 40px;
   min-height: 40px;
+  padding: 0;
+  gap: 0;
   background: var(--sidebar);
   border: 0;              /* 整条不要底边，否则会穿过窗口按钮 */
   border-bottom: 0;
@@ -535,6 +537,14 @@ button.ghost { background: transparent; }
   box-shadow: var(--shadow);
 }
 .modal h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+/* The viewer owns a two-column layout; the generic dialog width would clip its controls. */
+.modal:has(> .viewer) {
+  width: min(1100px, 100%);
+  max-width: min(1100px, 100%);
+  padding: 0;
+  overflow: hidden;
+}
+.modal > .viewer { width: 100%; }
 .modal label {
   display: block;
   font-size: 11px;

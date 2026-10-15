@@ -41,10 +41,12 @@ test('C01：系统加密不可用时拒绝保存（不明文落盘、不清空�
   const p = createGraphStoragePolicy({credentials: new CredentialStore(path.join(tmp(t), 'c.json'), safe(false)), objectInfo: () => objectInfo});
   assert.throws(() => p.secureForStorage(g()), e => e.code === 'CREDENTIAL_UNAVAILABLE');
 });
-test('C01：离线（无 object_info）——已转为输入的 widget 名与密钥格式也能识别', () => {
+test('RR02：离线只认明确密钥格式，未知 widget 位置单独报告而不猜候选', () => {
   const graph = {nodes: [{id: 3, type: 'X', inputs: [{name: 'token', widget: {name: 'token'}}], widgets_values: ['正文 有空格', 'abcdEFGH12345678']}, {id: 4, type: 'Y', widgets_values: ['sk-FICTIONAL000000000000000']}]};
-  const hits = findSecretWidgets(graph, {});
-  assert.deepEqual(hits.map(h => [h.nodeId, h.key]), [['3', 1], ['4', 0]]);
+  const uncertain = [];
+  const hits = findSecretWidgets(graph, {uncertain});
+  assert.deepEqual(hits.map(h => [h.nodeId, h.key]), [['4', 0]]);
+  assert.deepEqual(uncertain.map(u => [u.nodeId, u.field]), [['3', 'token']]);
 });
 test('C01：图包导出使用导出政策并附需重填字段', t => {
   const p = createGraphStoragePolicy({objectInfo: () => objectInfo});

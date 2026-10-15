@@ -1,75 +1,34 @@
 # UI 截图（静态预览）
 
-由仓库内脚本 `tools/ui-shots.mjs` 生成（RV15）：静态托管 `desktop/workbench.html`，注入 `tools/ui-shots/stub.cjs` 替身 preload，内容统一来自 `tools/ui-shots/fixtures.json`。
-主题与皮肤只通过替身 `settings.get` 返回的 `ui.theme` / `ui.skin` 驱动（走真实 `loadSettings → applyAppearance` 路径），截图前等待主题过渡动画结束。
-
-生成时的 git HEAD、浏览器版本、视口（1440×960）与 DPR（1）以及每张图实际的主题/皮肤记录在 [manifest.json](./manifest.json)。
+通过真实 workbench 页面、明确的 preload 替身接口和仓库示例图片生成，共 14 个场景 × 4 种配色 = 56 张。截图不是 Windows/Electron/ComfyUI/GPU 人工验收。
 
 重新生成：
 
+```text
+npm ci
+npm run screenshots -- --chrome "C:/Program Files/Google/Chrome/Application/chrome.exe"
+npm run test:browser
 ```
-npm i --no-save puppeteer-core
-node tools/ui-shots.mjs            # 可加 --chrome <路径> --out <目录>
-```
 
-说明：这是静态页面 + 替身数据，不代表真机 Electron/ComfyUI 已连接状态；人工验收仍需在 Windows 真机上进行。
+CI 的独立 Chrome 作业设置 `REQUIRE_BROWSER_TESTS=1`；缺浏览器或依赖时失败，不能跳过。普通本地仅单元测试场景可在无 Chrome 时跳过浏览器测试。
 
-## 默认皮肤 · 深色（`ui.theme=dark`，`ui.skin=default`）
+脚本只点击真实导航、收藏、查看器和设置控件，不写入假页面 HTML，也不隐藏错误。截图等待接口全部结束、页面内容就绪、图片解码和有限动画完成。未定义接口、JavaScript 异常、请求失败、可见错误与未完成加载均会阻止成功；失败退出非零并写 `capture-failure.json`，不留下成功的 `manifest.json`。
 
-| 页面 | 文件 |
-| --- | --- |
-| 首页 | [default-home.png](./default-home.png) |
-| 创作工作区 | [default-create.png](./default-create.png) |
-| 创作 · 起始页 | [default-create-start.png](./default-create-start.png) |
-| 模板库 | [default-templates.png](./default-templates.png) |
-| 在线资源 | [default-online.png](./default-online.png) |
-| 作品与收藏 | [default-assets.png](./default-assets.png) |
-| 资源与维护 | [default-resources.png](./default-resources.png) |
-| 任务队列 | [default-queue.png](./default-queue.png) |
-| 服务与日志 | [default-services.png](./default-services.png) |
-| 设置 | [default-settings.png](./default-settings.png) |
+[manifest.json](./manifest.json) 记录渲染时 HEAD、源文件是否未提交、实际界面/替身/示例图 SHA-256、浏览器、视口 1440×960、DPR 1、场景和已调用接口。`sourceDirty: true` 时 HEAD 是基础提交，`sourceFiles` 才是实际渲染字节的依据；截图提交可在其后。捕获期间相关源文件变化会使本次任务失败。
 
-## 默认皮肤 · 浅色（`ui.theme=light`，`ui.skin=default`）
-
-| 页面 | 文件 |
-| --- | --- |
-| 首页 | [light-home.png](./light-home.png) |
-| 创作工作区 | [light-create.png](./light-create.png) |
-| 创作 · 起始页 | [light-create-start.png](./light-create-start.png) |
-| 模板库 | [light-templates.png](./light-templates.png) |
-| 在线资源 | [light-online.png](./light-online.png) |
-| 作品与收藏 | [light-assets.png](./light-assets.png) |
-| 资源与维护 | [light-resources.png](./light-resources.png) |
-| 任务队列 | [light-queue.png](./light-queue.png) |
-| 服务与日志 | [light-services.png](./light-services.png) |
-| 设置 | [light-settings.png](./light-settings.png) |
-
-## NASA 朋克 · 深色（`ui.theme=dark`，`ui.skin=nasa-punk`）
-
-| 页面 | 文件 |
-| --- | --- |
-| 首页 | [nasa-home.png](./nasa-home.png) |
-| 创作工作区 | [nasa-create.png](./nasa-create.png) |
-| 创作 · 起始页 | [nasa-create-start.png](./nasa-create-start.png) |
-| 模板库 | [nasa-templates.png](./nasa-templates.png) |
-| 在线资源 | [nasa-online.png](./nasa-online.png) |
-| 作品与收藏 | [nasa-assets.png](./nasa-assets.png) |
-| 资源与维护 | [nasa-resources.png](./nasa-resources.png) |
-| 任务队列 | [nasa-queue.png](./nasa-queue.png) |
-| 服务与日志 | [nasa-services.png](./nasa-services.png) |
-| 设置 | [nasa-settings.png](./nasa-settings.png) |
-
-## NASA 朋克 · 浅色（RV12 新增）（`ui.theme=light`，`ui.skin=nasa-punk`）
-
-| 页面 | 文件 |
-| --- | --- |
-| 首页 | [nasa-light-home.png](./nasa-light-home.png) |
-| 创作工作区 | [nasa-light-create.png](./nasa-light-create.png) |
-| 创作 · 起始页 | [nasa-light-create-start.png](./nasa-light-create-start.png) |
-| 模板库 | [nasa-light-templates.png](./nasa-light-templates.png) |
-| 在线资源 | [nasa-light-online.png](./nasa-light-online.png) |
-| 作品与收藏 | [nasa-light-assets.png](./nasa-light-assets.png) |
-| 资源与维护 | [nasa-light-resources.png](./nasa-light-resources.png) |
-| 任务队列 | [nasa-light-queue.png](./nasa-light-queue.png) |
-| 服务与日志 | [nasa-light-services.png](./nasa-light-services.png) |
-| 设置 | [nasa-light-settings.png](./nasa-light-settings.png) |
+| 场景 | 默认深色 | 默认浅色 | NASA 深色 | NASA 浅色 |
+|---|---|---|---|---|
+| 首页 | [default](./default-home.png) | [light](./light-home.png) | [nasa](./nasa-home.png) | [nasa-light](./nasa-light-home.png) |
+| 创作工作区（未连接编辑器） | [default](./default-create.png) | [light](./light-create.png) | [nasa](./nasa-create.png) | [nasa-light](./nasa-light-create.png) |
+| 新建工作流 | [default](./default-create-start.png) | [light](./light-create-start.png) | [nasa](./nasa-create-start.png) | [nasa-light](./nasa-light-create-start.png) |
+| 模板库 | [default](./default-templates.png) | [light](./light-templates.png) | [nasa](./nasa-templates.png) | [nasa-light](./nasa-light-templates.png) |
+| 在线资源 | [default](./default-online.png) | [light](./light-online.png) | [nasa](./nasa-online.png) | [nasa-light](./nasa-light-online.png) |
+| 作品网格（三张示例图） | [default](./default-assets.png) | [light](./light-assets.png) | [nasa](./nasa-assets.png) | [nasa-light](./nasa-light-assets.png) |
+| 作品空状态 | [default](./default-assets-empty.png) | [light](./light-assets-empty.png) | [nasa](./nasa-assets-empty.png) | [nasa-light](./nasa-light-assets-empty.png) |
+| 收藏板（两张示例图） | [default](./default-favorites.png) | [light](./light-favorites.png) | [nasa](./nasa-favorites.png) | [nasa-light](./nasa-light-favorites.png) |
+| 作品查看器 | [default](./default-assets-viewer.png) | [light](./light-assets-viewer.png) | [nasa](./nasa-assets-viewer.png) | [nasa-light](./nasa-light-assets-viewer.png) |
+| 资源与维护（模型清单） | [default](./default-resources.png) | [light](./light-resources.png) | [nasa](./nasa-resources.png) | [nasa-light](./nasa-light-resources.png) |
+| 任务队列 | [default](./default-queue.png) | [light](./light-queue.png) | [nasa](./nasa-queue.png) | [nasa-light](./nasa-light-queue.png) |
+| 服务与日志 | [default](./default-services.png) | [light](./light-services.png) | [nasa](./nasa-services.png) | [nasa-light](./nasa-light-services.png) |
+| 设置上半部分 | [default](./default-settings.png) | [light](./light-settings.png) | [nasa](./nasa-settings.png) | [nasa-light](./nasa-light-settings.png) |
+| 设置下半部分与凭据 | [default](./default-settings-lower.png) | [light](./light-settings-lower.png) | [nasa](./nasa-settings-lower.png) | [nasa-light](./nasa-light-settings-lower.png) |

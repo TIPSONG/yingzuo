@@ -22,7 +22,7 @@ function createApi(ctx) {
   const lmFor = () => new LmStudioAdapter({cliPath: configRepo.config.lmstudio.cli, registryFile: path.join(layout.root, 'lmstudio.json')});
   let lastStatus = null;
   let startGate = () => null;
-  const hooks = ctx.taskService?.hooks ?? {activeTasks: () => [], waitForIdle: async () => {}, cancelActive: async () => {}, pauseSubmissions: () => {}, resumeSubmissions: () => {}};
+  const hooks = ctx.taskService?.hooks ?? {activeTasks: () => [], waitForIdle: async () => {}, cancelActive: async () => {}, pauseSubmissions: () => () => {}};
 
   async function serviceStatus() {
     const config = configRepo.config;
@@ -62,15 +62,22 @@ function createApi(ctx) {
     const ids = [...(q.queue_running ?? []), ...(q.queue_pending ?? [])].map(i => i?.[1]).filter(Boolean);
     return ids.filter(id => !ctx.taskService?.tasks?.byPromptId?.(id));
   }
-  async function guardedServiceOp(name, fn, {allowExternal = false} = {}) {
+  async function withEnvironmentGuard(name, fn, {force = false} = {}) {
     const release = locks.environment.tryAcquire(name);
     if (!release) throw new AppError(CODES.LOCKED, `环境维护锁正被 ${locks.environment.holder ?? '其他操作'} 占用，请稍后再试。`);
     let lease = null;
     try {
       lease = hooks.pauseSubmissions(name) ?? null;
-      if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '仍有本应用任务在提交或运行，请先等待完成或取消后再操作。');
-      try { await hooks.waitForIdle({timeoutMs: 5000}); } catch { throw new AppError(CODES.INVALID_STATE, '有任务正在启动，请稍后再试。'); }
-      if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '仍有本应用任务在提交或运行（等待期间已启动），请先等待完成或取消后再操作。');
+      if (!force) {
+        if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '仍有本应用任务在提交或运行，请先等待完成或取消后再操作。');
+        try { await hooks.waitForIdle({timeoutMs: 5000}); } catch { throw new AppError(CODES.INVALID_STATE, '有任务正在启动，请稍后再试。'); }
+        if (hooks.activeTasks().length) throw new AppError(CODES.INVALID_STATE, '仍有本应用任务在提交或运行（等待期间已启动），请先等待完成或取消后再操作。');
+      }
+      return await fn();
+    } finally { lease?.(); release(); }
+  }
+  async function guardedServiceOp(name, fn, {allowExternal = false} = {}) {
+    return withEnvironmentGuard(name, async () => {
       let owned = false; try { owned = !!(await comfy.verifyOwned()); } catch { owned = false; }
       if (!owned && !allowExternal) throw new AppError(CODES.NOT_OWNED, '当前 ComfyUI 不是本应用启动的实例（或无法核实），为安全起见不操作。');
       let foreign;
@@ -79,7 +86,7 @@ function createApi(ctx) {
       const r = await fn({owned});
       serviceStatus().catch(() => {});
       return r;
-    } finally { lease?.(); release(); }
+    });
   }
   const pickable = new Set(['comfy.root', 'comfy.python', 'comfy.workflowsDir', 'comfy.outputDir', 'comfy.inputDir', 'lmstudio.cli', 'paths.favorites', 'paths.downloads', 'paths.backups', 'gemma.patchFile']);
 
@@ -89,6 +96,7 @@ function createApi(ctx) {
     // ----- services -----
     'services.status': serviceStatus,
     'services.startComfy': () => locks.environment.run(async () => {
+      if (editor.quitting) throw new AppError(CODES.INVALID_STATE, '正在保存并退出，请稍候。');
       const held = startGate(); if (held) throw held; // C03：在实际取得环境锁之后检查维护阻断
       events.emit('services.comfy', null, {phase: 'starting'});
       try {
@@ -169,6 +177,7 @@ function createApi(ctx) {
     if (!fn) throw new AppError(CODES.FORBIDDEN, `未知接口：${command.method}`);
     const started = Date.now();
     try {
+      if (editor.quitting) throw new AppError(CODES.INVALID_STATE, '正在保存并退出，请稍候。');
       const data = await fn(...command.args);
       logger.info('api ok', {method: command.method, ms: Date.now() - started});
       return {ok: true, data};
@@ -178,16 +187,24 @@ function createApi(ctx) {
     }
   }
   const prepareQuit = () => prepareQuitFlow({hooks, showMessageBox: opts => electron.dialog.showMessageBox(getWindow(), opts)});
-  async function shutdownOwnedServices() {
-    // RV06：退出时 owned 服务里若有其他来源任务（或无法确认），不停止它，保持运行并记录
-    try {
-      if (await comfy.verifyOwned()) {
-        let foreign = null; try { foreign = await backendForeignJobs(); } catch (e) { foreign = null; logger.warn('退出时无法确认 ComfyUI 后端队列，保持运行', {error: e.message}); }
-        if (foreign && !foreign.length) await comfy.stop();
-        else if (foreign) logger.warn('退出时 ComfyUI 中还有其他来源任务，保持运行', {foreign: foreign.length});
+  async function shutdownOwnedServices({force = false, finalize = async () => {}} = {}) {
+    // RR05：与停止服务共用保护，直到队列停止/窗口销毁才放锁。维护繁忙必须保留应用。
+    return withEnvironmentGuard('quit-services', async () => {
+      if (force) {
+        // 未确认任务可能仍在上传/提交/运行；显式退出也不终止其后端，不伪造任务终态。
+        logger.warn('用户选择仍然退出，绘图和 LM Studio 服务保持运行');
+      } else {
+        try {
+          if (await comfy.verifyOwned()) {
+            let foreign = null; try { foreign = await backendForeignJobs(); } catch (e) { logger.warn('退出时无法确认 ComfyUI 后端队列，保持运行', {error: e.message}); }
+            if (foreign && !foreign.length) await comfy.stop();
+            else if (foreign) logger.warn('退出时 ComfyUI 中还有其他来源任务，保持运行', {foreign: foreign.length});
+          }
+        } catch (e) { logger.warn('stop owned comfy failed', {error: e.message}); }
+        try { const lm = lmFor(); if (lm.registry().serverOwned) { await lm.detect(); await lm.stopServer(); } } catch (e) { logger.warn('stop owned lm server failed', {error: e.message}); }
       }
-    } catch (e) { logger.warn('stop owned comfy failed', {error: e.message}); }
-    try { const lm = lmFor(); if (lm.registry().serverOwned) { await lm.detect(); await lm.stopServer(); } } catch (e) { logger.warn('stop owned lm server failed', {error: e.message}); }
+      return finalize();
+    }, {force});
   }
   return {
     dispatch, methods, hooks, prepareQuit, shutdownOwnedServices, openKnownLocation, credentials, comfy, serviceStatus,

@@ -17,12 +17,13 @@ class CredentialStore {
     } catch { return false; }
   }
   read() { try { return JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch { return {version: 1, items: {}}; } }
-  set(name, secret) {
+  set(name, secret, {confirmedNodeSecret = false} = {}) {
     if (!ALLOWED.has(name) && !NODE_SECRET.test(name)) throw new AppError(CODES.INVALID_ARGUMENT, '未知的凭据名称。');
     if (typeof secret !== 'string' || !secret.trim() || secret.length > 4096) throw new AppError(CODES.INVALID_ARGUMENT, '凭据内容无效。');
     if (!this.available()) throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, '系统加密存储不可用，为避免明文保存，未保存该凭据。');
     const data = this.read();
-    data.items[name] = {cipher: this.safeStorage.encryptString(secret.trim()).toString('base64'), savedAt: new Date().toISOString()};
+    const nodeSecret = NODE_SECRET.test(name);
+    data.items[name] = {cipher: this.safeStorage.encryptString(nodeSecret ? secret : secret.trim()).toString('base64'), savedAt: new Date().toISOString(), ...(nodeSecret && confirmedNodeSecret ? {confirmedNodeSecret: true} : {})};
     writeJsonAtomic(this.file, data);
   }
   get(name) {

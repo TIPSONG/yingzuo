@@ -7,15 +7,17 @@ const {TemplateRepository} = require('../repositories/template-repo.cjs');
 const ImportPipeline = require('../../shared/import-pipeline.cjs');
 const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
-const SF = require('../../shared/secret-fields.cjs');
+const {sanitizeFields} = require('../../shared/form-secrets.cjs');
+const {createGraphStoragePolicy, assertSafeExport} = require('../../shared/graph-storage-policy.cjs');
 
 function createTemplateService({db, layout, editor, taskService, dialog, getWindow, builtins = () => [], pool = null}) {
   const repo = new TemplateRepository(db, layout.templates);
   repo.secureGraph = g => (editor?.secureDisk ? editor.secureDisk(g) : g); // C01：所有创建/版本（含直接导入、内置、在线导入）
+  const objectInfo = () => editor?.graphPolicy?.()?.getObjectInfo?.() ?? taskService?.cachedObjectInfo?.() ?? null;
+  repo.secureForm = fields => sanitizeFields(fields, {objectInfo: objectInfo()});
   const tabGraph = tabId => editor.enqueue(() => editor.commands.tabGraph(tabId));
   // S05：存为模板前把敏感输入（如 API Key）转入系统加密存储，图中只保留占位；导出时占位清空、不导出凭据
   const securedGraph = async tabId => { const t = await tabGraph(tabId); if (!taskService?.secrets) return t; const c = await compile(tabId); return {...t, graph: taskService.secrets.redactGraph(t.graph, c.apiPrompt)}; };
-  const stripPlaceholders = v => (typeof v === 'string' ? (v.startsWith(SF.PLACEHOLDER_PREFIX) ? '' : v) : Array.isArray(v) ? v.map(stripPlaceholders) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, stripPlaceholders(x)])) : v);
   const pin = async (tabId, templateId, version) => { const vid = version?.versionId ?? version?.version_id ?? null; if (vid && editor?.commands?.setTemplateVersion) await editor.enqueue(() => editor.commands.setTemplateVersion(tabId, templateId, vid)); };
   const pinned = async (tabId, templateId, version) => { await pin(tabId, templateId, version); return version; };
   /** C06：以标签固定的模板版本为起点；只有用户明确选择升级（upgrade）才用最新版。 */
@@ -78,9 +80,10 @@ function createTemplateService({db, layout, editor, taskService, dialog, getWind
       const v = versionId ? repo.version(versionId) : repo.current(id);
       const r = await dialog.showSaveDialog(getWindow(), {title: '导出模板', defaultPath: `${repo.get(id).name}.json`, filters: [{name: 'ComfyUI 工作流', extensions: ['json']}]});
       if (r.canceled || !r.filePath) return {cancelled: true};
-      const ex = editor?.exportCopy ? editor.exportCopy(v.graph) : {graph: stripPlaceholders(v.graph), refill: []};
+      const ex = assertSafeExport(editor?.exportCopy ? editor.exportCopy(v.graph) : createGraphStoragePolicy({objectInfo}).stripForExport(v.graph));
+      const fields = repo.secureForm(v.formSchema);
       fs.writeFileSync(r.filePath, JSON.stringify(ex.graph, null, 2));
-      if (v.formSchema) fs.writeFileSync(r.filePath.replace(/\.json$/i, '') + '.yingzuo-form.json', JSON.stringify({kind: 'yingzuo-form', version: 1, fields: v.formSchema}, null, 2));
+      if (fields) fs.writeFileSync(r.filePath.replace(/\.json$/i, '') + '.yingzuo-form.json', JSON.stringify({kind: 'yingzuo-form', version: 1, fields}, null, 2));
       return {path: r.filePath};
     },
     /** T03：表单编辑。默认表单由当前编译结果推断；保存时与图一起成为新版本。 */

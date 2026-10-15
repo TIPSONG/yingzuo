@@ -41,20 +41,20 @@ function findSecretWidgets(graph, {objectInfo = null, knownValues = new Set(), u
     const wv = node?.widgets_values; if (!wv || typeof wv !== 'object') continue;
     const type = String(node.type ?? '');
     const add = (key, name) => { const value = wv[key]; if (typeof value === 'string' && value) hits.push({scope, nodeId: String(node.id), type, key, name, value}); };
-    if (!Array.isArray(wv)) { for (const k of Object.keys(wv)) if (SF.isSecretInput(type, k, null) || knownValues.has(wv[k]) || KEY_LIKE.test(String(wv[k] ?? ''))) add(k, k); continue; }
+    if (!Array.isArray(wv)) { for (const k of Object.keys(wv)) if (SF.isSecretInput(type, k, SF.defOf(objectInfo, type, k)) || knownValues.has(wv[k]) || KEY_LIKE.test(String(wv[k] ?? ''))) add(k, k); continue; }
     let names = widgetNames(type, objectInfo);
     const marked = new Set();
     // RV02：只有推出的 widget 位数与实际 widgets_values 长度一致时才按位置映射；不一致（自定义序列化、
     // 动态输入等）视为对应关系未知，不按猜测的位置处理，转为按值识别并报告 uncertain。
     const declaredSecret = names ? names.find(w => w.def && SF.isSecretInput(type, w.name, w.def))?.name : null;
-    if (names && names.length !== wv.length) { names = null; if (declaredSecret) uncertain.push({scope, nodeId: String(node.id), type, field: declaredSecret}); }
+    if (names && names.length !== wv.length) names = null;
     if (names) names.forEach((w, i) => { if (w.def && i < wv.length && SF.isSecretInput(type, w.name, w.def)) { add(i, w.name); marked.add(i); } });
     // 没有可靠映射：已转为输入的 widget 名称 / object_info 声明的敏感字段 + 已知明文 + 密钥格式
     const widgetInputs = (node.inputs ?? []).filter(x => x?.widget?.name).map(x => x.widget.name);
     const secretField = declaredSecret ?? widgetInputs.find(n => SF.isSecretInput(type, n, null));
     if (!names && secretField) {
-      // 顺序不可知时，按值判断：该节点所有字符串值里非空、无空白、≥8 字符的视为候选（内部保存可还原，不丢数据）
-      wv.forEach((v, i) => { if (!marked.has(i) && typeof v === 'string' && v && !/\s/.test(v) && v.length >= 8 && !SF.isPlaceholder(v) && !knownValues.has(v) && !KEY_LIKE.test(v)) { add(i, secretField); hits[hits.length - 1].guessed = true; marked.add(i); } });
+      // 位置未知不能靠长度猜密码，也不能把模型名登记成凭据。
+      uncertain.push({scope, nodeId: String(node.id), type, field: secretField, unresolved: true});
     }
     wv.forEach((v, i) => { if (!marked.has(i) && typeof v === 'string' && v && !SF.isPlaceholder(v) && (knownValues.has(v) || KEY_LIKE.test(v))) { add(i, names?.[i]?.name ?? `#${i}`); marked.add(i); } });
   }
@@ -71,7 +71,7 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
   /** 已保存的节点凭据明文（用于在任意位置识别）。 */
   function knownValues() {
     const out = new Set();
-    try { if (!credentials?.available?.()) return out; for (const name of Object.keys(credentials.read().items ?? {})) if (name.startsWith('node-secret:')) { const v = credentials.get(name); if (v) out.add(v); } } catch { /* 读取失败时只用其他依据 */ }
+    try { if (!credentials?.available?.()) return out; for (const [name, item] of Object.entries(credentials.read().items ?? {})) if (name.startsWith('node-secret:') && item.confirmedNodeSecret === true) { const v = credentials.get(name); if (v) out.add(v); } } catch { /* 读取失败时只用其他依据 */ }
     return out;
   }
   /** 内部保存：返回磁盘副本（不改原对象）。 */
@@ -81,24 +81,45 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
     const values = new Map();
     if (!graph || typeof graph !== 'object') return {graph, values};
     const known = knownValues();
-    const hits = findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: known}).filter(h => !SF.isPlaceholder(h.value));
+    const uncertain = [];
+    const hits = findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: known, uncertain}).filter(h => !SF.isPlaceholder(h.value));
+    assertSafeExport({uncertain});
     if (!hits.length) return {graph, values};
     if (!credentials?.available?.()) throw Object.assign(new Error('图中含敏感输入（如 API Key），但系统加密存储不可用；为避免明文写入磁盘，未保存。修改仍保留在当前窗口。'), {code: 'CREDENTIAL_UNAVAILABLE', fields: hits.map(({value, ...h}) => h)});
     const out = structuredClone(graph);
-    const items = credentials.read().items ?? {};
-    for (const h of hits) { const name = secretName(h.value); if (!items[name]) { credentials.set(name, h.value); items[name] = true; } setAt(out, h, SF.PLACEHOLDER_PREFIX + name); values.set(h.value, name); }
+    const items = credentials.read?.()?.items ?? {};
+    for (const h of hits) { const name = secretName(h.value); if (!items[name]?.confirmedNodeSecret) { credentials.set(name, h.value, {confirmedNodeSecret: true}); items[name] = {confirmedNodeSecret: true}; } setAt(out, h, SF.PLACEHOLDER_PREFIX + name); values.set(h.value, name); }
     return {graph: out, values};
   }
   /** 对外导出：移除真实值与本机凭据标识，返回 {graph, refill}。 */
   function stripForExport(graph) {
     const out = structuredClone(graph);
+    // 旧版可能把普通模型名保存成未标来源的凭据；只有明确的非敏感字段才还原它。
+    const info = objectInfo();
+    for (const {node} of nodesOf(out)) {
+      const wv = node.widgets_values; if (!wv || typeof wv !== 'object') continue;
+      const names = Array.isArray(wv) ? widgetNames(node.type, info) : null;
+      for (const [key, value] of Object.entries(wv)) {
+        if (!SF.isPlaceholder(value)) continue;
+        const name = value.slice(SF.PLACEHOLDER_PREFIX.length);
+        const item = credentials?.read?.().items?.[name];
+        if (item?.confirmedNodeSecret) continue;
+        const field = Array.isArray(wv) ? (names?.length === wv.length ? names[Number(key)] : null) : {name: key, def: SF.defOf(info, node.type, key)};
+        if (field && SF.isSecretInput(node.type, field.name, field.def)) continue;
+        // 旧记录既可能是误收的模型名，也可能是仅由 password:true 标记的真密钥。
+        // 单有对象键名不足以证明它不敏感；没有节点定义就不能解密后公开。
+        if (!field?.def) assertSafeExport({uncertain: [{nodeId: String(node.id), type: node.type, field: field?.name ?? 'widgets_values'}]});
+        let restored; try { restored = credentials?.get?.(name); } catch { /* 明确报错而非清空普通字段 */ }
+        if (typeof restored !== 'string') throw Object.assign(new Error(`节点 ${node.id} 的旧凭据无法还原，请连接节点定义并重新填写后导出。`), {code: 'CREDENTIAL_UNAVAILABLE'});
+        wv[key] = restored;
+      }
+    }
     const uncertain = [];
-    const hits = findSecretWidgets(out, {objectInfo: objectInfo(), knownValues: knownValues(), uncertain});
+    const hits = findSecretWidgets(out, {objectInfo: info, knownValues: knownValues(), uncertain});
+    assertSafeExport({uncertain});
     const refill = [];
-    // RV02：确定的位置（object_info 映射一致、已知明文、密钥格式、占位）才清空；按值猜测的位置不清空，
-    // 改为在 uncertain 中报告，调用方据此提示用户手工检查，不宣称已安全。
+    // 只有明确的字段/凭据证据才清空；位置不明的输入在写盘前阻止整个导出。
     for (const h of hits) {
-      if (h.guessed && !SF.isPlaceholder(h.value)) { uncertain.push({scope: h.scope, nodeId: h.nodeId, type: h.type, field: h.name, key: h.key}); continue; }
       setAt(out, h, ''); refill.push({scope: h.scope, nodeId: h.nodeId, type: h.type, field: h.name});
     }
     // 其余位置残留的占位（本机凭据标识）也清空
@@ -118,7 +139,11 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
     return {graph: walk(graph), missing};
   }
   /** 检查（迁移记录用）：返回仍含明文敏感值的位置，不含值本身。 */
-  function scan(graph) { return findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: knownValues()}).filter(h => !SF.isPlaceholder(h.value)).map(({value, ...h}) => h); }
-  return {secureForStorage, secureWithValues, stripForExport, resolveInMemory, scan, knownValues};
+  function scan(graph) { const uncertain = []; const hits = findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: knownValues(), uncertain}).filter(h => !SF.isPlaceholder(h.value)).map(({value, ...h}) => h); return [...hits, ...uncertain]; }
+  return {secureForStorage, secureWithValues, stripForExport, resolveInMemory, scan, knownValues, getObjectInfo: objectInfo};
 }
-module.exports = {createGraphStoragePolicy, findSecretWidgets, widgetNames, secretName, KEY_LIKE};
+function assertSafeExport(result) {
+  if (result?.uncertain?.length) throw Object.assign(new Error(`无法确认敏感字段位置，已阻止保存或导出；请连接 ComfyUI 并校正节点输入：${result.uncertain.map(u => `${u.type}#${u.nodeId}.${u.field}`).join('、')}`), {code: 'INVALID_STATE', details: {uncertain: result.uncertain}});
+  return result;
+}
+module.exports = {createGraphStoragePolicy, findSecretWidgets, widgetNames, secretName, KEY_LIKE, assertSafeExport};

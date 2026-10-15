@@ -26,8 +26,10 @@ function layout() {
   fs.mkdirSync(path.join(root, 'models', 'text_encoders'), {recursive: true});
   fs.writeFileSync(path.join(root, 'models', 'text_encoders', 'readme.txt'), 'not a model');
   safetensors(path.join(ext, 'vae', 'qwen_vae.safetensors'), {}, 'F16');
-  fs.symlinkSync(path.join(root, 'models', 'loras', 'style', 'ink.safetensors'), path.join(root, 'models', 'loras', 'ink-link.safetensors'));
-  fs.writeFileSync(path.join(root, 'extra_model_paths.yaml'), `my:\n  base_path: ${ext}\n  vae: vae\n  loras: |\n    loras\n    loras2\n`);
+  // 普通 Windows 账户可创建目录 junction；Linux 保留文件 symlink 覆盖。
+  if (process.platform === 'win32') fs.symlinkSync(path.join(root, 'models', 'loras', 'style'), path.join(ext, 'loras-link'), 'junction');
+  else fs.symlinkSync(path.join(root, 'models', 'loras', 'style', 'ink.safetensors'), path.join(root, 'models', 'loras', 'ink-link.safetensors'));
+  fs.writeFileSync(path.join(root, 'extra_model_paths.yaml'), `my:\n  base_path: ${ext}\n  vae: vae\n  loras: |\n    loras\n    loras2\n${process.platform === 'win32' ? '    loras-link\n' : ''}`);
   return {root, ext};
 }
 
@@ -35,7 +37,7 @@ test('R01 解析 extra_model_paths.yaml 并按 folder 扫描、符号链接去�
   const {root, ext} = layout();
   const parsed = parseExtraModelPaths(fs.readFileSync(path.join(root, 'extra_model_paths.yaml'), 'utf8'), root);
   assert.deepEqual(parsed.vae, [path.join(ext, 'vae')]);
-  assert.deepEqual(parsed.loras, [path.join(ext, 'loras'), path.join(ext, 'loras2')]);
+  assert.deepEqual(parsed.loras, [path.join(ext, 'loras'), path.join(ext, 'loras2'), ...(process.platform === 'win32' ? [path.join(ext, 'loras-link')] : [])]);
   const {items, duplicates} = scanModels({folderMap: buildFolderMap({comfyRoot: root})});
   const names = items.map(i => i.id).sort();
   assert.deepEqual(names, ['diffusion_models:qwen-image-Q6_K.gguf', 'loras:style/ink.safetensors', 'vae:qwen_vae.safetensors']);

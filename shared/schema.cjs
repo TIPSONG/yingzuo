@@ -85,7 +85,7 @@ const schemas = {
     scopePath: t.array(t.string({max: 120}), {max: 32}), nodeId: t.string({min: 1, max: 40}), nodeType: t.string({min: 1, max: 200}), fieldName: t.string({min: 1, max: 200}),
     widgetType: t.enum(['number', 'int', 'float', 'string', 'text', 'customtext', 'toggle', 'boolean', 'combo', 'image', 'seed']),
     constraints: t.object({min: t.number({optional: true}), max: t.number({optional: true}), step: t.number({optional: true}), values: t.array(t.any(), {optional: true, max: 2000}), multiline: t.bool({optional: true})}, {open: false}),
-    label: t.string({max: 120, optional: true}), group: t.string({max: 120, optional: true}), order: t.int({optional: true}), defaultValue: t.any({optional: true}), slot: t.string({max: 40, optional: true}),
+    label: t.string({max: 120, optional: true}), group: t.string({max: 120, optional: true}), order: t.int({optional: true}), defaultValue: t.any({optional: true}), slot: t.string({max: 40, optional: true}), sensitive: t.bool({optional: true}),
   }),
   Task: t.object({
     id: ID, kind: t.enum(TASK_KINDS), state: t.enum(TASK_STATES), workflowId: t.string({max: 120}), snapshotRef: t.string({max: 300}), inputRevision: t.int({min: 0}),

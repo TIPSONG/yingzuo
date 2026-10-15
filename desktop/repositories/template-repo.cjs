@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const {AppError, CODES} = require('../core/errors.cjs');
 const {writeFileAtomic} = require('../core/fs-atomic.cjs');
 const {validateSchema} = require('../../shared/form-schema.cjs');
+const {sanitizeFields} = require('../../shared/form-secrets.cjs');
 
 const hashOf = text => crypto.createHash('sha256').update(text).digest('hex');
 const cleanName = (s, max = 80) => String(s ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, max);
@@ -62,8 +63,11 @@ class TemplateRepository {
     if (expectedCurrent !== undefined && expectedCurrent !== t.current_version) throw new AppError(CODES.CONFLICT, '模板已在别处更新，请刷新后再保存。');
     if (!graph || !Array.isArray(graph.nodes)) throw new AppError(CODES.INVALID_ARGUMENT, '版本必须包含 UI 图。');
     if (formSchema) { const errors = validateSchema(formSchema); if (errors.length) throw new AppError(CODES.INVALID_ARGUMENT, `表单 schema 无效：${errors[0]}`, {details: {errors}}); }
-    const g = this._blob('graphs', this.secureGraph ? this.secureGraph(graph) : graph); // C01：模板图经统一保存政策
-    const f = formSchema ? this._blob('forms', formSchema) : null;
+    // 先完成图和独立表单副本的检查，再写内容文件。
+    const safeGraph = this.secureGraph ? this.secureGraph(graph) : graph;
+    const safeForm = (this.secureForm ?? sanitizeFields)(formSchema);
+    const g = this._blob('graphs', safeGraph);
+    const f = safeForm ? this._blob('forms', safeForm) : null;
     const versionId = `tv_${crypto.randomUUID()}`, at = this.now();
     this.db.transaction(() => {
       this.db.run('INSERT INTO template_versions (version_id, template_id, parent_id, graph_ref, graph_hash, form_schema_ref, source, note, saved_at) VALUES (?,?,?,?,?,?,?,?,?)', versionId, templateId, t.current_version, g.ref, g.hash, f ? `${f.ref}#${f.hash}` : null, source, note ? cleanName(note, 200) : null, at);

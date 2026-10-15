@@ -16,6 +16,7 @@ const {EventBus} = require('./core/events.cjs');
 const {createLocks} = require('./core/locks.cjs');
 const {AppError, CODES, toIpcError} = require('./core/errors.cjs');
 const {createApi} = require('./services/api.cjs');
+const {runQuit} = require('./services/quit-flow.cjs');
 const {Database} = require('./repositories/database.cjs');
 const {ComfyHttpClient} = require('./adapters/comfy-http.cjs');
 const {createTaskService} = require('./services/task-service.cjs');
@@ -136,24 +137,26 @@ events.subscribe(event => { if (event.type === 'services.status') refreshTrayMen
 let quitInProgress = null;
 async function requestQuit() {
   if (quitInProgress) return quitInProgress;
-  quitInProgress = (async () => {
-    const decision = await api.prepareQuit(); // 运行中任务：等待／取消后退出／返回
-    if (decision === 'return') return false;
-    editor.quitting = true;
-    try {
-      await editor.enqueue(async()=>{if(editor.startupError){await editor.capture();if(editor.workspace.tabs.length)Store.writeWorkspace(path.join(layout.root,`recovered-workspace-${Date.now()}.json`),editor.workspace,{secureGraph:editor.secureDisk});}else await editor.saveCurrent();});
-    } catch (error) {
-      editor.quitting = false;
-      api.hooks.resumeSubmissions();
+  quitInProgress = runQuit({
+    api,
+    setQuitting: value => { editor.quitting = value; },
+    save: () => editor.enqueue(async()=>{if(editor.startupError){await editor.capture();if(editor.workspace.tabs.length)Store.writeWorkspace(path.join(layout.root,`recovered-workspace-${Date.now()}.json`),editor.workspace,{secureGraph:editor.secureDisk});}else await editor.saveCurrent();}),
+    onError: (error, phase) => {
+      if (phase !== 'save') {
+        editor.notify({error:`退出尚未完成，窗口已保留：${error.message}`});
+        dialog.showErrorBox('暂时无法退出', `${error.message}\n窗口已保留，请等待当前操作完成后重试。`);
+        return;
+      }
       editor.notify({error:`保存未完成，窗口已保留：${error.message}`});
       dialog.showErrorBox('草稿尚未保存',`${error.message}\n窗口已保留，请重试保存或导出工作流后再退出。`);
-      return false;
-    }
-    await api.shutdownOwnedServices();
-    explicitQuit = true;
-    taskService?.stop(); updates?.stopSchedule(); editor.closeViews(); tray?.destroy?.(); window?.destroy(); app.quit();
-    return true;
-  })().finally(() => { quitInProgress = null; });
+    },
+    finalize: async () => {
+      taskService?.stop(); updates?.stopSchedule();
+      await require('./core/worker-pool.cjs').closeShared().catch(e => logger.warn('worker shutdown failed', {error: e.message}));
+      explicitQuit = true;
+      editor.closeViews(); tray?.destroy?.(); window?.destroy(); app.quit();
+    },
+  }).finally(() => { quitInProgress = null; });
   return quitInProgress;
 }
 

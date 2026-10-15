@@ -12,6 +12,8 @@ const {checkPrompt} = require('../../shared/prompt-check.cjs');
 const F = require('../../shared/form-schema.cjs');
 const B = require('../../shared/bindings.cjs');
 const SF = require('../../shared/secret-fields.cjs');
+const {sanitizeFields} = require('../../shared/form-secrets.cjs');
+const {createGraphStoragePolicy, assertSafeExport} = require('../../shared/graph-storage-policy.cjs');
 const {mapFormTargets} = require('../../shared/form-targets.cjs');
 const GP = require('./graph-package.cjs');
 const {stableWorkflowId, planSavePrefix} = require('../../shared/output-plan.cjs');
@@ -131,7 +133,8 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
     if (expectedRevision !== null && expectedRevision !== undefined && r.revision !== expectedRevision) throw new AppError(CODES.REVISION_MISMATCH, `标签「${r.title}」在等待期间已被修改（版本 ${expectedRevision} → ${r.revision}）。`, {details: {tabId, expectedRevision, revision: r.revision}});
     const info = await getObjectInfo();
     const issues = checkPrompt(r.apiPrompt, {objectInfo: info});
-    return {...r, issues, objectInfoAvailable: !!info, bindings: B.inferBindings(r.apiPrompt)};
+    // RR06：保留本次编译采用的定义，快捷使用的同步提交入口不得借用之后刷新的全局缓存。
+    return {...r, issues, objectInfo: info, objectInfoAvailable: !!info, bindings: B.inferBindings(r.apiPrompt)};
   }
   const blocking = issues => issues.filter(i => i.level === 'error');
   function assertRunnable(issues) { const e = blocking(issues); if (e.length) throw new AppError(CODES.INVALID_ARGUMENT, `提交前检查未通过：${e[0].message}`, {details: {issues: e}}); }
@@ -172,7 +175,15 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
 
   /* ---------- R18/D15：快照不存敏感输入明文；提交前在内存中还原 ---------- */
   // RV03：统一快照边界（API 图 + UI 图 + 其他字段），在仓库创建任务时执行，覆盖 enqueue/enqueueGroup/retry。
-  const redactSnapshot = snapshot => secureSnapshot(snapshot, {policy: graphPolicy, credentials, objectInfo});
+  const redactSnapshot = snapshot => {
+    // 旧任务只有按索引保存的值时，使用它固定的表单版本；不套用最新版猜索引。
+    if (snapshot?.form?.versionId && !Array.isArray(snapshot.form.fields) && formProvider) {
+      const form = formProvider(snapshot.form.templateId ?? snapshot.templateId, snapshot.form.versionId);
+      if (!form || form.versionId !== snapshot.form.versionId) throw new AppError(CODES.INVALID_STATE, '任务的历史表单版本不可用，无法安全保存重试快照。');
+      snapshot = {...snapshot, form: {...snapshot.form, fields: form.fields}};
+    }
+    return secureSnapshot(snapshot, {policy: graphPolicy, credentials, objectInfo});
+  };
   tasks.secure = redactSnapshot;
   const resolveSecrets = prompt => SF.resolveSecrets(prompt, async name => credentials?.get(name) ?? null).catch(e => { throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, e.message, {details: {missing: e.missing}}); });
   const enqueue = spec => queue.enqueue({...spec, snapshot: redactSnapshot(spec.snapshot)});
@@ -181,6 +192,8 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
     /** 从已编译标签和最终 API 图生成任务（不直接接触 queue/仓库）。 */
     enqueueCompiled: (c, prompt, {kind = 'generate', params = null, meta = {}, references, prefixMode} = {}) => {
       const p = withPrefix(prompt, c, prefixMode);
+      assertRunnable(checkPrompt(p.prompt, {objectInfo: c.objectInfo}));
+      checkFinalPrompt(c, p.prompt, c.objectInfo);
       return enqueue({kind, workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, references), params, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...formIdentity(c, p.prompt), ...meta}})});
     },
     enqueue,
@@ -197,7 +210,7 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
     const f = formOf(c);
     if (!f?.fields?.length) return {templateId: c.templateId, form: {templateId: c.templateId, versionId: f?.versionId ?? c.templateVersionId ?? null, pinned: !!f?.pinned, fields: null}};
     const values = Object.fromEntries(f.fields.map((b, i) => [i, prompt?.[b.nodeId]?.inputs?.[b.fieldName] ?? null]));
-    return {templateId: c.templateId, form: {templateId: c.templateId, versionId: f.versionId ?? null, pinned: !!f.pinned, values}};
+    return {templateId: c.templateId, form: {templateId: c.templateId, versionId: f.versionId ?? null, pinned: !!f.pinned, fields: f.fields, values}};
   };
   /** C06：运行、批量、润色在编译后统一校验表单映射与实际值（不因没有传 formValues 就跳过）。 */
   function checkFormForRun(c, formValues = null) {
@@ -371,9 +384,9 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       let target = filePath;
       if (!target) { const r = await dialog.showSaveDialog(getWindow(), {title: '导出图与参考素材', defaultPath: `${t.title}.yingzuo.json`, filters: [{name: '映作图包', extensions: ['json']}]}); if (r.canceled || !r.filePath) return {cancelled: true}; target = r.filePath; }
       // C01：导出政策移除敏感值；C08：读取素材、base64、JSON 与写盘在 worker 中进行，这里只传路径
-      const ex = editor.exportCopy ? editor.exportCopy(t.graph) : null;
+      const ex = assertSafeExport(editor.exportCopy ? editor.exportCopy(t.graph) : createGraphStoragePolicy({credentials, objectInfo: () => objectInfo}).stripForExport(t.graph));
       const relations = relationsOf(tabId).map(({missing, ...r}) => ({...r, file: missing ? null : refs.pathOf(r.refId)}));
-      return filePool().run('packBuild', {target, title: t.title, graph: t.graph, exportedGraph: ex?.graph ?? null, refill: ex?.refill ?? [], template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: form?.fields ?? null} : null, relations});
+      return filePool().run('packBuild', {target, title: t.title, graph: ex.graph, exportedGraph: ex.graph, refill: ex.refill ?? [], template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: sanitizeFields(form?.fields ?? null, {objectInfo})} : null, relations});
     },
     /**
      * C07：先整体校验（worker 内：大小、hash、槽位），再导入素材、打开标签、提交关系（缺失项也作为缺失关系恢复，运行时阻止）；

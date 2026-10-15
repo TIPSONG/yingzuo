@@ -9,12 +9,12 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const {AppError, CODES} = require('../core/errors.cjs');
-const SF = require('../../shared/secret-fields.cjs');
+const {sanitizeFields} = require('../../shared/form-secrets.cjs');
+const {createGraphStoragePolicy, assertSafeExport} = require('../../shared/graph-storage-policy.cjs');
 
 const KIND = 'yingzuo-graph-package', VERSION = 1;
 const REF_ID = /^([0-9a-f]{64})\.(png|jpe?g|webp)$/;
 const MAX_REFS = 64, MAX_REF_BYTES = 50 * 1024 * 1024, MAX_TOTAL = 300 * 1024 * 1024, MAX_FILE = Math.ceil(MAX_TOTAL * 1.4) + 16 * 1024 * 1024;
-const strip = v => (typeof v === 'string' ? (v.startsWith(SF.PLACEHOLDER_PREFIX) ? '' : v) : Array.isArray(v) ? v.map(strip) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, strip(x)])) : v);
 const cleanText = (v, n = 200) => String(v ?? '').replace(/[\u0000-\u001f]/g, '').slice(0, n);
 
 /** 按 nodeId（可含子图实例路径 a:b:c）在图中定位节点。返回 {node, scope} 或 null。 */
@@ -62,8 +62,8 @@ function buildPackage({title, graph, template = null, relations = [], readRef, e
     const buf = fs.readFileSync(file);
     return {...base, sha256: crypto.createHash('sha256').update(buf).digest('hex'), size: buf.length, data: buf.toString('base64')};
   });
-  const ex = exportGraph ? exportGraph(graph) : {graph: strip(graph), refill: []};
-  return {kind: KIND, version: VERSION, exportedAt: new Date().toISOString(), title: cleanText(title), graph: ex.graph, refill: ex.refill ?? [], template: template ? {templateId: template.templateId ?? null, versionId: template.versionId ?? null, formSchema: template.formSchema ?? null} : null, references, dropped};
+  const ex = assertSafeExport(exportGraph ? exportGraph(graph) : createGraphStoragePolicy().stripForExport(graph));
+  return {kind: KIND, version: VERSION, exportedAt: new Date().toISOString(), title: cleanText(title), graph: ex.graph, refill: ex.refill ?? [], template: template ? {templateId: template.templateId ?? null, versionId: template.versionId ?? null, formSchema: sanitizeFields(template.formSchema ?? null)} : null, references, dropped};
 }
 /** 解析并完整校验；任一项不合格整体拒绝（不写任何文件）。 */
 function parsePackage(text, {objectInfo = null} = {}) {
@@ -100,7 +100,7 @@ function parsePackage(text, {objectInfo = null} = {}) {
 /** relations 中的 file 由主进程解析（null 表示素材丢失）。写到 target 的临时名后改名。 */
 function workerBuild({target, tmp: given, title, graph, template, relations, exportedGraph, refill}) {
   const files = new Map(relations.map(r => [r.refId, r.file]));
-  const pkg = buildPackage({title, graph, template, relations, readRef: id => { const f = files.get(id); if (!f) throw new Error('missing'); return f; }, exportGraph: () => ({graph: exportedGraph ?? strip(graph), refill: refill ?? []})});
+  const pkg = buildPackage({title, graph, template, relations, readRef: id => { const f = files.get(id); if (!f) throw new Error('missing'); return f; }, exportGraph: exportedGraph ? () => ({graph: exportedGraph, refill: refill ?? []}) : null});
   const tmp = given ?? `${target}.tmp-${process.pid}`; fs.writeFileSync(tmp, JSON.stringify(pkg)); fs.renameSync(tmp, target);
   return {path: target, references: pkg.references.length, missing: pkg.references.filter(r => r.missing).map(r => r.name || r.refId), dropped: pkg.dropped, refill: pkg.refill};
 }

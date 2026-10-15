@@ -40,6 +40,8 @@ class AppError extends Error {
 }
 function toIpcError(error) {
   if (error instanceof AppError) return {code: error.code, message: error.message, retryable: error.retryable, ...(error.details !== undefined ? {details: error.details} : {})};
+  // 共享图策略不依赖 Electron 层；只接纳它声明的安全错误与无值的位置说明。
+  if (['INVALID_STATE', 'CREDENTIAL_UNAVAILABLE'].includes(error?.code)) return {code: error.code, message: error.message, retryable: false, ...(Array.isArray(error.details?.uncertain) ? {details: {uncertain: error.details.uncertain.map(({scope, nodeId, type, field}) => ({scope, nodeId, type, field}))}} : {})};
   return {code: CODES.INTERNAL, message: String(error?.message ?? error), retryable: false};
 }
 const fail = (code, message, options) => new AppError(code, message, options);

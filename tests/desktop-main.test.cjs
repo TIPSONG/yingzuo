@@ -20,14 +20,17 @@ const deferred = () => {let resolve;const promise=new Promise(r=>resolve=r);retu
 
 async function fixture(t,initial=workspace(),options={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'yingzuo-main-'));
-  const openedDbs=[];
-  // Windows 上打开的 SQLite 文件不能删除：先关闭主进程打开的数据库再清理临时目录。
-  t.after(()=>{for(const db of openedDbs){try{db.close();}catch{}}fs.rmSync(root,{recursive:true,force:true});});
+  const openedDbs=[],stopServices=[];
+  let fixturePool=null;
+  // 每个 main fixture 负责自己的服务生命周期；测试不触发关窗时也要释放 socket/计时器/worker。
+  // Windows 上先关闭数据库再清理临时目录。
+  t.after(async()=>{for(const stop of stopServices.reverse())await stop();await fixturePool?.close();for(const db of openedDbs){try{db.close();}catch{}}fs.rmSync(root,{recursive:true,force:true});});
   fs.mkdirSync(path.join(root,'desktop'),{recursive:true});
   fs.mkdirSync(path.join(root,'.local','data'),{recursive:true});
+  if(options.objectInfo)fs.writeFileSync(path.join(root,'.local','data','object-info-cache.json'),JSON.stringify({data:options.objectInfo}));
   const file=path.join(root,'.local','data','workspace.json');
   // 测试关闭行为时不缩到托盘（mock 中也没有 Tray）。
-  fs.writeFileSync(path.join(root,'.local','data','config.json'),JSON.stringify({version:1,tray:{closeToTray:false,showNotifications:false}}));
+  fs.writeFileSync(path.join(root,'.local','data','config.json'),JSON.stringify({version:1,tray:{closeToTray:false,showNotifications:false},lmstudio:{cli:''},updates:{checkFrequency:'manual'}}));
   if(options.rawWorkspace!==undefined)fs.writeFileSync(file,options.rawWorkspace);
   else if(initial)Store.writeWorkspace(file,initial);
   const comfyRoot=path.join(root,'comfy');
@@ -94,7 +97,26 @@ async function fixture(t,initial=workspace(),options={}) {
   const desktopDir=path.join(__dirname,'..','desktop');
   const realDb=require(path.join(desktopDir,'repositories','database.cjs'));
   const dbMock={...realDb,Database:{open:(...a)=>{const db=realDb.Database.open(...a);openedDbs.push(db);return db;}}};
-  const requireMock=name=>name==='./repositories/database.cjs'?dbMock:name==='electron'?electron:name==='./workspace-store.cjs'?store:name==='./comfy-bridge-source.cjs'?bridge:name.startsWith('./')?require(path.join(desktopDir,name)):require(name);
+  const realTasks=require(path.join(desktopDir,'services','task-service.cjs'));
+  const realUpdates=require(path.join(desktopDir,'services','update-check.cjs'));
+  const realApi=require(path.join(desktopDir,'services','api.cjs'));
+  const realPool=require(path.join(desktopDir,'core','worker-pool.cjs'));
+  const mocks={
+    './repositories/database.cjs':dbMock,
+    './services/task-service.cjs':{...realTasks,createTaskService(args){const service=realTasks.createTaskService({...args,WebSocketImpl:null});stopServices.push(()=>service.stop());return service;}},
+    './services/update-check.cjs':{...realUpdates,createUpdateService(args){const service=realUpdates.createUpdateService(args);stopServices.push(()=>service.stopSchedule());return service;}},
+    './services/api.cjs':{...realApi,createApi(args){
+      // 保留真实 API/退出保护，仅隔离与本机安装和端口有关的后台探测/进程归属。
+      const api=realApi.createApi({...args,comfy:{verifyOwned:async()=>false}});
+      return {...api,start(){}};
+    }},
+    './core/worker-pool.cjs':{...realPool,
+      configureShared(options){fixturePool=new realPool.WorkerPool({size:2,journalFile:options.journalFile});return new realPool.TempJournal(options.journalFile).recover();},
+      sharedPool:()=>fixturePool,
+      closeShared:async()=>{await fixturePool?.close();},
+    },
+  };
+  const requireMock=name=>mocks[name]??(name==='electron'?electron:name==='./workspace-store.cjs'?store:name==='./comfy-bridge-source.cjs'?bridge:name.startsWith('./')?require(path.join(desktopDir,name)):require(name));
   vm.runInNewContext(source,{require:requireMock,__dirname:path.join(root,'desktop'),URL,Response,AbortSignal,structuredClone,fetch:async url=>state.fetchHook?state.fetchHook(url):({ok:true,json:async()=>({system:{},devices:[]})}),setTimeout(fn,ms){const id={};state.timers.set(id,{fn,ms});if(ms===500)queueMicrotask(()=>{if(state.timers.delete(id))fn();});return id;},clearTimeout:id=>state.timers.delete(id),setInterval(fn){state.intervals.push(fn);return {unref(){}};}},{filename:'desktop/main.cjs'});
   await tick();
   assert.equal(state.errors.length,0,'mock application starts successfully');
@@ -291,10 +313,11 @@ test('B03：打包自检在临时目录运行并写出结果', async () => {
 
 /* ---------- C01：草稿、关闭归档、普通导出走统一敏感字段政策（虚构密钥） ---------- */
 const FAKE_KEY='sk-test-FICTIONALKEY0123456789';
+const KEY_INFO={LMStudioPromptEnhancer:{input:{required:{prompt:['STRING'],lmstudio_api_key:['STRING',{password:true}]}}}};
 const fakeSafe=()=>({isEncryptionAvailable:()=>true,getSelectedStorageBackend:()=>'dpapi',encryptString:s=>Buffer.from(`enc:${s}`),decryptString:b=>b.toString().slice(4)});
 const keyGraph=prompt=>({version:0.4,nodes:[{id:1,type:'CLIPTextEncode',widgets_values:[prompt]},{id:2,type:'LMStudioPromptEnhancer',inputs:[{name:'lmstudio_api_key',type:'STRING',widget:{name:'lmstudio_api_key'}}],widgets_values:['帮我润色',FAKE_KEY]}],links:[],extra:{},definitions:{subgraphs:[{id:'sg1',nodes:[{id:9,type:'Custom',widgets_values:{api_key:FAKE_KEY,steps:20}}]}]}});
 test('C01：首次输入的密钥——自动保存/关闭归档只存凭据引用，内存与画布保留真实值，普通导出移除并列出需重填字段',async t=>{
-  const f=await fixture(t,workspace({id:'a',title:'a',mode:'graph',templateId:null,graph:keyGraph('提示词A')},{id:'b',title:'b',mode:'graph',templateId:null,graph:keyGraph('提示词B')}),{safeStorage:fakeSafe()});
+  const f=await fixture(t,workspace({id:'a',title:'a',mode:'graph',templateId:null,graph:keyGraph('提示词A')},{id:'b',title:'b',mode:'graph',templateId:null,graph:keyGraph('提示词B')}),{safeStorage:fakeSafe(),objectInfo:KEY_INFO});
   const drafts=path.join(f.root,'.local','data','drafts');
   for(const n of fs.readdirSync(drafts)){const text=fs.readFileSync(path.join(drafts,n),'utf8');assert.ok(!text.includes(FAKE_KEY),`草稿 ${n} 不含明文（启动迁移）`);assert.ok(text.includes('__yz_credential__:node-secret:'));assert.ok(text.includes('提示词'),'普通提示词保留');}
   f.bounds({x:200,y:80,width:1200,height:800});
@@ -309,7 +332,7 @@ test('C01：首次输入的密钥——自动保存/关闭归档只存凭据引�
   const archived=fs.readFileSync(path.join(f.root,'.local','data','closed-workflows','a.json'),'utf8');assert.ok(!archived.includes(FAKE_KEY));assert.ok(archived.includes('__yz_credential__:node-secret:'));
 });
 test('C01：系统加密存储不可用——保存返回可操作错误，不明文落盘，旧草稿不被覆盖',async t=>{
-  const f=await fixture(t,workspace(tab('a','x')));
+  const f=await fixture(t,workspace(tab('a','x')),{objectInfo:KEY_INFO});
   f.bounds({x:200,y:80,width:1200,height:800});assert.equal((await f.send('connect')).ok,true);
   f.nativeGraph=keyGraph('新提示词');
   const r=await f.send('save');assert.equal(r.ok,false);assert.match(r.error,/加密存储不可用/);
