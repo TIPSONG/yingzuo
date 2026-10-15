@@ -1,5 +1,7 @@
 # 映作 · Yingzuo
 
+贡献与 PR 规则请见 [CONTRIBUTING.md](./CONTRIBUTING.md)。欢迎公开审阅；合并由维护者决定。
+
 面向 Windows 的本地 AI 绘图工作台，让启动服务、切换工作流、生成、找图和管理资源在一个应用中完成。
 
 > **当前版本：0.1.0-alpha.1，WebUI 前端原型。**

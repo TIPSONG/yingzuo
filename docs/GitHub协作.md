@@ -1,8 +1,8 @@
 # GitHub 协作与项目跟踪
 
-仓库：[TIPSONG/yingzuo](https://github.com/TIPSONG/yingzuo)，创建时为私有仓库。
+仓库：[TIPSONG/yingzuo](https://github.com/TIPSONG/yingzuo)，2026-10-15 改为公开仓库。贡献、审阅与合并规则见 [CONTRIBUTING.md](../CONTRIBUTING.md)。公开审阅不授予合并权限。
 
-- 开发代码与文档保存在 `main`；较大的功能改动使用独立分支和 Pull Request。
+- `main` 受保护，所有修改均通过独立分支和 Pull Request；禁止强推和删除。当前桌面开发位于 `feat/grovebot-impl`，PR #11 继续保持草稿。
 - [总览 Issue #1](https://github.com/TIPSONG/yingzuo/issues/1) 跟踪 P0–P7，阶段 Issue 记录任务、依赖、验收和实际结果。
 - [里程碑](https://github.com/TIPSONG/yingzuo/milestones) 分为日常可用版、资源管理版、完整测试版。
 - 开始一个阶段时记录实际范围，完成后附测试证据和已知限制；不把演示页面记为真实功能完成。
