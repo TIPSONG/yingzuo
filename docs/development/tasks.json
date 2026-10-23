@@ -202,7 +202,7 @@
   "commit": "",
   "files": [],
   "checks": "tests/bindings.test.cjs E08",
-  "note": "内容寻址素材；关系持久化到 reference-relations.json（PR11-R11），旧 localStorage 迁移，复制标签复制关系，素材丢失拒绝提交。导出未带素材 manifest"
+  "note": "内容寻址素材；关系持久化到 reference-relations.json，旧 localStorage 迁移，复制标签复制关系，素材丢失拒绝提交；图包包含素材 manifest／本体，关闭归档和应用备份保留关系（PR11-R11／S08）。"
  },
  {
   "id": "E09",
@@ -607,7 +607,7 @@
    "desktop/services/online/dependency-plan.cjs"
   ],
   "checks": "tests/dependency.test.cjs",
-  "note": "缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺节点给手动处理说明（插件安装待 R07）"
+  "note": "缺失模型/节点清单、同名文件来源（HF，大小/sha/revision/许可）、用户选择后经统一下载服务；缺失节点给出来源与手动处理说明，用户填写 Git 地址后通过 R07／O08 的受限 Git 事务安装，重启 ComfyUI 后重新检查。"
  },
  {
   "id": "R01",
@@ -912,7 +912,7 @@
    "tools/check.cjs",
    "tests/maint-service.test.cjs"
   ],
-  "checks": "npm run check 214 项",
+  "checks": "aab1998：npm run check 438 项（437 通过、1 跳过）；浏览器 13/13，Python 7/7；见当前状态与验证证据.md",
   "note": "新增 UI 接口白名单、元素存在、内联样式（CSP）、假数据扫描；状态机/迁移/任务恢复/下载续传/备份事务均有自动测试"
  },
  {

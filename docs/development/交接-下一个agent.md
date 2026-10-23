@@ -1,6 +1,18 @@
 # 交接：给下一个 agent（Grovebot 实现进度）
 
-更新时间：见文末。本文件随每次检查点更新，副本在 `/workspace/yingzuo-handoff.md`（box 上）。
+文档核对日期：2026-10-23。本文件保留 Grovebot 各轮实现的历史记录；box 上的 `/workspace/yingzuo-handoff.md` 是当时副本，不能替代仓库当前状态。
+
+## 当前交接入口（以此为准）
+
+- 原 82 项：**79 程序完成、3 有限支持、0 实现中**；E07、S04、R06 的范围限制继续保留。状态源为 `tasks.json` 与 `pr11-status.json`，人工验收栏保持空白。
+- D04／PR11-R10 左侧自定义表单及润色、PR11-R11 素材 manifest 与恢复、PR11-R17 缩略图 Worker 都已实现；第四轮“仍在做”是历史快照，不是当前待开发清单。
+- Codex 已在 `aab1998` 修复 RR01–RR08，并修复资源页按钮绑定、查看器及标题栏裁切。该提交自动验证为 Node 438 项（437 通过、1 跳过）、浏览器 13／13、Python 7／7；Windows 构建与自检通过，静态截图 56 张。这是指定提交的历史验证，本次整理没有重新宣称跑过这些检查。
+- 修复文件、回归用例、CI 链接与截图哈希说明统一在[当前状态与验证证据](./当前状态与验证证据.md)。[待验收清单](./待Codex验收.md) 的结果仍留空，静态截图／CI 不代替 Windows + 真实 ComfyUI／LM Studio／GPU 人工验收。
+- 新的发布清单修正单独跟踪 [Issue #16](https://github.com/TIPSONG/yingzuo/issues/16)，后续修复应记录自身的提交与验证结果。PR #11 的草稿和不合并边界继续保留。
+
+## Grovebot 历史交接正文（2026-10-13）
+
+以下原环境、轮次、测试数字及“下一步”只描述当时状态。当前事实以上方入口、状态源和证据索引为准，不能据此重复开已完成的开发任务。
 
 ## 1. 这是什么
 
@@ -39,7 +51,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 
 ## 5. 现状与下一步
 
-【历史，2026-10-13 第三轮时的描述；当前状态见文末“第五轮”与进度表】当时 82 项标为“程序完成”（未经人工验收）。并行分支 `feat/grovebot-maint`（PR #12）与 `feat/grovebot-assets`（PR #13）已用本地 `git merge` 合入本分支（a8eec65、a668600），两个 PR 保持打开未动；`进度-maint.md`、`进度-assets.md` 保留作历史，状态已并入主进度表。
+【历史，2026-10-13 第三轮时的描述；当前状态见本文顶部入口】当时 82 项标为“程序完成”（未经人工验收）。并行分支 `feat/grovebot-maint`（PR #12）与 `feat/grovebot-assets`（PR #13）已用本地 `git merge` 合入本分支（a8eec65、a668600），当时两个 PR 保持打开未动；`进度-maint.md`、`进度-assets.md` 保留作历史，状态已并入主进度表。
 
 下一步建议（按价值）：
 1. 等 Codex 在 Windows 真机按 `待Codex验收.md` 验收，修复反馈。最可能出问题：Gemma 节点输入名推断（bindings.cjs）、原生视图快捷键与焦点、插件 pip 安装路径、恢复时文件被占用（Windows 下 ComfyUI 未完全退出时 rename 会 EBUSY/EPERM）。
@@ -143,7 +155,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 测试：`npm run check` → 339 / 338 通过 / 1 跳过 / 0 失败（抛光前后一致）。
 - PR #11 仍为草稿。
 
-## 当前状态（第七轮：PR11 代码与截图审阅 RV01–RV15，以此为准）— 2026-10-13
+## 历史第七轮：PR11 代码与截图审阅 RV01–RV15 — 2026-10-13
 - 审阅原文：docs/development/PR11代码与截图审阅-d5cca17.md（审阅 head d5cca17）。状态表：`node tools/pr11.cjs render`（Grovebot开发进度.md 的 RV 区块，“人工验收”列留空）。
 - RV01 草稿哈希：`workspace-store.writeWorkspace` 对落盘（已脱敏）图算 graphHash；`readWorkspace(file, {resolveGraph})` 只在“解析占位符后哈希等于旧索引”时修复旧索引。
 - RV02 密钥映射：forceInput/连线输入不占 widget 位；数量对不上时为“不确定”，导出不清空猜测位并在提示中列出；object_info 落盘缓存 `object-info-cache.json`，服务就绪时预热。
@@ -187,7 +199,7 @@ shell 有 `noclobber`：用 `cat > file` 覆盖已有文件会失败，先 `set 
 - 审阅原文：docs/development/PR11代码审阅与下一轮程序计划.md；逐项状态：`node tools/pr11.cjs render`（数据 pr11-status.json）；82 项：`node tools/progress.cjs render`（新增“有限支持”状态）。
 - 已合并 origin/feat/grovebot-review2（head bbbcba7 之前的全部提交），并接入 R14/R17(部分)/R18/R19/R20。
 - 程序完成：D01–D03、D05–D15；PR11-R01–R09、R12–R16、R18–R21。
-- 实现中：D04/PR11-R10（左侧参数面板、润色流程未走自定义表单）、PR11-R11（导出/恢复带素材 manifest、关闭标签归档时关系）、PR11-R17（缩略图/图片元数据仍在主进程）。
+- 当时实现中（现已由 S07／S08／S09 与后续 C08／RV10 完成）：D04/PR11-R10（左侧参数面板、润色流程未走自定义表单）、PR11-R11（导出/恢复带素材 manifest、关闭标签归档时关系）、PR11-R17（缩略图/图片元数据仍在主进程）。
 - 82 项复核：E07/T01/O07/S04/R06 改为“有限支持”，T03 改为“实现中”，其余维持程序完成（均仍需 Windows 人工验收）。
 - 下一步建议：D04 左侧参数面板（workbench.js renderFields 改为优先用 tasks.form，注意子图节点 ID “父:子” 与画布 widget 的映射）；R11 导出 manifest；R17 assets 缩略图改走 WorkerPool。
 - 关键新模块：desktop/services/quit-flow.cjs、desktop/maintenance/app-backup.cjs、entry.cjs（单实例锁 + 应用数据恢复）、queue-service 暂停租约/followers/enqueueGroup。

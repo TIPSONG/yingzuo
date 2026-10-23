@@ -28,7 +28,7 @@ const esc = s => String(s || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 const count = s => tasks.filter(t => t.status === s).length;
 const header = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8').split('<!-- TABLE -->')[0] : '# Grovebot 开发进度\n\n';
 let md = header + '<!-- TABLE -->\n\n';
-md += `统计：程序完成 ${count('程序完成')} / 实现中 ${count('实现中')} / 阻塞 ${count('阻塞')} / 未开始 ${count('未开始')}（共 ${tasks.length}）。“程序完成”不等于 Codex 验收通过。\n\n`;
+md += `统计：程序完成 ${count('程序完成')} / 有限支持 ${count('有限支持')} / 实现中 ${count('实现中')} / 阻塞 ${count('阻塞')} / 未开始 ${count('未开始')}（共 ${tasks.length}）。“程序完成”不等于 Codex 验收通过。\n\n`;
 for (const b of [1, 2, 3, 4, 5, 6]) {
   md += `### 批次 ${b}\n\n| 任务 | 名称 | 状态 | 提交 | 主要文件 | 开发检查 | 说明／限制 | Codex验收状态 |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n`;
   for (const t of tasks.filter(x => x.batch === b)) md += `| ${t.id} | ${esc(t.name)} | ${t.status} | ${esc(t.commit)} | ${esc(t.files.join('<br>'))} | ${esc(t.checks)} | ${esc(t.note)} |  |\n`;

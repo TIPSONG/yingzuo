@@ -127,7 +127,21 @@ npm ci
 npm run build:win
 ```
 
-产物位于 `dist/`，包括安装包、便携版和 SHA-256 清单。GitHub Actions 的 [Windows build](./.github/workflows/windows-build.yml) 还会执行打包后自检及隔离数据根初始化检查。Actions 产物有保留期限，公开下载请使用 Releases。
+产物位于 `dist/`。GitHub Actions 的 [Windows build](./.github/workflows/windows-build.yml) 执行打包后自检及隔离数据根初始化，再整理 `dist/release/` 为完整的 7 个文件：安装包、便携版、blockmap、两份清单和两份自检结果。Actions 上传这个目录，发布前对下载解压后的实际目录再次验证：
+
+```powershell
+node tools/release-assets.cjs verify <解压目录>
+```
+
+发布使用仓库内的统一入口，需要环境变量 `GITHUB_TOKEN`（仓库 Contents 写权限），不要把令牌写进文件或命令参数：
+
+```powershell
+node tools/publish-release.cjs <解压目录> v<版本号> <40位构建提交SHA>
+```
+
+默认创建或补齐草稿；明确发布时在末尾加 `--publish`。脚本校验实际待上传的完整 7 个文件字节，重新核对远端资产集合、大小和 SHA-256 后才公开为预发布版。版本和标签必须一致，提交 SHA 必须来自该次构建；拒绝修改已有公开 Release 或覆盖冲突标签／资产。同一标签只由一个发布者操作，上传期间不要手动发布或改动草稿。
+
+Actions 产物有保留期限，公开下载使用 Releases。旧 Alpha 1 缺少的 blockmap 若无法从原构建取回，应保留缺件说明，不能重新构建并伪装成同名历史产物；该版本不因新增检查自动成为“完整清单已验证”。旧的仓库外六文件发布脚本已停用，后续只使用上述入口。
 
 ## 原 A 测 WebUI 预览
 
@@ -144,6 +158,8 @@ A 测预览中的润色、生成、队列、在线管理等属于演示交互，
 ## 下一步与已知边界
 
 程序任务与审阅修复进入真机验收阶段；早期 P0–P7 天数估算属于历史规划，不再作为当前剩余排期。
+
+原 82 项任务现为 79 项程序完成、3 项有限支持，未进行人工验收的部分继续保留。各轮修复、测试和构建的对应提交见[当前状态与验证证据](./docs/development/当前状态与验证证据.md)；发布清单一致性另由 [Issue #16](https://github.com/TIPSONG/yingzuo/issues/16) 跟踪。
 
 1. 在 Windows 上验证真实节点画布、多标签切换、表单与画布同步、快捷键、焦点和托盘退出。
 2. 核对 Gemma 节点与 LM Studio 契约，运行既有文生图、多图编辑及润色工作流，验证串行 GPU 队列和输出关联。
@@ -166,6 +182,7 @@ assets/                       标识和示例图片
 ```
 
 - [程序任务与开发进度](./docs/development/Grovebot开发进度.md)
+- [当前状态与验证证据](./docs/development/当前状态与验证证据.md)
 - [待人工验收清单](./docs/development/待Codex验收.md)
 - [Grovebot 历史交接记录](./docs/development/交接-下一个agent.md)
 - [交付记录](./docs/development/交付记录.md)

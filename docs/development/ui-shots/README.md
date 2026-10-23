@@ -16,6 +16,8 @@ CI 的独立 Chrome 作业设置 `REQUIRE_BROWSER_TESTS=1`；缺浏览器或依�
 
 [manifest.json](./manifest.json) 记录渲染时 HEAD、源文件是否未提交、实际界面/替身/示例图 SHA-256、浏览器、视口 1440×960、DPR 1、场景和已调用接口。`sourceDirty: true` 时 HEAD 是基础提交，`sourceFiles` 才是实际渲染字节的依据；截图提交可在其后。捕获期间相关源文件变化会使本次任务失败。
 
+2026-10-23 核对：当前保存的 56 张截图属于 `aab1998` 的历史材料。manifest 中 15 个界面／图片源文件哈希与该提交一致，但 4 个捕获工具／替身文件哈希不一致，尚不能把整个捕获环境视为该提交的精确复现。详情见[当前状态与验证证据](../当前状态与验证证据.md)。需要新证据时重新捕获并保留新的 manifest，不修改旧清单来消除差异。
+
 | 场景 | 默认深色 | 默认浅色 | NASA 深色 | NASA 浅色 |
 |---|---|---|---|---|
 | 首页 | [default](./default-home.png) | [light](./light-home.png) | [nasa](./nasa-home.png) | [nasa-light](./nasa-light-home.png) |

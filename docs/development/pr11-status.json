@@ -25,7 +25,7 @@
       "status": "程序完成",
       "commit": "fdbe85a",
       "tests": "ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision",
-      "note": "主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理）"
+      "note": "主进程不回退到活动标签；版本不一致时选择使用原标签最新内容或取消。后续 PR11-R10／S07 已接入固定 templateVersionId 和对应表单。"
     },
     {
       "id": "D04",
@@ -132,7 +132,7 @@
       "status": "程序完成",
       "commit": "5729991",
       "tests": "task-service.test R18 两项；review2 的 secret-fields.test",
-      "note": "合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理"
+      "note": "敏感字段进入系统加密凭据，快照保留占位符；后续 C01、RV03、RR01–RR04 覆盖草稿／模板／导出／表单及旧数据迁移，映射不明确时阻止相关保存、导出或备份。"
     },
     {
       "id": "PR11-R01",
@@ -213,7 +213,7 @@
       "status": "程序完成",
       "commit": "fdbe85a",
       "tests": "ui-tasks.test（真实 tasks.js 在 vm 中）：润色中切 A→B、A 修改、A 关闭、批量弹窗中切图；task-service.test：显式 tabId/expectedRevision",
-      "note": "主进程不再回退到活动标签；版本不一致时用户可选用 A 的最新内容或取消。未记录 templateVersionId（模板版本与表单在 PR11-R10 处理）"
+      "note": "主进程不回退到活动标签；版本不一致时选择使用原标签最新内容或取消。后续 PR11-R10／S07 已接入固定 templateVersionId 和对应表单。"
     },
     {
       "id": "PR11-R10",
@@ -285,7 +285,7 @@
       "status": "程序完成",
       "commit": "372d900",
       "tests": "worker-pool.test S09×2、Windows 打包自检 worker 步骤",
-      "note": "扫描/监视元数据走 worker（只回传小结果、读取上限 200MB）；缩略图在 worker 中由 sharp 生成，限制像素与大小、同键去重、tmp→原子改名、源变化丢弃；模型移动与备份中≥16MB 文件流式复制在 worker；共享池并发 2，退出 closeShared。单文件任务输出关联仍同步读取（有上限）；收藏复制图片仍同步"
+      "note": "扫描元数据、缩略图、较大文件复制使用共享 WorkerPool；后续 C08 补齐单文件输出关联及收藏复制，RV10 登记临时路径并在 worker 真实退出后清理。并发 2；Windows 文件句柄释放仍待真机验收。"
     },
     {
       "id": "PR11-R18",
@@ -294,7 +294,7 @@
       "status": "程序完成",
       "commit": "5729991",
       "tests": "task-service.test R18 两项；review2 的 secret-fields.test",
-      "note": "合并 review2 的 shared/secret-fields.cjs 并接入任务快照。已有旧快照未迁移（findPlaintextSecrets 可用于告警，尚未接入）；模板/导出路径未处理"
+      "note": "敏感字段进入系统加密凭据，快照保留占位符；后续 C01、RV03、RR01–RR04 覆盖草稿／模板／导出／表单及旧数据迁移，映射不明确时阻止相关保存、导出或备份。"
     },
     {
       "id": "PR11-R19",
@@ -303,7 +303,7 @@
       "status": "程序完成",
       "commit": "8e62ff0",
       "tests": "task-service.test R19；review2 batch-plan.test",
-      "note": "采样器/调度器变化只按文本校验，未对照 object_info 可选项"
+      "note": "批量全量规划后单事务登记；后续 RV07／RR06 对最终图、枚举与固定表单约束统一校验，无效项整组不入队。"
     },
     {
       "id": "PR11-R20",
@@ -571,7 +571,7 @@
       "status": "程序完成",
       "commit": "0766956",
       "tests": "review-rv02.test：forceInput/连线输入、数量不一致、导出 uncertain",
-      "note": "forceInput/rawLink 不占 widget 位；映射不确定时不按猜测清空，导出提示 uncertain；object_info 落盘缓存并在连接后预热"
+      "note": "forceInput/rawLink 不占 widget 位；object_info 落盘缓存并预热。后续 RR02 对不确定敏感位置阻止保存／导出，不仅提示。"
     },
     {
       "id": "RV03",
@@ -670,7 +670,7 @@
       "status": "程序完成",
       "commit": "ef69e31",
       "tests": "review-rv13-ui.test：多字段编辑→切主题/皮肤→保存、路径选择/凭据、保存失败恢复、快速切换收敛",
-      "note": "需要 puppeteer-core + Chrome，Windows CI 上跳过（静态部分仍运行）"
+      "note": "后续 RR07 处理保存响应晚于新输入的竞争。浏览器回归需 puppeteer-core + Chrome；独立 CI Chrome 作业设置 REQUIRE_BROWSER_TESTS=1，不允许缺浏览器时跳过。"
     },
     {
       "id": "RV14",
@@ -687,8 +687,80 @@
       "name": "截图数据/时机不一致",
       "status": "程序完成",
       "commit": "41e1972、e1aa3d6",
-      "tests": "node tools/ui-shots.mjs 重拍 40 张；manifest.json 记录 HEAD/视口/DPR",
-      "note": "tools/ui-shots.mjs + fixtures；主题/皮肤经配置替身驱动；新增 NASA 浅色 10 张"
+      "tests": "历史 41e1972/e1aa3d6 重拍 40 张；aab1998 的 RR08 重拍 56 张，见 ui-shots/manifest.json 与 review-rr08-ui.test",
+      "note": "14 场景×4 配色；截图异常不得写成功 manifest；sourceFiles 记录实际渲染字节。静态接口替身截图不构成人工验收。"
+    },
+    {
+      "id": "RR01",
+      "level": "—",
+      "name": "误登记普通模型名污染导出",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr-secrets.test：模型名保留、旧占位字段明确才还原",
+      "note": "普通模型名不猜成凭据；旧密钥字段缺定义时拒绝解密导出。"
+    },
+    {
+      "id": "RR02",
+      "level": "—",
+      "name": "不确定敏感字段仍可保存或导出",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr-secrets.test：短密钥、空格、不确定位置阻止各导出入口",
+      "note": "敏感字段映射不确定时阻止写入／导出，保留内存草稿并给出可定位原因。"
+    },
+    {
+      "id": "RR03",
+      "level": "—",
+      "name": "旧数据迁移和备份检查不完整",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr03.test：API/UI/表单/孤立文件、损坏与事务失败",
+      "note": "迁移不完整时拒绝应用备份；保留历史版本与任务引用，不将遗漏检查记作成功。"
+    },
+    {
+      "id": "RR04",
+      "level": "—",
+      "name": "表单默认值和旧任务参数残留明文",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr-secrets.test：默认值独立清理、固定版本、无版本重试拒绝",
+      "note": "表单默认值与任务参数独立脱敏；旧重试必须使用固定表单版本。"
+    },
+    {
+      "id": "RR05",
+      "level": "—",
+      "name": "退出绕过 starting、环境锁和暂停租约",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr05.test：真实队列 starting、维护锁、延迟关闭、外部后端",
+      "note": "锁与租约贯穿退出收尾；不能确认任务安全时保留后端服务。"
+    },
+    {
+      "id": "RR06",
+      "level": "—",
+      "name": "快捷使用绕过最终值与表单约束",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr06.test：范围/枚举/失效映射/缺参考图零入队",
+      "note": "统一提交入口检查最终图、编译定义和固定表单，保留同步 enqueueCompiled 契约。"
+    },
+    {
+      "id": "RR07",
+      "level": "—",
+      "name": "迟到保存响应清除新设置草稿",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr07-ui.test：新输入、连续保存、外观与路径、失败后重试",
+      "note": "按字段版本确认保存，后续输入保留；连续保存串行执行。"
+    },
+    {
+      "id": "RR08",
+      "level": "—",
+      "name": "截图接口和完成判断失真",
+      "status": "程序完成",
+      "commit": "aab1998",
+      "tests": "review-rr08-ui.test：延迟/空状态/四主题/资源事件/失败退出",
+      "note": "真实页面加明确接口替身；异常阻止成功记录；顺带修复资源事件绑定和查看器／标题栏裁切。"
     }
   ]
 }
