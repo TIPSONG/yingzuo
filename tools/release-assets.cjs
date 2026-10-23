@@ -30,10 +30,6 @@ function checksum(file) {
   } finally { fs.closeSync(fd); }
 }
 
-function readJson(dir, name) {
-  return JSON.parse(fs.readFileSync(regularFile(dir, name).file, 'utf8'));
-}
-
 function checkNames(actual, expected, description) {
   if (actual.length !== expected.length || new Set(actual).size !== actual.length || actual.some(n => !expected.includes(n))) {
     throw new Error(`${description} must contain exactly: ${expected.join(', ')}`);
@@ -60,14 +56,15 @@ function writeManifest(dir, pkg) {
   return manifest;
 }
 
-function verifyBundle(dir, {requireResults = false, exact = false, expectedVersion} = {}) {
-  const manifest = readJson(dir, 'artifacts.json');
+// Share the same rules between streamed disk validation and frozen upload bytes.
+function verifyContents(source, {requireResults = false, exact = false, expectedVersion} = {}) {
+  const manifest = JSON.parse(source.readText('artifacts.json'));
   if (manifest.platform !== 'win32-x64' || (expectedVersion && manifest.version !== expectedVersion)) throw new Error('Release version/platform mismatch');
   const names = artifactNames(manifest.version);
   if (!Array.isArray(manifest.artifacts)) throw new Error('Invalid artifacts manifest');
   checkNames(manifest.artifacts.map(a => a?.file), names, 'Manifest');
   const sums = new Map();
-  const text = fs.readFileSync(regularFile(dir, 'SHA256SUMS.txt').file, 'utf8');
+  const text = source.readText('SHA256SUMS.txt');
   for (const line of text.trimEnd().split(/\r?\n/)) {
     const match = /^([a-f0-9]{64})  (.+)$/.exec(line);
     if (!match || sums.has(match[2])) throw new Error('Invalid or duplicate checksum entry');
@@ -75,20 +72,52 @@ function verifyBundle(dir, {requireResults = false, exact = false, expectedVersi
   }
   checkNames([...sums.keys()], names, 'Checksum list');
   for (const a of manifest.artifacts) {
-    const actual = regularFile(dir, a.file);
+    const actual = source.inspect(a.file);
     if (!Number.isSafeInteger(a.bytes) || a.bytes <= 0 || actual.bytes !== a.bytes) throw new Error(`Size mismatch: ${a.file}`);
-    if (!/^[a-f0-9]{64}$/.test(a.sha256) || sums.get(a.file) !== a.sha256 || checksum(actual.file) !== a.sha256) throw new Error(`SHA256 mismatch: ${a.file}`);
+    if (!/^[a-f0-9]{64}$/.test(a.sha256) || sums.get(a.file) !== a.sha256 || actual.sha256 !== a.sha256) throw new Error(`SHA256 mismatch: ${a.file}`);
   }
   if (requireResults) {
-    const smoke = readJson(dir, 'smoke-result.json');
-    const init = readJson(dir, 'init-result.json');
+    const smoke = JSON.parse(source.readText('smoke-result.json'));
+    const init = JSON.parse(source.readText('init-result.json'));
     if (smoke.ok !== true || init.ok !== true || !Array.isArray(smoke.checks) || smoke.checks.some(c => c.ok !== true)) throw new Error('Packaged self-test failed');
     if (smoke.checks.find(c => c.name === 'versions')?.detail?.app !== manifest.version) throw new Error('Self-test version mismatch');
     if (smoke.checks.find(c => c.name === 'sqlite')?.detail?.driver !== 'better-sqlite3') throw new Error('Packaged SQLite driver mismatch');
   }
   const files = [...names, ...(requireResults ? METADATA : METADATA.slice(0, 2))];
-  if (exact) checkNames(fs.readdirSync(dir), files, 'Release directory');
+  if (exact) checkNames(source.list(), files, 'Release directory');
   return {version: manifest.version, files};
+}
+
+function verifyBundle(dir, options = {}) {
+  return verifyContents({
+    readText: name => fs.readFileSync(regularFile(dir, name).file, 'utf8'),
+    inspect: name => {
+      const item = regularFile(dir, name);
+      return {bytes: item.bytes, sha256: checksum(item.file)};
+    },
+    list: () => fs.readdirSync(dir),
+  }, options);
+}
+
+function verifyBundleBytes(files, options = {}) {
+  const entries = new Map();
+  if (!Array.isArray(files)) throw new Error('Invalid frozen bundle');
+  for (const file of files) {
+    if (!file || typeof file.name !== 'string' || !Buffer.isBuffer(file.data) || entries.has(file.name)) throw new Error('Invalid or duplicate frozen asset');
+    entries.set(file.name, file.data);
+  }
+  function read(name) {
+    if (!entries.has(name)) throw new Error(`Missing frozen asset: ${name}`);
+    return entries.get(name);
+  }
+  return verifyContents({
+    readText: name => read(name).toString('utf8'),
+    inspect: name => {
+      const data = read(name);
+      return {bytes: data.length, sha256: crypto.createHash('sha256').update(data).digest('hex')};
+    },
+    list: () => [...entries.keys()],
+  }, options);
 }
 
 function stageBundle(source, destination) {
@@ -109,4 +138,4 @@ if (require.main === module) {
     console.log(`Verified release ${result.version}: ${result.files.length} files`);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
-module.exports = {artifactNames, writeManifest, verifyBundle, stageBundle};
+module.exports = {artifactNames, writeManifest, verifyBundle, verifyBundleBytes, stageBundle};
