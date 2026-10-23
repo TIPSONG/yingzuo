@@ -60,7 +60,8 @@ function bridgeRuntime(operation, payload, app) {
   };
   const identityMatches = () => payload.expectedName === undefined || (state.canvasBound && typeof payload.expectedName === 'string' && matchesBinding(state.workflows.get(payload.expectedName), store?.activeWorkflow));
   const changedWorkflow = () => ({ ...fail('WORKFLOW_CHANGED', 'ComfyUI 当前工作流已改变，请先切回对应标签，再读取或修改。'), workflow: workflowInfo() });
-  if (['snapshot', 'parameters', 'mode'].includes(operation) && !identityMatches()) return changedWorkflow();
+  if (['compile', 'focus'].includes(operation) && typeof payload.expectedName !== 'string') return fail('IDENTITY_REQUIRED', '编译与定位必须指定标签身份。');
+  if (['snapshot', 'parameters', 'mode', 'compile', 'focus'].includes(operation) && !identityMatches()) return changedWorkflow();
   if (['parameters', 'mode'].includes(operation) && !state.canvasBound) return changedWorkflow();
   const graphs = () => {
     const result = [{ graph: root, graphId: String(root.id ?? 'root'), path: [] }];
@@ -117,9 +118,47 @@ function bridgeRuntime(operation, payload, app) {
     }
     if (nativeLoading()) return fail('NOT_READY', 'ComfyUI 正在恢复原生工作流，请稍后重试。');
     if (!identityMatches()) return changedWorkflow();
-    return { ok: true, graph, nodes, workflow: workflowInfo(), connected, truncated };
+    const ds = app.canvas?.ds;
+    const viewport = ds && Number.isFinite(ds.scale) && ds.offset && Number.isFinite(ds.offset[0]) && Number.isFinite(ds.offset[1]) ? { scale: ds.scale, offset: [ds.offset[0], ds.offset[1]] } : null;
+    return { ok: true, graph, nodes, workflow: workflowInfo(), connected, truncated, viewport };
   };
-  if (operation === 'capabilities') return { ok: true, loadGraph: typeof app.loadGraphData === 'function', snapshot: true, parameters: true, appMode: !!store?.activeWorkflow, workflow: workflowInfo(), connected };
+  if (operation === 'capabilities') return { ok: true, loadGraph: typeof app.loadGraphData === 'function', snapshot: true, parameters: true, appMode: !!store?.activeWorkflow, compile: typeof app.graphToPrompt === 'function', focusNode: typeof app.canvas?.centerOnNode === 'function' || typeof app.canvas?.selectNode === 'function', frontendVersion: typeof globalThis.__COMFYUI_FRONTEND_VERSION__ === 'string' ? globalThis.__COMFYUI_FRONTEND_VERSION__ : null, workflow: workflowInfo(), connected };
+  if (operation === 'compile') {
+    // E09：使用当前前端官方 graphToPrompt 生成 API prompt，不按 widget 序号猜连接。
+    if (typeof app.graphToPrompt !== 'function') return fail('COMPILE_UNAVAILABLE', '当前 ComfyUI 前端没有 graphToPrompt，无法编译。');
+    if (!identityMatches() || !state.canvasBound) return changedWorkflow();
+    return Promise.resolve(app.graphToPrompt()).then(result => {
+      if (!identityMatches()) return changedWorkflow();
+      if (!result || typeof result.output !== 'object') return fail('COMPILE_FAILED', '前端未返回 API prompt。');
+      return { ok: true, prompt: JSON.parse(JSON.stringify(result.output)), workflow: JSON.parse(JSON.stringify(result.workflow ?? root.serialize())) };
+    }, error => fail('COMPILE_FAILED', String(error?.message ?? error)));
+  }
+  if (operation === 'convertApi') {
+    // E05：在本标签已绑定的原生工作流里调用官方 loadApiJson，完成后重新绑定同一文档。
+    if (typeof app.loadApiJson !== 'function') return fail('CONVERT_UNAVAILABLE', '当前 ComfyUI 前端没有 loadApiJson，无法把 API 格式转换为可视图；原文件已保留。');
+    if (typeof payload.expectedName !== 'string' || !identityMatches() || !state.canvasBound) return changedWorkflow();
+    const binding = state.workflows.get(payload.expectedName);
+    state.loading = true;
+    return Promise.resolve().then(() => app.loadApiJson(payload.prompt, payload.fileName || 'api.json')).then(() => {
+      if (!matchesBinding(binding, store?.activeWorkflow)) return changedWorkflow();
+      state.canvasBound = true;
+      return snapshot();
+    }, error => fail('CONVERT_FAILED', String(error?.message ?? error))).finally(() => { state.loading = false; });
+  }
+  if (operation === 'focus') {
+    if (!identityMatches()) return changedWorkflow();
+    const scope = Array.isArray(payload.scopePath) ? payload.scopePath.map(String) : [];
+    const item = graphs().find(g => g.path.length === scope.length && g.path.every((x, i) => x === scope[i]));
+    if (!item) return fail('GRAPH_NOT_FOUND', '找不到该子图。');
+    const node = (item.graph.nodes ?? item.graph._nodes ?? []).find(n => String(n.id) === String(payload.nodeId));
+    if (!node) return fail('NODE_NOT_FOUND', '节点不存在。');
+    if (scope.length && typeof app.canvas.setGraph === 'function') app.canvas.setGraph(item.graph);
+    else if (scope.length) return fail('SUBGRAPH_NAVIGATION_UNAVAILABLE', '当前前端不能直接打开子图，请手动进入子图后查看。');
+    app.canvas.selectNode?.(node);
+    app.canvas.centerOnNode?.(node);
+    app.canvas.setDirty?.(true, true);
+    return { ok: true };
+  }
   if (operation === 'snapshot') return snapshot();
   if (operation === 'mode') {
     if (!['graph', 'app'].includes(payload.mode)) return fail('INVALID_MODE', '只支持节点画布和 App Mode。');
@@ -166,6 +205,8 @@ function bridgeRuntime(operation, payload, app) {
       state.workflows.set(payload.name, bindWorkflow(store.activeWorkflow));
       state.canvasBound = true;
       payload.expectedName = payload.name;
+      const v = payload.viewport;
+      if (v && app.canvas?.ds && Number.isFinite(v.scale) && Array.isArray(v.offset)) { app.canvas.ds.scale = v.scale; app.canvas.ds.offset[0] = v.offset[0]; app.canvas.ds.offset[1] = v.offset[1]; app.canvas.setDirty?.(true, true); }
       return snapshot();
     }).finally(() => { state.loading = false; });
   }
@@ -239,7 +280,10 @@ function source(operation, payload = {}) {
 
 module.exports = {
   getCapabilitiesSource: () => source('capabilities'),
-  loadGraphSource: ({ graph, name, workflowPath, documentId }) => source('load', { graph, name, workflowPath, documentId }),
+  loadGraphSource: ({ graph, name, workflowPath, documentId, viewport }) => source('load', { graph, name, workflowPath, documentId, viewport }),
+  compileSource: ({ expectedName }) => source('compile', { expectedName }),
+  convertApiSource: ({ expectedName, prompt, fileName }) => source('convertApi', { expectedName, prompt, fileName }),
+  focusNodeSource: ({ expectedName, scopePath, nodeId }) => source('focus', { expectedName, scopePath, nodeId }),
   snapshotSource: ({ expectedName } = {}) => source('snapshot', { expectedName }),
   applyParametersSource: ({ updates, expectedName }) => source('parameters', { updates, expectedName }),
   setModeSource: (mode, expectedName) => source('mode', { mode, expectedName })

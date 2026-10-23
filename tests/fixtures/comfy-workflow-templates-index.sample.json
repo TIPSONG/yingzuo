@@ -1,0 +1,185 @@
+[
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Image",
+  "type": "image",
+  "templates": [
+   {
+    "name": "api_nano_banana_2_1_t2i",
+    "title": "Nano Banana 2.1: Text to Image",
+    "description": "Generate images from text prompts using Nano Banana 2.1, Google's fast Gemini-based image model, delivering one finished image with no input files required. Ideal for brand marketing posters, e-commerce product visuals, and IP character series.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "tags": [
+     "Text to Image",
+     "API",
+     "Image"
+    ],
+    "models": [
+     "Nano Banana"
+    ],
+    "logos": [
+     {
+      "provider": "Google"
+     }
+    ],
+    "minComfyUIVersion": "0.39.1",
+    "date": "2026-10-06",
+    "openSource": false,
+    "size": 0,
+    "usage": 2210,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 3,
+       "nodeType": "SaveImageAdvanced",
+       "file": "api_nano_banana_2_1_t2i.png",
+       "mediaType": "image"
+      }
+     ]
+    },
+    "thumbnail": [
+     "output/api_nano_banana_2_1_t2i.png"
+    ]
+   },
+   {
+    "name": "image_z_image_turbo",
+    "tutorialUrl": "https://docs.comfy.org/tutorials/image/z-image/z-image-turbo",
+    "title": "Z-Image-Turbo: Text to Image",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "An Efficient Image Generation Foundation Model with Single-Stream Diffusion Transformer, supports English & Chinese.",
+    "tags": [
+     "Image",
+     "Text to Image"
+    ],
+    "models": [
+     "Z-Image-Turbo"
+    ],
+    "date": "2025-11-27",
+    "size": 20830591386,
+    "usage": 16112,
+    "searchRank": 0,
+    "openSource": true,
+    "io": {
+     "outputs": [
+      {
+       "nodeId": 9,
+       "nodeType": "SaveImage",
+       "file": "image_z_image_turbo.png",
+       "mediaType": "image"
+      }
+     ]
+    },
+    "username": "ComfyUI",
+    "thumbnail": [
+     "output/image_z_image_turbo.png"
+    ],
+    "minComfyUIVersion": "0.11.0"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Image Tools",
+  "type": "image",
+  "templates": [
+   {
+    "name": "utility_seedvr2_image_upscale",
+    "tutorialUrl": "https://docs.comfy.org/tutorials/utility/image-upscale",
+    "title": "Image Upscale: SeedVR2",
+    "description": "Upload an image to upscale it with SeedVR2 and generate a high-definition output.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "thumbnailVariant": "compareSlider",
+    "tags": [
+     "Image Upscale"
+    ],
+    "models": [
+     "SeedVR2"
+    ],
+    "requiresCustomNodes": [
+     "comfyui_essentials",
+     "seedvr2_videoupscaler"
+    ],
+    "date": "2026-02-06",
+    "openSource": true,
+    "size": 17716740096,
+    "usage": 959,
+    "searchRank": 0,
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 24,
+       "nodeType": "LoadImage",
+       "file": "vr_ad.png",
+       "mediaType": "image"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 45,
+       "nodeType": "SaveImage",
+       "file": "utility_seedvr2_image_upscale.png",
+       "mediaType": "image"
+      }
+     ]
+    },
+    "username": "ComfyUI",
+    "thumbnail": [
+     "input/vr_ad.png",
+     "output/utility_seedvr2_image_upscale.png"
+    ],
+    "minComfyUIVersion": "0.28.0"
+   },
+   {
+    "name": "utility_seedvr2_7b_int8_upscale_image",
+    "title": "Image Upscale: SeedVR2 7B Int8",
+    "description": "Upscale images using SeedVR2 7B Int8, a one-step diffusion model that enhances resolution through adversarial training and adaptive window attention. Input 1 image and receive 1 upscaled output with improved detail and clarity. Ideal for restoring low-resolution photos, preparing assets for print, or sharpening lightly degraded digital images.",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "thumbnailVariant": "compareSlider",
+    "tags": [
+     "Image Upscale",
+     "Int8"
+    ],
+    "models": [
+     "SeedVR2"
+    ],
+    "date": "2026-07-13",
+    "openSource": true,
+    "size": 8804682957,
+    "usage": 553,
+    "searchRank": 0,
+    "username": "ComfyUI",
+    "io": {
+     "inputs": [
+      {
+       "nodeId": 1,
+       "nodeType": "LoadImage",
+       "file": "indoor_portrait.png",
+       "mediaType": "image"
+      }
+     ],
+     "outputs": [
+      {
+       "nodeId": 9,
+       "nodeType": "SaveImage",
+       "file": "utility_seedvr2_7b_int8_upscale_image.png",
+       "mediaType": "image"
+      }
+     ]
+    },
+    "thumbnail": [
+     "input/indoor_portrait.png",
+     "output/utility_seedvr2_7b_int8_upscale_image.png"
+    ],
+    "minComfyUIVersion": "0.28.0"
+   }
+  ]
+ }
+]

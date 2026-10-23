@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'">
+<title>映作 — 应用数据恢复</title>
+<style>body{font:14px system-ui,"Microsoft YaHei",sans-serif;margin:24px;color:#222}h1{font-size:18px}pre{background:#f4f4f4;padding:8px;white-space:pre-wrap;max-height:200px;overflow:auto}button{margin-right:8px;padding:6px 14px}.warn{color:#a40}</style></head>
+<body>
+<h1>应用数据恢复未完成</h1>
+<p class="warn">映作当前以恢复模式启动：没有打开作品数据库，也不会运行任务、自动保存或下载。请选择下一步。</p>
+<div id="info">读取中…</div>
+<p>
+<button id="resume">继续恢复（重启后执行）</button>
+<button id="rollback">回退到恢复前（重启后执行）</button>
+<button id="logs">打开日志目录</button>
+<button id="quit">退出</button>
+</p>
+<p id="msg"></p>
+<script>
+const $ = id => document.getElementById(id);
+const call = (op, arg) => window.yzRecovery.call(op, arg);
+call('state').then(s => {
+  const pre = document.createElement('pre');
+  pre.textContent = `错误：${s.error ?? '未知'}\n备份：${s.dir ?? '—'}\n恢复记录：${s.journal ? `${s.journal.id}（${s.journal.status}）` : '无（尚未改动数据）'}\n` + (s.journal ? s.journal.items.map(i => `${i.id}: ${Object.entries(i.steps).map(([k, v]) => `${k}=${v}`).join(' ')}`).join('\n') : '');
+  $('info').replaceChildren(pre);
+}, e => { $('info').textContent = `无法读取恢复记录：${e.message}`; });
+const choose = a => call('choose', a).catch(e => { $('msg').textContent = e.message; });
+$('resume').onclick = () => choose('resume');
+$('rollback').onclick = () => choose('rollback');
+$('logs').onclick = () => call('openLogs');
+$('quit').onclick = () => call('quit');
+</script>
+</body></html>

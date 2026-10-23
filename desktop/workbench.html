@@ -1,34 +1,147 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; frame-src 'none'">
-  <title>映作 · 桌面接入验证 P0</title>
+  <meta name="color-scheme" content="dark light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: yingzuo:; connect-src 'none'; object-src 'none'; frame-src 'none'">
+  <title>映作</title>
   <link rel="stylesheet" href="workbench.css">
+  <link rel="stylesheet" href="ui/shell.css">
 </head>
 <body>
+  <header id="titlebar" class="titlebar" aria-label="窗口标题栏">
+    <div class="titlebar-main">
+      <div class="titlebar-drag">
+        <img class="titlebar-mark" src="../assets/mark.svg" alt="">
+        <span class="titlebar-title">映作</span>
+        <span class="titlebar-sub">LOCAL IMAGE STUDIO</span>
+      </div>
+      <div class="titlebar-stripe" aria-hidden="true"></div>
+    </div>
+    <div class="titlebar-controls" role="group" aria-label="窗口控制">
+      <button type="button" id="win-min" class="titlebar-btn" aria-label="最小化" title="最小化"><span aria-hidden="true">─</span></button>
+      <button type="button" id="win-max" class="titlebar-btn" aria-label="最大化" title="最大化" data-state="restored"><span class="win-max-icon" aria-hidden="true">▢</span></button>
+      <button type="button" id="win-close" class="titlebar-btn titlebar-btn-close" aria-label="关闭" title="关闭"><span aria-hidden="true">×</span></button>
+    </div>
+  </header>
+  <div class="app-shell">
   <aside>
     <div class="brand"><img src="../assets/mark.svg" alt=""><span>映作<small>LOCAL IMAGE STUDIO</small></span></div>
-    <div class="eyebrow">桌面接入验证 · P0</div>
-    <button id="editor-home">创作工作区</button>
-    <button id="preview">查看 A 测界面</button>
+    <nav id="nav" aria-label="主导航">
+      <button data-page="home" class="nav active">首页</button>
+      <button data-page="create" class="nav" id="editor-home">创作工作区</button>
+      <button data-page="templates" class="nav">模板库</button>
+      <button data-page="online" class="nav">在线资源</button>
+      <button data-page="assets" class="nav">作品与收藏</button>
+      <button data-page="resources" class="nav">资源与维护</button>
+      <button data-page="queue" class="nav">任务队列 <span id="queue-badge" class="count" hidden></span></button>
+      <button data-page="services" class="nav">服务与日志</button>
+      <button data-page="settings" class="nav">设置</button>
+    </nav>
     <div class="divider"></div>
     <div class="eyebrow">现有工作流</div>
     <div id="templates"></div>
-    <div class="side-bottom"><strong id="connection">ComfyUI 未连接</strong><small id="endpoint">本机绘图环境</small><button id="connect">连接已有服务</button><p>本阶段验证真实画布与草稿。服务自动启停和托盘将在 P1 接入。</p></div>
+    <div class="side-bottom"><strong id="connection">ComfyUI 未连接</strong><small id="endpoint">本机绘图环境</small><button id="connect">连接已有服务</button><button id="preview" class="ghost">A 测界面预览</button></div>
   </aside>
-  <main>
-    <header><div><span class="eyebrow">WINDOWS DESKTOP / P0</span><h1>创作工作区</h1></div><div class="header-actions"><button id="import">导入 JSON</button><button id="blank">空白画布</button><button id="save">保存草稿</button><button id="export" class="primary">导出 JSON 副本</button></div></header>
-    <div class="tab-row"><div id="tabs" role="tablist" aria-label="桌面工作流标签"></div><button id="duplicate" title="新建当前工作流副本">复制标签</button></div>
-    <section class="toolbar"><div class="mode-buttons" aria-label="编辑模式"><button data-mode="graph">节点画布</button><button data-mode="parameters">参数表单</button><button data-mode="app">官方 App Mode</button></div><span id="graph-info">打开一个工作流开始验证</span></section>
-    <div id="status" role="status" aria-live="polite">工作副本保存在本机，不覆盖原模板。</div>
-    <section id="editor-portal" aria-label="工作流编辑区域">
-      <div id="empty"><span class="empty-mark">↗</span><h2>从真实工作流开始</h2><p>选择左侧模板，或导入 JSON。节点画布直接使用当前 ComfyUI，参数表单读取同一张图。</p><p>需要先启动现有 ComfyUI 服务。</p></div>
-      <div id="parameters" hidden><div class="form-note"><strong>与真实画布共享参数</strong><span>修改后自动同步并保存；已连线或暂不支持的控件保持在节点画布中编辑。</span><button id="refresh-fields">从画布刷新参数</button></div><div id="fields"></div></div>
+  <div id="pages">
+    <section id="page-home" class="page" aria-label="首页">
+      <header class="page-head"><div><span class="eyebrow">HOME</span><h1>从这里开始</h1></div><div class="header-actions"><button id="home-refresh">刷新服务状态</button></div></header>
+      <div class="page-body">
+        <div class="entry-row">
+          <button class="entry" data-entry="graph"><span class="entry-kicker">节点模式</span><strong>完整节点画布</strong><span>直接使用 ComfyUI 原生画布，所有节点与子图可编辑。</span></button>
+          <button class="entry" data-entry="parameters"><span class="entry-kicker">表单模式</span><strong>简洁参数表单</strong><span>读取同一张图的可编辑参数，修改即同步回画布。</span></button>
+          <button class="entry" data-entry="start"><span class="entry-kicker">新建</span><strong>导入或空白</strong><span>拖入／选择／粘贴 JSON，或从模板与空白画布开始。</span></button>
+        </div>
+        <h2 class="section-title">本机服务</h2>
+        <div id="service-cards" class="cards"><p class="muted">正在检测…</p></div>
+        <h2 class="section-title">最近的工作副本</h2>
+        <div id="recent-tabs" class="list"></div>
+        <h2 class="section-title">数据</h2>
+        <div id="data-info" class="list"></div>
+      </div>
     </section>
-    <footer><span id="save-state">独立工作副本 · 本机保存</span><span id="transport">尚未检测 WebSocket</span></footer>
-  </main>
+    <main id="page-create" class="page" hidden>
+      <header><div><span class="eyebrow">CREATE</span><h1>创作工作区</h1></div><div class="header-actions"><button id="import">导入 JSON</button><button id="blank">空白画布</button><button id="save">保存草稿</button><button id="tpl-save" title="把当前标签保存为模板新版本">存为模板</button><button id="tpl-form" title="编辑表单字段与映射">表单设置</button><button id="diag" title="核对节点、模型与 LM Studio 清单">诊断</button><button id="deps" title="缺失模型与节点的补齐计划">补齐依赖</button><button id="export" class="primary">导出 JSON 副本</button></div></header>
+      <div class="tab-row"><div id="tabs" role="tablist" aria-label="桌面工作流标签"></div><button id="new-tab" title="新建标签（起始页）">＋</button><button id="rename" title="重命名当前标签">重命名</button><button id="duplicate" title="新建当前工作流副本">复制标签</button></div>
+      <section class="toolbar"><div class="mode-buttons" aria-label="编辑模式"><button data-mode="graph">节点画布</button><button data-mode="parameters">参数表单</button><button data-mode="app">官方 App Mode</button></div><div class="run-bar"><button id="run-task" class="primary" title="运行当前标签（Ctrl+Enter）" disabled>运行</button><button id="run-batch" disabled>批量…</button><button id="run-refs" disabled title="为 LoadImage 节点选择本地参考图，运行时自动上传">参考图…</button><button id="run-enhance" disabled title="只运行 Gemma 润色节点，不出图">仅润色</button><button id="pkg-export" title="导出当前图与参考素材为一个文件">导出图包</button><button id="pkg-import" title="导入映作图包为新的工作副本">导入图包</button><button id="closed-list" title="重新打开已关闭的标签">最近关闭…</button><span id="run-hint" class="muted">打开工作流并连接 ComfyUI 后可运行</span></div><span id="graph-info">打开一个工作流开始</span></section>
+      <div id="status" role="status" aria-live="polite">工作副本保存在本机，不覆盖原模板。</div>
+      <section id="editor-portal" aria-label="工作流编辑区域">
+        <div id="empty"><span class="empty-mark">↗</span><h2>从真实工作流开始</h2><p>选择左侧模板，或点击 ＋ 打开起始页。节点画布直接使用当前 ComfyUI，参数表单读取同一张图。</p><p>没有运行中的 ComfyUI 时，可在首页“本机服务”中按需启动。</p></div>
+        <div id="parameters" hidden><div class="form-note"><strong>与真实画布共享参数</strong><span>修改后自动同步并保存；已连线或暂不支持的控件保持在节点画布中编辑。</span><button id="refresh-fields">从画布刷新参数</button></div><div id="fields"></div></div>
+        <div id="start" class="start" hidden>
+          <div class="start-head"><h2>新建工作流</h2><button id="start-close" class="ghost">取消</button></div>
+          <div id="dropzone" class="dropzone" tabindex="0">把 ComfyUI 工作流 JSON 拖到这里<br><small>只解析数据，不会执行脚本、安装插件或下载模型</small></div>
+          <div class="start-grid">
+            <div><h3>选择文件</h3><button id="start-file">选择 JSON 文件…</button></div>
+            <div><h3>空白画布</h3><button id="start-blank">创建空白画布</button></div>
+            <div class="wide"><h3>粘贴 JSON</h3><textarea id="paste" rows="5" placeholder="粘贴 UI 格式或 API 格式工作流"></textarea><button id="paste-import">导入粘贴内容</button></div>
+            <div class="wide"><h3>从模板开始</h3><div id="start-templates" class="chips"></div></div>
+          </div>
+        </div>
+      </section>
+      <footer><span id="save-state">独立工作副本 · 本机保存</span><span id="transport">尚未检测 WebSocket</span></footer>
+    </main>
+    <section id="page-templates" class="page" hidden aria-label="模板库">
+      <header class="page-head"><div><span class="eyebrow">TEMPLATES</span><h1>模板库</h1></div><div class="header-actions"><button id="tpl-browse">在线模板库…</button><button id="tpl-online">从链接导入…</button><button id="tpl-builtins">导入内置五个模板</button><button id="tpl-import" class="primary">导入模板…</button></div></header>
+      <div class="page-body"><div class="actions"><input id="tpl-search" placeholder="搜索名称、标签、文件夹"><select id="tpl-folder"><option value="">全部文件夹</option></select><label><input type="checkbox" id="tpl-fav"> 只看收藏</label></div><div id="tpl-list" class="list"></div></div>
+    </section>
+    <section id="page-online" class="page" hidden aria-label="在线资源">
+      <header class="page-head"><div><span class="eyebrow">ONLINE</span><h1>在线资源</h1></div><div class="header-actions"><button id="on-link">粘贴链接…</button></div></header>
+      <div class="page-body"><div class="actions"><select id="on-provider"><option value="huggingface">Hugging Face</option><option value="civitai">Civitai</option></select><input id="on-q" placeholder="搜索模型"><button id="on-search" class="primary">搜索</button></div>
+      <p class="notice">联网失败只影响本页，不影响本地创作。下载只保存到你确认的目录，不自动安装插件。</p>
+      <div id="on-results" class="list"></div><button id="on-more" hidden>下一页</button>
+      <h2 class="section-title">下载</h2><div id="dl-list" class="list"></div></div>
+    </section>
+    <section id="page-assets" class="page" hidden aria-label="作品与收藏">
+      <header class="page-head"><div><span class="eyebrow">GALLERY</span><h1>作品与收藏</h1></div><div class="header-actions"><button id="as-scan">扫描输出目录</button><button id="as-open-output">打开输出目录</button><button id="as-open-fav">打开收藏目录</button></div></header>
+      <div class="page-body"><div class="actions"><button id="as-tab-all" class="primary">全部作品</button><button id="as-tab-fav">收藏板</button><input id="as-q" placeholder="按文件名搜索"><span id="as-count" class="muted"></span></div>
+        <div id="as-grid" class="asset-grid"></div><div id="as-board" class="fav-board" hidden></div><div class="actions"><button id="as-more" hidden>加载更多</button></div></div>
+    </section>
+    <section id="page-resources" class="page" hidden aria-label="资源与维护">
+      <header class="page-head"><div><span class="eyebrow">RESOURCES</span><h1>资源与维护</h1></div><div class="header-actions"><button id="rs-scan" class="primary">扫描本地模型</button><button id="rs-refs">引用诊断</button></div></header>
+      <div class="page-body">
+        <div id="rs-models" class="list"><div class="empty-state"><h3>尚未扫描模型</h3><p>点击「扫描本地模型」读取 ComfyUI 模型目录与 extra_model_paths.yaml。</p></div></div>
+        <h2 class="section-title">插件</h2><div class="actions"><button id="rs-plugins">读取插件列表</button><button id="rs-install">从 Git 地址安装…</button></div><div id="rs-plugin-list" class="list"></div>
+        <h2 class="section-title">备份、更新与恢复（所有改动都经维护事务：先备份，失败自动恢复）</h2>
+        <div class="actions"><button id="rs-backup">立即备份 ComfyUI</button><button id="rs-backups">查看备份</button><button id="rs-prune">按保留策略清理旧备份</button><button id="rs-update-comfy">更新 ComfyUI 到指定版本…</button><button id="rs-tx">维护记录</button><button id="rs-trash">回收区</button><button id="rs-appbk">应用数据备份</button></div>
+        <div id="rs-pending" class="list"></div><div id="rs-maint" class="list"></div>
+      </div>
+    </section>
+    <section id="page-queue" class="page" hidden aria-label="任务队列">
+      <header class="page-head"><div><span class="eyebrow">QUEUE</span><h1>任务队列</h1></div><div class="header-actions"><button id="queue-pause">暂停提交</button><button id="queue-resume">继续</button><button id="queue-refresh">刷新</button></div></header>
+      <div class="page-body"><div id="queue-state" class="muted"></div><div id="queue-list" class="list"></div></div>
+    </section>
+    <section id="page-services" class="page" hidden aria-label="服务与日志">
+      <header class="page-head"><div><span class="eyebrow">SERVICES</span><h1>服务与日志</h1></div><div class="header-actions"><button id="logs-refresh">刷新日志</button><button id="open-logs">打开日志目录</button><button id="export-diag" class="primary">导出诊断信息</button></div></header>
+      <div class="page-body">
+        <div id="service-detail" class="cards"></div>
+        <h2 class="section-title">版本与更新（这里只检测；执行更新与恢复在“资源与维护”，均先备份）</h2><div class="actions"><button id="up-check">检查 ComfyUI 与插件</button><button id="up-fetch">联网获取远端版本</button><button id="up-app">检查映作新版本</button></div><div id="up-result" class="list"></div>
+        <h2 class="section-title">ComfyUI 输出（本应用启动时）</h2><pre id="comfy-log" class="log">—</pre>
+        <h2 class="section-title">映作日志（已脱敏）</h2><pre id="app-log" class="log">—</pre>
+      </div>
+    </section>
+    <section id="page-settings" class="page" hidden aria-label="设置">
+      <header class="page-head"><div><span class="eyebrow">SETTINGS</span><h1>设置</h1></div><div class="header-actions"><button id="settings-reload">重新读取</button><button id="settings-save" class="primary">保存设置</button></div></header>
+      <div class="page-body">
+        <div id="settings-issues"></div>
+        <form id="settings-form" class="settings" autocomplete="off"></form>
+        <h2 class="section-title">在线来源凭据</h2>
+        <div id="credentials" class="list"></div>
+        <h2 class="section-title">迁移</h2>
+        <div class="list"><div class="row"><span>A 测浏览器草稿（需先在 A 测页面“导出草稿”）</span><button id="import-alpha">导入 A 测草稿…</button></div></div>
+      </div>
+    </section>
+  </div>
+  </div>
+  <div id="toast" role="alert" hidden></div>
   <script src="workbench.js"></script>
+  <script src="ui/shell.js"></script>
+  <script src="ui/tasks.js"></script>
+  <script src="ui/templates.js"></script>
+  <script src="ui/online.js"></script>
+  <script src="ui/updates.js"></script>
+  <script src="ui/assets.js"></script>
+  <script src="ui/resources.js"></script>
 </body>
 </html>
