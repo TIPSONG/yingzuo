@@ -246,6 +246,12 @@ async function loadSettings() {
   try { await queueSettingsOperation(async () => { settings = await call(yz.settings.get()); applyAppearance(displaySettingsConfig()); renderSettings(); }); } catch (e) { swallow(e); }
 }
 function renderSettings() {
+  // A late read/save can replace the visible form while the user is typing.
+  // Draft values alone do not preserve focus or a pending selection replacement.
+  const active = document.activeElement;
+  const focusedField = page === 'settings' && !modalOpen && active?.matches('#settings-form [data-key]')
+    ? {key: active.dataset.key, start: active.selectionStart, end: active.selectionEnd, direction: active.selectionDirection, scrollLeft: active.scrollLeft}
+    : null;
   const c = displaySettingsConfig();
   q('#settings-issues').innerHTML = (settings.loadError ? `<div class="issue error">配置文件读取失败，已用默认值启动（原文件已另存）：${esc(settings.loadError)}</div>` : '') + settings.issues.map(i => `<div class="issue ${i.severity}">${esc(i.field)}：${esc(i.message)}</div>`).join('');
   q('#settings-form').innerHTML = FIELDS.map(([legend, items]) => `<fieldset><legend>${esc(legend)}</legend>${items.map(([key, label, type, hint]) => {
@@ -276,6 +282,16 @@ function renderSettings() {
   }).join('')}</fieldset>`).join('') + `<fieldset><legend>数据位置</legend>${Object.entries(settings.locations).map(([k, v]) => `<div class="setting"><span>${esc(k)}</span><span class="muted">${esc(v || '未配置')}</span>${v ? `<button type="button" data-open-loc="${k}">打开</button>` : '<span></span>'}</div>`).join('')}</fieldset>`;
   restoreDraft();
   renderCredentials();
+  // Only restore focus lost by this synchronous replacement. A late response
+  // must never take focus from another page, dialog, or explicitly focused UI.
+  if (focusedField && page === 'settings' && !modalOpen && document.activeElement === document.body) {
+    const replacement = qa('#settings-form [data-key]').find(el => el.dataset.key === focusedField.key);
+    replacement?.focus({preventScroll: true});
+    if (replacement && focusedField.start != null && focusedField.end != null) {
+      replacement.setSelectionRange(focusedField.start, focusedField.end, focusedField.direction);
+      replacement.scrollLeft = focusedField.scrollLeft;
+    }
+  }
 }
 /** RV13：凭据区单独渲染，不重建设置表单。 */
 function renderCredentials() {

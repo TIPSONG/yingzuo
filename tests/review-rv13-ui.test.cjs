@@ -22,25 +22,38 @@ async function open(t, opts) {
   const page = await browser.newPage();
   await page.evaluateOnNewDocument(stubSource(fixtures, opts));
   await page.goto(`http://127.0.0.1:${server.address().port}/desktop/workbench.html`, {waitUntil: 'networkidle0'});
+  await waitForIdle(page);
+  const reads = await completed(page, 'settings.get');
   await page.click('nav .nav[data-page="settings"]');
-  await page.waitForSelector('#settings-form [data-key="comfy.root"]');
+  // The hidden form exists before navigation. Wait for this navigation's read,
+  // not a selector belonging to the form that loadSettings is about to replace.
+  await finished(page, 'settings.get', reads + 1);
+  await page.waitForSelector('#settings-form [data-key="comfy.root"]', {visible: true});
   return page;
 }
-const settle = page => page.evaluate(() => new Promise(r => setTimeout(r, 50)).then(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => {})))));
-const typeInto = async (page, key, text) => { const sel = `#settings-form [data-key="${key}"]`; await page.focus(sel); await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control'); await page.keyboard.press('Backspace'); await page.type(sel, text); };
+const waitForIdle = async page => {
+  await page.waitForFunction(() => window.__yzFixture?.pending === 0);
+  await page.evaluate(() => Promise.all(document.getAnimations().filter(a => Number.isFinite(a.effect?.getTiming().iterations ?? 1)).map(a => a.finished.catch(() => {}))));
+};
+const completed = (page, key) => page.evaluate(key => window.__yzFixture.completed.filter(k => k === key).length, key);
+const finished = async (page, key, count) => {
+  await page.waitForFunction((key, count) => window.__yzFixture.completed.filter(k => k === key).length >= count, {}, key, count);
+  await waitForIdle(page);
+};
+const typeInto = (page, key, text) => page.locator(`#settings-form [data-key="${key}"]`).fill(text);
 const val = (page, key) => page.$eval(`#settings-form [data-key="${key}"]`, el => el.value);
 
 test('RV13：编辑多个字段后切主题与皮肤，未保存输入保留；继续编辑后保存提交全部字段', {skip}, async t => {
   const page = await open(t, {});
   await typeInto(page, 'comfy.root', 'E:\\新ComfyUI'); await typeInto(page, 'lmstudio.url', 'http://127.0.0.1:4321/v1');
-  await page.click('[data-theme-set="light"]'); await settle(page);
-  await page.click('[data-skin-set="nasa-punk"]'); await settle(page);
+  await page.locator('[data-theme-set="light"]').click(); await finished(page, 'settings.update', 1);
+  await page.locator('[data-skin-set="nasa-punk"]').click(); await finished(page, 'settings.update', 2);
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
   assert.equal(await page.evaluate(() => document.documentElement.dataset.skin), 'nasa-punk');
   assert.equal(await val(page, 'comfy.root'), 'E:\\新ComfyUI');
   assert.equal(await val(page, 'lmstudio.url'), 'http://127.0.0.1:4321/v1');
   await typeInto(page, 'comfy.startTimeoutSec', '300');
-  await page.click('#settings-save'); await settle(page);
+  await page.click('#settings-save'); await finished(page, 'settings.update', 3);
   const saved = await page.evaluate(() => window.__yzCalls.filter(c => c[0] === 'settings.update').at(-1)[1][0]);
   assert.equal(saved.comfy.root, 'E:\\新ComfyUI'); assert.equal(saved.lmstudio.url, 'http://127.0.0.1:4321/v1'); assert.equal(saved.comfy.startTimeoutSec, 300);
   assert.deepEqual(saved.ui, {theme: 'light', skin: 'nasa-punk'});
@@ -48,28 +61,66 @@ test('RV13：编辑多个字段后切主题与皮肤，未保存输入保留；�
 test('RV13：路径选择与凭据保存不抹掉其他字段草稿', {skip}, async t => {
   const page = await open(t, {});
   await typeInto(page, 'comfy.root', 'E:\\草稿');
-  await page.click('[data-pick="comfy.python"]'); await settle(page);
+  await page.click('[data-pick="comfy.python"]'); await finished(page, 'settings.pickPath', 1);
   assert.equal(await val(page, 'comfy.python'), 'D:\\picked\\python');
   assert.equal(await val(page, 'comfy.root'), 'E:\\草稿');
-  await page.type('[data-cred="civitai"]', 'secret'); await page.click('[data-cred-save="civitai"]'); await settle(page);
+  await page.type('[data-cred="civitai"]', 'secret'); await page.click('[data-cred-save="civitai"]'); await finished(page, 'settings.setCredential', 1);
   assert.equal(await val(page, 'comfy.root'), 'E:\\草稿');
 });
 test('RV13：外观保存失败恢复到已保存外观；快速连续切换按最后一次操作收敛（迟到响应不覆盖）', {skip}, async t => {
   const bad = await open(t, {failUpdate: true});
   await typeInto(bad, 'comfy.root', 'E:\\保留');
-  await bad.click('[data-theme-set="light"]'); await settle(bad);
+  await bad.locator('[data-theme-set="light"]').click(); await finished(bad, 'settings.update', 1);
   assert.equal(await bad.evaluate(() => document.documentElement.dataset.theme), 'dark');
   assert.equal(await bad.$eval('[data-theme-set="dark"]', el => el.classList.contains('active')), true);
   assert.equal(await val(bad, 'comfy.root'), 'E:\\保留');
   const slow = await open(t, {updateDelayMs: 120});
-  await slow.click('[data-theme-set="light"]'); await slow.click('[data-theme-set="system"]'); await slow.click('[data-theme-set="dark"]');
-  await slow.evaluate(() => new Promise(r => setTimeout(r, 500)));
+  // Dispatch the real click handlers in one browser task so all choices precede
+  // the delayed save responses, regardless of the CI machine's pointer speed.
+  await slow.evaluate(() => {
+    for (const theme of ['light', 'system', 'dark']) document.querySelector(`[data-theme-set="${theme}"]`).click();
+  });
+  await finished(slow, 'settings.update', 3);
+  assert.deepEqual(await slow.evaluate(() => window.__yzCalls.filter(c => c[0] === 'settings.update').map(c => c[1][0].ui.theme)), ['light', 'system', 'dark']);
   assert.equal(await slow.evaluate(() => document.documentElement.dataset.theme), 'dark');
   assert.equal(await slow.$eval('[data-theme-set="dark"]', el => el.getAttribute('aria-pressed')), 'true');
 });
+test('RV13：设置读取晚于开始编辑时保留焦点和选区；离开页面或打开弹窗后不抢焦点', {skip}, async t => {
+  const page = await open(t, {pauseSettingsGets: [3, 4, 5]});
+  const beginRead = async () => {
+    await page.evaluate(() => window.yzShell.showPage('settings'));
+    await page.waitForFunction(() => typeof window.__yzFixture.resumeSettingsGet === 'function');
+  };
+  const resumeRead = async count => {
+    await page.evaluate(() => window.__yzFixture.resumeSettingsGet());
+    await finished(page, 'settings.get', count);
+  };
+  await beginRead();
+  await typeInto(page, 'comfy.root', 'E:\\first');
+  await page.$eval('[data-key="comfy.root"]', el => el.setSelectionRange(3, 8, 'backward'));
+  await resumeRead(3);
+  assert.deepEqual(await page.evaluate(() => ({key: document.activeElement.dataset.key, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd, direction: document.activeElement.selectionDirection})), {key: 'comfy.root', start: 3, end: 8, direction: 'backward'});
+  await page.keyboard.type('continued');
+  assert.equal(await val(page, 'comfy.root'), 'E:\\continued');
+
+  await beginRead();
+  await page.focus('[data-key="comfy.root"]');
+  await page.click('nav .nav[data-page="home"]');
+  await resumeRead(4);
+  assert.equal(await page.evaluate(() => window.yzShell.page), 'home');
+  assert.equal(await page.evaluate(() => document.activeElement.dataset.page), 'home');
+
+  await beginRead();
+  await page.focus('[data-key="comfy.root"]');
+  await page.evaluate(() => {
+    void window.yzShell.modal('<input id="rv13-modal-focus">', back => back.querySelector('input').focus());
+  });
+  await resumeRead(5);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'rv13-modal-focus');
+});
 test('RV11/RV12 实测：浅色与 NASA 浅色下选中导航、弹窗/空状态文字的实际对比度 ≥ 4.5:1', {skip}, async t => {
   for (const skin of ['default', 'nasa-punk']) {
-    const page = await open(t, {theme: 'light', skin}); await settle(page);
+    const page = await open(t, {theme: 'light', skin}); await waitForIdle(page);
     const r = await page.evaluate(() => {
       const rgb = s => { const n = s.match(/[\d.]+/g).map(Number); return s.startsWith('color(srgb') ? [n[0] * 255, n[1] * 255, n[2] * 255, n[3] ?? 1] : n; };
       const L = c => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };

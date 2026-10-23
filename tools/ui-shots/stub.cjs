@@ -8,9 +8,16 @@ function installFixture(fx, opts) {
   Object.defineProperty(state, 'savedSettings', {get: () => clone(fx['settings.get'])});
   const merge = (a, b) => { for (const [k, v] of Object.entries(b || {})) { if (v && typeof v === 'object' && !Array.isArray(v)) { a[k] ??= {}; merge(a[k], v); } else a[k] = v; } return a; };
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms || 0));
-  let updates = 0, updatesInFlight = 0;
+  let updates = 0, updatesInFlight = 0, settingsReads = 0;
   const asset = id => { const a = fx['assets.list'].items.find(a => a.id === id); if (!a) throw new Error(`Unknown fixture asset: ${id}`); return a; };
   const handlers = {
+    'settings.get': async () => {
+      if (opts.pauseSettingsGets?.includes(++settingsReads)) {
+        await new Promise(resolve => { state.resumeSettingsGet = resolve; });
+        delete state.resumeSettingsGet;
+      }
+      return fx['settings.get'];
+    },
     'settings.update': async patch => {
       const plan = opts.updatePlan?.[updates++] ?? {};
       state.maxUpdatesInFlight = Math.max(state.maxUpdatesInFlight, ++updatesInFlight);
