@@ -135,6 +135,8 @@ node tools/release-assets.cjs verify <解压目录>
 
 发布使用仓库内的统一入口，需要环境变量 `GITHUB_TOKEN`（仓库 Contents 写权限），不要把令牌写进文件或命令参数：
 
+若目标提交相对默认分支改动了 `.github/workflows/`，令牌还须允许修改工作流：细粒度令牌／GitHub App 需 Workflows 写权限，经典 PAT 需 `workflow` 范围。Actions 自动提供的 `GITHUB_TOKEN` 无法获得这项权限；此时应将具备相应权限的发布凭据注入脚本同名环境变量。详见 [GitHub Release API 权限说明](https://docs.github.com/en/rest/releases/releases?apiVersion=2022-11-28#create-a-release)。
+
 ```powershell
 node tools/publish-release.cjs <解压目录> v<版本号> <40位构建提交SHA>
 ```
