@@ -4,7 +4,7 @@ name: Windows build
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['package.json', 'package-lock.json', 'desktop/**', 'shared/**', 'tools/build-win.cjs', '.github/workflows/windows-build.yml']
+    paths: ['package.json', 'package-lock.json', 'desktop/**', 'shared/**', 'tools/build-win.cjs', 'tools/release-assets.cjs', 'tests/release-assets.test.cjs', '.github/workflows/windows-build.yml']
 
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
           $unpacked = Get-ChildItem dist -Directory | Where-Object Name -like 'win-unpacked*' | Select-Object -First 1
           $exe = Get-ChildItem $unpacked.FullName -Filter *.exe | Where-Object Name -notlike 'Uninstall*' | Select-Object -First 1
           $out = Join-Path $env:RUNNER_TEMP 'yz-smoke.json'
-          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--yz-smoke=$out" -PassThru -Wait
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--yz-smoke=$out" -WindowStyle Hidden -PassThru -Wait
           if (-not (Test-Path $out)) { throw "自检没有写出结果（退出码 $($p.ExitCode)）" }
           Get-Content $out
           $r = Get-Content $out -Raw | ConvertFrom-Json
@@ -51,20 +51,18 @@ jobs:
           $root = Join-Path $env:RUNNER_TEMP 'yz-init-data'; New-Item -ItemType Directory -Force $root | Out-Null
           $out = Join-Path $env:RUNNER_TEMP 'yz-init.json'
           $env:YINGZUO_DATA_ROOT = $root; $env:YZ_INIT_CHECK = $out
-          $p = Start-Process -FilePath $exe.FullName -PassThru
+          $p = Start-Process -FilePath $exe.FullName -WindowStyle Hidden -PassThru
           if (-not $p.WaitForExit(120000)) { $p.Kill(); throw '业务初始化检查超时' }
           if (-not (Test-Path $out)) { throw "业务初始化没有写出结果（退出码 $($p.ExitCode)）" }
           Get-Content $out
           $r = Get-Content $out -Raw | ConvertFrom-Json
           if (-not $r.ok) { throw '业务初始化检查失败' }
           Copy-Item $out dist/init-result.json
+      - name: Validate and stage the exact release payload
+        run: node tools/release-assets.cjs stage dist dist/release
       - uses: actions/upload-artifact@v4
         with:
           name: yingzuo-windows
-          path: |
-            dist/*.exe
-            dist/artifacts.json
-            dist/SHA256SUMS.txt
-            dist/smoke-result.json
-            dist/init-result.json
+          path: dist/release/*
+          if-no-files-found: error
           retention-days: 14
