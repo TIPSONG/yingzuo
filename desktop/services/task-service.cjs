@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {AppError, CODES} = require('../core/errors.cjs');
 const {TaskRepository, SnapshotStore} = require('../repositories/task-repo.cjs');
-const {QueueService, expandBatch} = require('./queue-service.cjs');
+const {QueueService} = require('./queue-service.cjs');
 const {ComfyHttpClient, ComfySocket} = require('../adapters/comfy-http.cjs');
 const {checkPrompt} = require('../../shared/prompt-check.cjs');
 const F = require('../../shared/form-schema.cjs');
@@ -224,6 +224,8 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
    * 表单映射与约束（类型/范围/步长/选项），以及被覆盖输入的节点定义约束（枚举选项、数值范围）。 */
   function checkFinalPrompt(c, prompt, info, label = '') {
     const at = label ? `${label}：` : '';
+    const enhancer = B.findEnhancers(prompt)[0];
+    if (enhancer) assertRunnable(B.checkEnhancerRun(prompt, enhancer, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}));
     const form = formOf(c);
     if (form?.fields?.length) {
       const map = F.validateMapping(form.fields, prompt);
@@ -258,6 +260,16 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
   };
   /** RV14：queue.maxBatch 是批量上限的唯一来源。 */
   const maxBatch = () => { const n = configRepo.config.queue?.maxBatch; return Number.isInteger(n) && n >= 1 ? n : 100; };
+  /** 预览与提交共用同一展开器，包含 variations 和 params 的全部维度。 */
+  function batchItems(c, spec = {}) {
+    const types = {}; for (const [k, b] of Object.entries(c.bindings)) if (b && !b.readonly && 'value' in b) types[k] = {type: typeof b.value === 'number' ? (Number.isInteger(b.value) ? 'int' : 'float') : typeof b.value === 'boolean' ? 'bool' : 'string', label: k};
+    const plan = planBatch({prompts: spec.prompts?.length ? spec.prompts : null, seeds: spec.seeds, count: spec.count, seedStart: spec.seedStart, variations: spec.variations}, types, {max: maxBatch()});
+    if (!plan.ok) throw new AppError(CODES.INVALID_ARGUMENT, `批量计划无效：${plan.errors[0].message}`, {details: {errors: plan.errors}});
+    const params = spec.params == null || (Array.isArray(spec.params) && !spec.params.length) ? [{}] : spec.params;
+    if (!Array.isArray(params) || params.some(p => !p || typeof p !== 'object' || Array.isArray(p))) throw new AppError(CODES.INVALID_ARGUMENT, '批量参数必须是对象列表。');
+    if (plan.total * params.length > maxBatch()) throw new AppError(CODES.INVALID_ARGUMENT, `批量共 ${plan.total * params.length} 个任务，超过上限 ${maxBatch()}。`);
+    return plan.items.flatMap(it => params.map(p => ({prompt: it.prompt, seed: it.seed, params: {...p, ...it.values}})));
+  }
   function applyCustomForm(c, prompt, formValues) {
     if (formValues === undefined || formValues === null) return {prompt, form: null};
     const form = formOf(c);
@@ -304,23 +316,17 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       const custom = applyCustomForm(c, c.apiPrompt, options.formValues);
       let prompt = B.applyValues(custom.prompt, c.bindings, options.values);
       const enh = c.bindings.enhancer;
-      if (enh) { const notes = B.checkEnhancerRun(prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages}); assertRunnable(notes); }
       if (enh && options.adoptedText) { try { prompt = B.adoptEnhanced(prompt, enh, options.adoptedText, {objectInfo: await getObjectInfo()}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       checkFinalPrompt(c, prompt, await getObjectInfo());
       const p = withPrefix(prompt, c, options.prefixMode);
       return enqueue({workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, p.prompt, {references: refsForRun(c.tabId, options.references), params: options.values, meta: {...(p.prefix ? {outputPrefix: p.prefix} : {}), ...(options.adoptedText ? {adopted: String(options.adoptedText)} : {}), ...finalForm(custom, c, prompt)}})});
     },
     /** Q10：批量。按提示词 × seed × 参数展开，同一分组 FIFO。 */
-    'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: expandBatch(spec).length, max: maxBatch(), bindings: c.bindings, issues: c.issues}; },
+    'tasks.previewBatch': async (tabId, spec) => { const c = await compile(tabId); return {count: batchItems(c, spec).length, max: maxBatch(), bindings: c.bindings, issues: c.issues}; },
     'tasks.runBatch': async (tabId, spec = {}) => {
       const c = await compile(tabId, {expectedRevision: spec.expectedRevision}); assertRunnable(c.issues);
       // R19：先全量规划与校验，任何一项无效整体拒绝；之后整组一次登记
-      const types = {}; for (const [k, b] of Object.entries(c.bindings)) if (b && !b.readonly && 'value' in b) types[k] = {type: typeof b.value === 'number' ? (Number.isInteger(b.value) ? 'int' : 'float') : typeof b.value === 'boolean' ? 'bool' : 'string', label: k};
-      const plan = planBatch({prompts: spec.prompts?.length ? spec.prompts : null, seeds: spec.seeds, count: spec.count, seedStart: spec.seedStart, variations: spec.variations}, types, {max: maxBatch()});
-      if (!plan.ok) throw new AppError(CODES.INVALID_ARGUMENT, `批量计划无效：${plan.errors[0].message}`, {details: {errors: plan.errors}});
-      const params = Array.isArray(spec.params) && spec.params.length ? spec.params : [{}];
-      if (plan.total * params.length > maxBatch()) throw new AppError(CODES.INVALID_ARGUMENT, `批量共 ${plan.total * params.length} 个任务，超过上限 ${maxBatch()}。`);
-      const items = plan.items.flatMap(it => params.map(p => ({prompt: it.prompt, seed: it.seed, params: {...p, ...it.values}})));
+      const items = batchItems(c, spec);
       if ((spec.prompts?.length > 0) && !c.bindings.prompt) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的提示词输入，不能批量替换提示词。');
       if (items.some(i => i.seed !== null) && !(c.bindings.seed && (!c.bindings.seed.readonly || c.bindings.seedSource))) throw new AppError(CODES.INVALID_ARGUMENT, '无法确定此工作流的 seed 输入。');
       checkFormForRun(c, spec.formValues);
@@ -351,10 +357,11 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       if (typeof text === 'string' && text.trim()) { try { prompt = B.setEnhancerOriginal(prompt, enh, text); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); } }
       const info = await getObjectInfo();
       if (!info) throw new AppError(CODES.SERVICE_UNAVAILABLE ?? CODES.INTERNAL, '无法读取 ComfyUI 节点信息，不能构造仅润色任务。');
+      checkFinalPrompt(c, prompt, info);
       let sub;
       try { sub = B.extractEnhanceOnly(prompt, enh.nodeId, {objectInfo: info, rerun}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
       assertRunnable([...checkPrompt(sub.prompt, {objectInfo: info}), ...B.checkEnhancerRun(sub.prompt, enh, {contextLength: configRepo.config.gemma?.contextLength, maxReferenceImages: configRepo.config.gemma?.maxReferenceImages})]);
-      return enqueue({kind: 'enhance', workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: refsForRun(c.tabId, references).filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}, ...formIdentity(c)}})});
+      return enqueue({kind: 'enhance', workflowId: workflowIdOf(c), inputRevision: c.revision, snapshot: snapshotFor(c, sub.prompt, {references: refsForRun(c.tabId, references).filter(r => sub.prompt[r.nodeId]), meta: {enhance: {outputNode: sub.outputNode, enhancer: enh}, ...formIdentity(c, prompt)}})});
     },
     'tasks.enhanceResult': async id => {
       const t = tasks.get(id); if (!t || t.kind !== 'enhance') throw new AppError(CODES.NOT_FOUND, '不是润色任务。');

@@ -5,6 +5,7 @@
 const {AppError, CODES} = require('../core/errors.cjs');
 const {CancelToken} = require('../core/locks.cjs');
 const {parseQueue, parseHistoryEntry, nodeErrorList} = require('../adapters/comfy-http.cjs');
+const {planBatch} = require('../../shared/batch-plan.cjs');
 const ACTIVE = ['preparing', 'submitting', 'submitted', 'running', 'reconciling'];
 
 class QueueService {
@@ -56,7 +57,11 @@ class QueueService {
   pause() { this.paused = true; this.events?.emit('queue.state', null, this.state()); }
   resume() {
     this.paused = false;
-    for (const t of this.tasks.list({states: ['paused'], limit: 1000}).reverse()) this.tasks.transition(t.id, 'queued', {reason: '继续'});
+    for (;;) {
+      const page = this.tasks.list({states: ['paused'], limit: 1000});
+      if (!page.length) break;
+      for (const t of page.reverse()) this.tasks.transition(t.id, 'queued', {reason: '继续'});
+    }
     this.events?.emit('queue.state', null, this.state()); this.kick();
   }
   state() { return {paused: this.paused, holds: [...this.leases.values()], runningTaskId: this.running, external: [...this.external.values()]}; }
@@ -106,9 +111,8 @@ class QueueService {
       if (this.blocked(task.id)) return;
       task = this.tasks.transition(task.id, 'preparing', {reason: '开始准备'});
       admitted();
-      const snapshot = this.tasks.snapshotOf(task);
       let prompt;
-      try { prompt = await this.prepare(task, snapshot, client, token); }
+      try { prompt = await this.prepare(task, this.tasks.snapshotOf(task), client, token); }
       catch (e) {
         if (token.cancelled) { this.tasks.transition(task.id, 'cancelled', {reason: '准备阶段取消'}); return; }
         this.tasks.transition(task.id, 'failed', {reason: '准备失败', patch: {error: {message: e.message, code: e.code ?? null}}}); return;
@@ -204,10 +208,14 @@ class QueueService {
   /** R12/D08：返回的 Promise 即 ready；恢复期间 pump 等待。存量后端任务独立跟踪到终态，不依赖新任务或“继续”。 */
   recoverOnStartup() {
     // 同步阶段：只暂停此刻已存在的未提交任务（恢复期间新建的任务保持排队，等 ready 后提交）
-    const before = this.tasks.list({states: ['queued', 'preparing'], limit: 1000});
-    for (const t of before) this.tasks.transition(t.id, 'paused', {reason: '应用重启：未提交任务暂停，等待继续'});
+    let pending = 0;
+    for (;;) {
+      const before = this.tasks.list({states: ['queued', 'preparing'], limit: 1000});
+      if (!before.length) break;
+      for (const t of before) { this.tasks.transition(t.id, 'paused', {reason: '应用重启：未提交任务暂停，等待继续'}); pending++; }
+    }
     const stale = this.tasks.list({states: ['submitting', 'submitted', 'running', 'reconciling'], limit: 100});
-    if (before.length) this.paused = true;
+    if (pending) this.paused = true;
     this.ready = (async () => {
       for (const t of stale) {
         if (this.tasks.get(t.id).state !== 'reconciling') this.tasks.transition(t.id, 'reconciling', {reason: '应用重启，核对后端状态'});
@@ -252,6 +260,11 @@ class QueueService {
       await client.deleteQueued([task.comfyPromptId]);
       const after = parseQueue(await client.queue());
       if ([...after.pending, ...after.running].some(i => i.promptId === task.comfyPromptId)) throw new AppError(CODES.CONFLICT, '后端没有移除该排队任务，请稍后重试。');
+      // 删除与执行可能竞态：队列消失不等于取消，已有 history 终态必须优先保留。
+      const entry = parseHistoryEntry((await client.history(task.comfyPromptId))?.[task.comfyPromptId]);
+      const latest = this.tasks.get(taskId);
+      if (['succeeded', 'failed', 'cancelled'].includes(latest.state)) return latest;
+      if (entry?.state) { this.finish(latest, entry); return this.tasks.get(taskId); }
       return this.tasks.transition(taskId, 'cancelled', {reason: '从后端队列移除'});
     }
     if (q.running.some(i => i.promptId === task.comfyPromptId)) {
@@ -282,13 +295,14 @@ class QueueService {
   }
 }
 /* ---------- Q10：批量展开 ---------- */
-function expandBatch({prompts = [null], seeds = null, count = 1, seedStart = null, params = [{}]}, {max = 100} = {}) {
-  const ps = prompts.length ? prompts : [null];
-  const seedList = Array.isArray(seeds) && seeds.length ? seeds : Array.from({length: Math.max(1, count)}, (_, i) => (seedStart === null ? null : seedStart + i));
-  const total = ps.length * seedList.length * params.length;
+function expandBatch({prompts = [null], seeds = null, count = 1, seedStart = null, params = [{}]} = {}, {max = 100} = {}) {
+  const plan = planBatch({prompts: prompts.length ? prompts : [null], seeds, count, seedStart}, {}, {max});
+  if (!plan.ok) throw new AppError(CODES.INVALID_ARGUMENT, plan.errors[0].message, {details: {errors: plan.errors}});
+  if (!Array.isArray(params) || !params.length) throw new AppError(CODES.INVALID_ARGUMENT, '批量参数列表为空或无效。');
+  const total = plan.total * params.length;
   if (total > max) throw new AppError(CODES.INVALID_ARGUMENT, `批量共 ${total} 个任务，超过上限 ${max}。`, {details: {total, max}});
   const out = [];
-  for (const prompt of ps) for (const seed of seedList) for (const p of params) out.push({prompt, seed, params: p});
+  for (const {prompt, seed} of plan.items) for (const p of params) out.push({prompt, seed, params: p});
   return out;
 }
 module.exports = {QueueService, expandBatch, ACTIVE};

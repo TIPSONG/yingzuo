@@ -13,10 +13,15 @@ function planBatch(spec = {}, bindings = {}, {max = DEFAULT_MAX, requirePrompt =
   const prompts = spec.prompts == null ? [null] : spec.prompts;
   if (!Array.isArray(prompts) || !prompts.length) errors.push({field: 'prompts', message: '提示词列表为空。'});
   else prompts.forEach((p, i) => { if (p !== null && (typeof p !== 'string' || (requirePrompt && !p.trim()))) errors.push({field: 'prompts', index: i, message: `第 ${i + 1} 条提示词无效。`}); });
-  let seeds;
-  if (Array.isArray(spec.seeds)) { seeds = spec.seeds; if (!seeds.length) errors.push({field: 'seeds', message: 'seed 列表为空。'}); }
-  else { const n = spec.count ?? 1; if (!Number.isInteger(n) || n < 1) errors.push({field: 'count', message: '数量必须是正整数。'}); seeds = Array.from({length: Number.isInteger(n) && n > 0 ? n : 0}, (_, i) => spec.seedStart == null ? null : spec.seedStart + i); }
-  seeds.forEach((s, i) => { if (s !== null && !(Number.isSafeInteger(s) && s >= 0)) errors.push({field: 'seeds', index: i, message: `第 ${i + 1} 个 seed 无效：${s}`}); });
+  let seeds = null, seedCount;
+  if (Array.isArray(spec.seeds)) { seeds = spec.seeds; seedCount = seeds.length; if (!seedCount) errors.push({field: 'seeds', message: 'seed 列表为空。'}); }
+  else {
+    const n = spec.count ?? 1;
+    seedCount = Number.isSafeInteger(n) && n > 0 ? n : 0;
+    if (!seedCount) errors.push({field: 'count', message: '数量必须是正整数。'});
+    if (spec.seeds != null) errors.push({field: 'seeds', message: 'seed 列表必须是数组。'});
+  }
+  seeds?.forEach((s, i) => { if (s !== null && !(Number.isSafeInteger(s) && s >= 0)) errors.push({field: 'seeds', index: i, message: `第 ${i + 1} 个 seed 无效：${s}`}); });
   const vars = Object.entries(spec.variations ?? {});
   for (const [id, list] of vars) {
     const b = bindings[id];
@@ -24,9 +29,12 @@ function planBatch(spec = {}, bindings = {}, {max = DEFAULT_MAX, requirePrompt =
     if (!Array.isArray(list) || !list.length) { errors.push({field: id, message: `${b.label ?? id} 的变化列表为空。`}); continue; }
     list.forEach((v, i) => { const m = checkValue(v, b); if (m) errors.push({field: id, index: i, message: `${b.label ?? id} 第 ${i + 1} 个值${m}`}); });
   }
-  const total = (Array.isArray(prompts) ? prompts.length : 0) * seeds.length * vars.reduce((n, [, l]) => n * (Array.isArray(l) ? l.length : 0), 1);
+  const total = (Array.isArray(prompts) ? prompts.length : 0) * seedCount * vars.reduce((n, [, l]) => n * (Array.isArray(l) ? l.length : 0), 1);
   if (total > max) errors.push({field: 'total', message: `批量共 ${total} 个任务，超过上限 ${max}。`});
+  if (!seeds && spec.seedStart != null && (!Number.isSafeInteger(spec.seedStart) || spec.seedStart < 0 || !Number.isSafeInteger(spec.seedStart + seedCount - 1))) errors.push({field: 'seeds', message: '起始 seed 或生成的 seed 超出有效整数范围。'});
   if (errors.length) return {ok: false, total, errors};
+  // 先计算所有维度并检查总量，再分配数组，巨大的 count 不得阻塞主进程。
+  seeds ??= Array.from({length: seedCount}, (_, i) => spec.seedStart == null ? null : spec.seedStart + i);
   let combos = [{}];
   for (const [id, list] of vars) combos = combos.flatMap(c => list.map(v => ({...c, [id]: coerce(v, bindings[id])})));
   const items = [];

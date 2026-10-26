@@ -72,7 +72,8 @@ test('Q08/Q09：采用润色文本后关闭 enable_llm，避免重复调用；�
   assert.equal(n[3].inputs.prompt, '精修后的提示词'); assert.equal(n[3].inputs.enable_llm, false);
   assert.equal(B.checkEnhancerRun(p, e, {contextLength: 8192})[0].level, 'info');
   assert.equal(B.checkEnhancerRun(p, e, {contextLength: 4096})[0].level, 'error');
-  assert.equal(B.checkEnhancerRun(p, {...e, imageInputs: ['a', 'b', 'c']}, {contextLength: 8192}).at(-1).level, 'error');
+  const threeImages = structuredClone(p); threeImages[3].inputs.input_image_1 = ['100', 0]; threeImages[3].inputs.input_image_2 = ['101', 0]; threeImages[3].inputs.input_image_3 = ['102', 0];
+  assert.equal(B.checkEnhancerRun(threeImages, e, {contextLength: 8192}).at(-1).level, 'error');
   assert.throws(() => B.adoptEnhanced(p, {...e, toggleInput: null}, 'x'), /enable_llm/);
 });
 test('E08：参考图内容寻址保存；提交前上传并写回服务器返回的文件名', async t => {

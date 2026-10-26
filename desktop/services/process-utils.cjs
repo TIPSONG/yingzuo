@@ -8,18 +8,21 @@ const {AppError, CODES} = require('../core/errors.cjs');
 function run(executable, args = [], {cwd, env, timeoutMs = 30000, maxOutput = 1024 * 1024, spawnImpl = spawn, token} = {}) {
   if (typeof executable !== 'string' || !executable) return Promise.reject(new AppError(CODES.INVALID_ARGUMENT, '可执行文件为空。'));
   if (!Array.isArray(args) || args.some(a => typeof a !== 'string')) return Promise.reject(new AppError(CODES.INVALID_ARGUMENT, '参数必须是字符串数组。'));
+  if (token?.cancelled) return Promise.reject(new AppError(CODES.CANCELLED, token.reason ?? '已取消。'));
   return new Promise((resolve, reject) => {
     let child;
     try { child = spawnImpl(executable, args, {cwd, env, shell: false, windowsHide: true}); }
     catch (error) { reject(new AppError(CODES.SERVICE_UNAVAILABLE, `无法启动 ${executable}：${error.message}`)); return; }
-    let stdout = '', stderr = '', done = false;
+    let stdout = '', stderr = '', done = false, timer = null, off = null;
     const finish = (fn, value) => { if (done) return; done = true; clearTimeout(timer); off?.(); fn(value); };
-    const timer = setTimeout(() => { try { child.kill(); } catch { /* 忽略 */ } finish(reject, new AppError(CODES.TIMEOUT, `${executable} 执行超时。`, {details: {stdout, stderr}})); }, timeoutMs);
-    const off = token?.onCancel(() => { try { child.kill(); } catch { /* 忽略 */ } finish(reject, new AppError(CODES.CANCELLED, '已取消。')); });
     child.stdout?.on('data', c => { if (stdout.length < maxOutput) stdout += c; });
     child.stderr?.on('data', c => { if (stderr.length < maxOutput) stderr += c; });
     child.on('error', error => finish(reject, new AppError(error.code === 'ENOENT' ? CODES.NOT_FOUND : CODES.SERVICE_UNAVAILABLE, `无法运行 ${executable}：${error.message}`)));
     child.on('close', code => finish(resolve, {code, stdout, stderr}));
+    timer = setTimeout(() => { finish(reject, new AppError(CODES.TIMEOUT, `${executable} 执行超时。`, {details: {stdout, stderr}})); try { child.kill(); } catch { /* 忽略 */ } }, timeoutMs);
+    // onCancel 可能同步触发；先装好子进程监听并初始化清理函数，避免 TDZ 和迟到 error 无监听。
+    off = token?.onCancel(() => { finish(reject, new AppError(CODES.CANCELLED, '已取消。')); try { child.kill(); } catch { /* 忽略 */ } });
+    if (done) off?.();
   });
 }
 

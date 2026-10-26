@@ -23,6 +23,7 @@ const ENHANCER_SETTINGS = ['context_length', 'release_vram', 'disable_thinking',
 const SECRET_INPUTS = /api_?key|(^|_)token$|secret|passw(or)?d/i;
 const LATENT = /^(EmptyLatentImage|EmptySD3LatentImage|EmptyHunyuanLatentVideo|EmptyQwenImageLayeredLatentImage)$/;
 const PASS_ORDER = ['conditioning', 'positive', 'negative', 'conditioning_1', 'conditioning_to', 'conditioning_from'];
+function unusedNodeId(prompt, prefix) { let id = prefix, n = 1; while (Object.hasOwn(prompt, id)) id = `${prefix}_${n++}`; return id; }
 
 function upstream(prompt, id, seen = new Set()) {
   if (seen.has(id) || !prompt[id]) return seen;
@@ -182,7 +183,7 @@ function extractEnhanceOnly(prompt, enhancerId, {objectInfo, previewType = 'Prev
   if (outputIndex < 0) throw new Error('润色节点没有文本输出。');
   if (info?.output_node) return {prompt: sub, outputNode: enhancerId, outputIndex};
   if (objectInfo && !objectInfo[previewType]) throw new Error(`润色节点不是输出节点，且当前 ComfyUI 没有 ${previewType} 节点，无法单独读取润色文本。请升级 ComfyUI。`);
-  const outId = 'yz_enhance_out';
+  const outId = unusedNodeId(sub, 'yz_enhance_out');
   sub[outId] = {class_type: previewType, inputs: {source: [enhancerId, outputIndex]}};
   return {prompt: sub, outputNode: outId, outputIndex};
 }
@@ -204,8 +205,9 @@ function adoptEnhanced(prompt, enhancer, text, {objectInfo = null} = {}) {
   const ins = next[enhancer.nodeId].inputs;
   if (enhancer.promptLinked) {
     if (objectInfo && !objectInfo.PrimitiveStringMultiline) throw new Error('当前 ComfyUI 没有 PrimitiveStringMultiline 节点，无法在不修改原图的情况下采用润色文本。');
-    next.yz_adopted_text = {class_type: 'PrimitiveStringMultiline', inputs: {value: text}};
-    ins[enhancer.promptInput] = ['yz_adopted_text', 0];
+    const id = unusedNodeId(next, 'yz_adopted_text');
+    next[id] = {class_type: 'PrimitiveStringMultiline', inputs: {value: text}};
+    ins[enhancer.promptInput] = [id, 0];
   } else ins[enhancer.promptInput] = text;
   ins[enhancer.toggleInput] = false;
   return next;
@@ -213,6 +215,8 @@ function adoptEnhanced(prompt, enhancer, text, {objectInfo = null} = {}) {
 /** Q09：润色运行前检查。上下文以图中节点实际值为准（缺失时用设置值），要求 8192；参考图最多 2 张。 */
 function checkEnhancerRun(prompt, enhancer, {contextLength, maxReferenceImages = 2, requiredContext = 8192} = {}) {
   const notes = [];
+  // 自定义表单／批量覆盖后以最终图为准，不信任编译时缓存的设置与连线。
+  enhancer = findEnhancers(prompt).find(e => e.nodeId === enhancer.nodeId) ?? enhancer;
   const graphCtx = enhancer.settings?.context_length;
   const ctx = graphCtx ?? contextLength;
   if (ctx !== undefined && ctx !== requiredContext) notes.push({level: 'error', message: `Gemma 上下文为 ${ctx}${graphCtx !== undefined ? '（工作流节点中的值）' : '（设置值）'}，与补丁要求的 ${requiredContext} 不一致。`});
