@@ -28,8 +28,18 @@ class FavoritesBoard {
     const month = this.now().slice(0, 7);
     const stored = path.join(this.dir, month, `${hash.slice(0, 16)}${ext}`);
     fs.mkdirSync(path.dirname(stored), {recursive: true});
-    if (!fs.existsSync(stored)) { if (this.pool) await this.pool.run('copyFile', {src: sourcePath, dest: stored, excl: true}); else fs.copyFileSync(sourcePath, stored, fs.constants.COPYFILE_EXCL); }
-    if ((await hashOf(stored)) !== hash) { fs.rmSync(stored, {force: true}); throw new AppError(CODES.INTEGRITY, '收藏副本校验失败。'); }
+    if (!fs.existsSync(stored)) {
+      try {
+        if (this.pool) await this.pool.run('copyFile', {src: sourcePath, dest: stored, excl: true});
+        else fs.copyFileSync(sourcePath, stored, fs.constants.COPYFILE_EXCL);
+      } catch (e) { if (e.code !== 'EEXIST') throw e; } // Another same-content request may have published first.
+    }
+    if ((await hashOf(stored)) !== hash) {
+      // The path may predate this request or have been replaced during hashing. Preserve it.
+      throw new AppError(CODES.INTEGRITY, '收藏副本校验失败；文件已保留供核对，未登记收藏。');
+    }
+    const concurrent = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
+    if (concurrent) return {...this.view(concurrent), duplicate: true};
     const buf = Buffer.alloc(65536); { const fd = fs.openSync(stored, 'r'); try { const n = fs.readSync(fd, buf, 0, buf.length, 0); buf.fill(0, n); } finally { fs.closeSync(fd); } } // 只读文件头
     const dim = imageSize(buf) ?? {};
     const id = crypto.randomUUID();

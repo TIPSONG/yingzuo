@@ -24,7 +24,11 @@ function createAssetsMethods({electron, layout, configRepo, db: givenDb = null, 
   const locations = () => { const d = derived(); return {output: d.output, input: d.input, favorites: d.favorites, downloads: d.downloads, backups: d.backups, logs: layout.logs}; };
   let index = null, board = null;
   const idx = () => (index ??= new AssetIndex({db: getDb(), roots: indexRoots, thumbsDir: layout.thumbnails, pool: sharedPool()}));
-  const fav = () => (board ??= new FavoritesBoard({db: getDb(), favoritesDir: derived().favorites || layout.favorites, trashDir: layout.trash, trashStore: new TrashStore({trashDir: layout.trash}), pool: sharedPool()})); // C08：收藏复制与校验在 worker 中
+  const fav = () => {
+    const favoritesDir = derived().favorites || layout.favorites;
+    if (!board || board.dir !== favoritesDir) board = new FavoritesBoard({db: getDb(), favoritesDir, trashDir: layout.trash, trashStore: new TrashStore({trashDir: layout.trash}), pool: sharedPool()});
+    return board;
+  }; // C08：收藏复制与校验在 worker 中；新配置只影响新收藏，历史记录保留绝对位置。
   const files = new AssetFiles({shell: electron.shell, allowedRoots: () => [...Object.values(outputRoots()), ...Object.values(locations()), layout.thumbnails].filter(Boolean)});
   const pathOf = id => { const a = idx().get(id); if (a.missing) throw new AppError(CODES.NOT_FOUND, `原图已不存在：${a.path}`, {details: {path: a.path}}); return a.path; };
   async function pickDir(title) {

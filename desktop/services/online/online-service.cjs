@@ -43,7 +43,7 @@ function planDownload({file, role, models, customDir = null, freeBytes}) {
     conflict = file.size && size === file.size ? 'same-size' : 'different';
     notes.push(conflict === 'same-size' ? '目标位置已有同名同大小文件，可能已下载过（不会覆盖）。' : '目标位置已有同名但大小不同的文件，不会覆盖；请改名或换目录。');
   }
-  if (fs.existsSync(`${destination}.part`)) notes.push('存在未完成的临时文件，将尝试续传。');
+  if (fs.existsSync(`${destination}.part`)) notes.push('存在旧下载临时文件，请从下载列表恢复原任务；新任务使用独立临时文件。');
   const need = file.size ?? null;
   const enough = need == null || freeBytes == null ? null : freeBytes - need > 1024 ** 3; // 预留 1 GB
   if (need == null) notes.push('来源没有提供文件大小，无法预先检查磁盘空间。');

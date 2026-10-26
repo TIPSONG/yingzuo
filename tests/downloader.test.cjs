@@ -41,7 +41,7 @@ test('O05：流式下载、sha256 校验、原子完成；令牌不写入数据�
   const dl = m.add({source: 'url', fileId: 'a', urlRef: {provider: 'url', url}, destination: dest, expectedHash: sha(st.body)});
   const done = await until(m, dl.id, ['completed', 'failed']);
   assert.equal(done.state, 'completed', JSON.stringify(done.error)); assert.equal(sha(fs.readFileSync(dest)), sha(st.body));
-  assert.ok(!fs.existsSync(`${dest}.part`));
+  assert.ok(!fs.existsSync(dl.tempPath));
   assert.ok(!JSON.stringify(db.all('SELECT * FROM downloads')).includes('secret-token'));
   assert.throws(() => m.add({source: 'url', fileId: 'a', urlRef: {}, destination: dest}), /已存在/);
 });
@@ -50,7 +50,7 @@ test('O05/O06：暂停后续传（Range + If-Range），哈希覆盖整个文件
   const {d, m} = setup(t, url);
   const dest = path.join(d, 'b.bin');
   const dl = m.add({source: 'url', fileId: 'b', urlRef: {url}, destination: dest, expectedHash: sha(st.body)});
-  for (let i = 0; i < 400 && !(fs.existsSync(`${dest}.part`) && fs.statSync(`${dest}.part`).size > 20000); i++) await new Promise(r => setTimeout(r, 5));
+  for (let i = 0; i < 400 && !(fs.existsSync(dl.tempPath) && fs.statSync(dl.tempPath).size > 20000); i++) await new Promise(r => setTimeout(r, 5));
   m.pause(dl.id);
   const p = await until(m, dl.id, ['paused']);
   assert.ok(p.receivedBytes > 0 && p.receivedBytes < st.body.length);
@@ -83,7 +83,7 @@ test('O05：hash 不符失败并删除临时文件；403 不重试；取消删�
   const second = m.add({source: 'url', fileId: 'y', urlRef: {url}, destination: path.join(d, 'y.bin')});
   assert.equal(m.running.size, 1, '并发 1');
   const f = await until(m, bad.id, ['failed']);
-  assert.match(f.error.message, /sha256/); assert.ok(!fs.existsSync(path.join(d, 'x.bin.part')));
+  assert.match(f.error.message, /sha256/); assert.ok(!fs.existsSync(bad.tempPath));
   assert.equal((await until(m, second.id, ['completed'])).verification.matchedExpected, false);
   st.status = 403; const before = st.requests.length;
   const forb = m.add({source: 'url', fileId: 'z', urlRef: {url}, destination: path.join(d, 'z.bin')});
@@ -92,5 +92,5 @@ test('O05：hash 不符失败并删除临时文件；403 不重试；取消删�
   st.status = null; st.slow = true;
   const c = m.add({source: 'url', fileId: 'w', urlRef: {url}, destination: path.join(d, 'w.bin')});
   await new Promise(r => setTimeout(r, 30)); m.cancel(c.id);
-  assert.equal((await until(m, c.id, ['cancelled'])).state, 'cancelled'); assert.ok(!fs.existsSync(path.join(d, 'w.bin.part')));
+  assert.equal((await until(m, c.id, ['cancelled'])).state, 'cancelled'); assert.ok(!fs.existsSync(c.tempPath));
 });

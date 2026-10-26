@@ -3,6 +3,9 @@
 const {parentPort} = require('node:worker_threads');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+const {pipeline} = require('node:stream/promises');
+const {Transform} = require('node:stream');
+const {publishNewFile, fileIdentity, sameIdentity, openOwnedTemp} = require('../publish-new-file.cjs');
 
 async function sha256({file, chunk = 4 << 20}, progress) {
   const h = crypto.createHash('sha256'), total = fs.statSync(file).size;
@@ -29,29 +32,36 @@ function imageMeta({file, maxBytes = 200 << 20}) {
   return {format: detectFormat(buf), metadata: {generation: readGenerationInfo(buf), dimensions: imageSize(buf)}};
 }
 /** S09：缩略图在 worker 中由 sharp 生成（限制像素与输入大小），写到调用方给的临时文件。 */
-async function thumbnail({src, tmp, size, format = 'webp', maxPixels = 268402689, maxBytes = 300 << 20}) {
+async function thumbnail({src, tmp, tmpIdentity, size, format = 'webp', maxPixels = 268402689, maxBytes = 300 << 20}) {
   const st = fs.statSync(src);
   if (st.size > maxBytes) throw Object.assign(new Error(`图片 ${st.size} 字节，超过缩略图上限。`), {code: 'TOO_LARGE'});
   let sharp; try { sharp = require('sharp'); } catch (e) { throw Object.assign(new Error(`缩略图组件不可用：${e.message}`), {code: 'UNSUPPORTED'}); }
   sharp.cache(false); sharp.concurrency(1);
-  await sharp(src, {limitInputPixels: maxPixels, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true})[format === 'png' ? 'png' : 'webp'](format === 'png' ? {} : {quality: 80}).toFile(tmp);
-  return {bytes: fs.statSync(tmp).size};
+  const {fd, identity} = openOwnedTemp(tmp, tmpIdentity);
+  try {
+    const buffer = await sharp(src, {limitInputPixels: maxPixels, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true})[format === 'png' ? 'png' : 'webp'](format === 'png' ? {} : {quality: 80}).toBuffer();
+    fs.writeFileSync(fd, buffer);
+    if (!sameIdentity(identity, fileIdentity(tmp))) throw Object.assign(new Error('缩略图临时位置已被替换，未提交。'), {code: 'SOURCE_CHANGED'});
+    return {bytes: buffer.length};
+  } finally { fs.closeSync(fd); }
 }
 /** S09：大文件复制（流式，带进度）；目标先写临时名，完成后改名；excl 时目标已存在即失败。 */
-async function copyFile({src, dest, excl = true, tmp: given}, progress) {
+async function copyFile({src, dest, excl = true, tmp: given, tmpIdentity}, progress) {
   if (excl && fs.existsSync(dest)) throw Object.assign(new Error(`目标已存在：${dest}`), {code: 'EEXIST'});
-  const tmp = given ?? `${dest}.yz-copy-${process.pid}-${Date.now()}`, total = fs.statSync(src).size;
-  let done = 0, last = 0;
+  const tmp = given ?? `${dest}.yz-copy-${process.pid}-${Date.now()}`, before = fs.statSync(src), total = before.size;
+  let done = 0, last = 0, owned = tmpIdentity;
   try {
-    await new Promise((resolve, reject) => {
-      const r = fs.createReadStream(src, {highWaterMark: 4 << 20}), w = fs.createWriteStream(tmp, {flags: 'wx'});
-      r.on('data', c => { done += c.length; if (done - last >= 64 << 20 || done === total) { last = done; progress({done, total}); } });
-      r.on('error', reject); w.on('error', reject); w.on('finish', resolve); r.pipe(w);
-    });
+    const {fd, identity} = openOwnedTemp(tmp, tmpIdentity);
+    owned = identity;
+    const meter = new Transform({transform(chunk, _encoding, callback) { done += chunk.length; if (done - last >= 64 << 20 || done === total) { last = done; progress({done, total}); } callback(null, chunk); }});
+    await pipeline(fs.createReadStream(src, {highWaterMark: 4 << 20}), meter, fs.createWriteStream(tmp, {fd, autoClose: true}));
+    const after = fs.statSync(src);
+    if (done !== total || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ino !== before.ino || after.dev !== before.dev) throw Object.assign(new Error('源文件在复制期间已变化，未提交副本。'), {code: 'SOURCE_CHANGED'});
     if (excl && fs.existsSync(dest)) throw Object.assign(new Error(`目标已存在：${dest}`), {code: 'EEXIST'});
-    fs.renameSync(tmp, dest);
+    if (excl) await publishNewFile(tmp, dest);
+    else fs.renameSync(tmp, dest);
     return {bytes: done};
-  } catch (e) { try { fs.rmSync(tmp, {force: true}); } catch { /* 忽略 */ } throw e; }
+  } catch (e) { try { if (sameIdentity(owned, fileIdentity(tmp))) fs.rmSync(tmp, {force: true}); } catch { /* 忽略 */ } throw e; }
 }
 // C08：图包整包读写（含 base64、JSON、hash）在 worker 中执行
 const packBuild = a => require('../../services/graph-package.cjs').workerBuild(a);

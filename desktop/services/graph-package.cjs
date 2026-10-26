@@ -98,10 +98,15 @@ function parsePackage(text, {objectInfo = null} = {}) {
 
 /* ---------- C08：worker 侧（只在 worker 线程调用；主进程只传路径） ---------- */
 /** relations 中的 file 由主进程解析（null 表示素材丢失）。写到 target 的临时名后改名。 */
-function workerBuild({target, tmp: given, title, graph, template, relations, exportedGraph, refill}) {
+function workerBuild({target, tmp: given, tmpIdentity, title, graph, template, relations, exportedGraph, refill}) {
+  const {openOwnedTemp, fileIdentity, sameIdentity} = require('../core/publish-new-file.cjs');
   const files = new Map(relations.map(r => [r.refId, r.file]));
   const pkg = buildPackage({title, graph, template, relations, readRef: id => { const f = files.get(id); if (!f) throw new Error('missing'); return f; }, exportGraph: exportedGraph ? () => ({graph: exportedGraph, refill: refill ?? []}) : null});
-  const tmp = given ?? `${target}.tmp-${process.pid}`; fs.writeFileSync(tmp, JSON.stringify(pkg)); fs.renameSync(tmp, target);
+  const tmp = given ?? `${target}.tmp-${process.pid}`;
+  const {fd, identity} = openOwnedTemp(tmp, tmpIdentity);
+  try { fs.writeFileSync(fd, JSON.stringify(pkg)); } finally { fs.closeSync(fd); }
+  if (!sameIdentity(identity, fileIdentity(tmp))) throw new AppError(CODES.CONFLICT, '图包临时位置已被替换，未提交。');
+  fs.renameSync(tmp, target);
   return {path: target, references: pkg.references.length, missing: pkg.references.filter(r => r.missing).map(r => r.name || r.refId), dropped: pkg.dropped, refill: pkg.refill};
 }
 /** 读取前检查文件大小；校验通过后把素材写入 stageDir/<refId>，返回不含 Buffer 的结果。 */

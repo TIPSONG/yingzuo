@@ -97,3 +97,25 @@ test('R15：416 清除 .part 后会重试从零下载（不再直接失败）', 
   assert.equal(log.length, 2);
   assert.equal(sha(fs.readFileSync(dest)), sha(body));
 });
+
+test('续传：弱 ETag 回退到相同 Last-Modified 时可以续传，不强制整文件重下', async t => {
+  const body = Buffer.from('original whole content'), modified = 'Mon, 01 Jan 2024 00:00:00 GMT';
+  const {m, dest, log} = setup(t, h => h.range
+    ? {status: 206, headers: {etag: 'W/"weak"', 'last-modified': modified, 'content-range': `bytes 4-${body.length - 1}/${body.length}`}, body: body.subarray(4)}
+    : {...full(body, 'W/"weak"'), headers: {'last-modified': modified}},
+  {etag: 'W/"weak"', lastModified: modified, partBytes: body.subarray(0, 4), totalBytes: body.length});
+  m.pump(); const d = await until(m, 'dl_t');
+  assert.equal(d.state, 'completed'); assert.equal(log.length, 1);
+  assert.equal(log[0]['if-range'], modified); assert.deepEqual(fs.readFileSync(dest), body);
+});
+
+test('续传：206 缺少用于续传的 Last-Modified 时不拼接旧内容', async t => {
+  const body = Buffer.from('new full contents');
+  const {m, dest, log} = setup(t, h => h.range
+    ? {status: 206, headers: {'content-range': `bytes 4-${body.length - 1}/${body.length}`}, body: body.subarray(4)}
+    : full(body, '"new"'),
+  {lastModified: 'Mon, 01 Jan 2024 00:00:00 GMT', partBytes: Buffer.from('OLD!'), totalBytes: body.length});
+  m.pump(); const d = await until(m, 'dl_t');
+  assert.equal(d.state, 'completed'); assert.equal(log.length, 2);
+  assert.equal(log[1].range, undefined); assert.deepEqual(fs.readFileSync(dest), body);
+});

@@ -9,6 +9,7 @@ const {pipeline} = require('node:stream/promises');
 const {Readable, Transform} = require('node:stream');
 const {AppError, CODES} = require('../../core/errors.cjs');
 const {CancelToken} = require('../../core/locks.cjs');
+const {publishNewFile} = require('../../core/publish-new-file.cjs');
 
 const row = r => r && {id: r.id, source: r.source, fileId: r.file_id, urlRef: JSON.parse(r.url_ref), destination: r.destination, tempPath: r.temp_path, etag: r.etag, lastModified: r.last_modified, expectedHash: r.expected_hash, hashKind: r.hash_kind, totalBytes: r.total_bytes, receivedBytes: r.received_bytes, state: r.state, error: r.error ? JSON.parse(r.error) : null, verification: r.verification ? JSON.parse(r.verification) : null, createdAt: r.created_at, updatedAt: r.updated_at};
 const ACTIVE = ['queued', 'downloading', 'verifying'];
@@ -33,12 +34,20 @@ class DownloadManager {
   /**
    * resolve(urlRef) → {url, headers}：由 provider 解析（可带临时授权头，不持久化）。
    */
-  constructor({db, resolve, events, logger, fetchImpl = fetch, concurrency = 2, maxRetries = 3, sleep = ms => new Promise(r => setTimeout(r, ms)), now = () => new Date().toISOString()}) {
-    Object.assign(this, {db, resolve, events, logger, fetchImpl, concurrency, maxRetries, sleep, now});
+  constructor({db, resolve, events, logger, fetchImpl = fetch, concurrency = 2, maxRetries = 3, sleep = ms => new Promise(r => setTimeout(r, ms)), now = () => new Date().toISOString(), platform = process.platform}) {
+    Object.assign(this, {db, resolve, events, logger, fetchImpl, concurrency, maxRetries, sleep, now, platform});
     this.tokens = new Map(); this.running = new Set();
   }
   get(id) { return row(this.db.get('SELECT * FROM downloads WHERE id = ?', id)); }
   list() { return this.db.all('SELECT * FROM downloads ORDER BY created_at DESC LIMIT 500').map(row); }
+  _pathKey(file) { const value = path.resolve(file); return this.platform === 'win32' ? value.toLowerCase() : value; }
+  _claim(destination, exceptId = null) {
+    if (fs.existsSync(destination)) throw new AppError(CODES.CONFLICT, `目标文件已存在：${destination}`);
+    const key = this._pathKey(destination);
+    const dup = this.db.all(`SELECT id, destination FROM downloads WHERE state IN ('queued','downloading','verifying','paused')`)
+      .find(d => d.id !== exceptId && this._pathKey(d.destination) === key);
+    if (dup) throw new AppError(CODES.CONFLICT, '同一目标已有进行中的下载。', {details: {id: dup.id}});
+  }
   _update(id, patch) {
     const cols = {state: 'state', receivedBytes: 'received_bytes', totalBytes: 'total_bytes', etag: 'etag', lastModified: 'last_modified', error: 'error', verification: 'verification'};
     const sets = [], vals = [];
@@ -49,12 +58,11 @@ class DownloadManager {
   /** 加入下载。destination 必须是已规划（O04）好的绝对路径。 */
   add({source, fileId, urlRef, destination, expectedHash = null, totalBytes = null}) {
     if (!path.isAbsolute(destination)) throw new AppError(CODES.INVALID_PATH, '下载目标必须是绝对路径。');
-    if (fs.existsSync(destination)) throw new AppError(CODES.CONFLICT, `目标文件已存在：${destination}`);
-    const dup = this.db.get(`SELECT id FROM downloads WHERE destination = ? AND state IN ('queued','downloading','verifying','paused')`, destination);
-    if (dup) throw new AppError(CODES.CONFLICT, '同一目标已有进行中的下载。', {details: {id: dup.id}});
+    destination = path.resolve(destination);
+    this._claim(destination);
     const id = `dl_${crypto.randomUUID()}`, at = this.now();
     this.db.run('INSERT INTO downloads (id, source, file_id, url_ref, destination, temp_path, expected_hash, hash_kind, total_bytes, received_bytes, state, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)',
-      id, source, String(fileId), JSON.stringify(urlRef), destination, `${destination}.part`, expectedHash ? expectedHash.toLowerCase() : null, expectedHash ? 'sha256' : null, totalBytes, 'queued', at, at);
+      id, source, String(fileId), JSON.stringify(urlRef), destination, `${destination}.${id}.part`, expectedHash ? expectedHash.toLowerCase() : null, expectedHash ? 'sha256' : null, totalBytes, 'queued', at, at);
     this.pump();
     return this.get(id);
   }
@@ -67,7 +75,7 @@ class DownloadManager {
     }
   }
   pause(id) { const d = this.get(id); if (!d) throw new AppError(CODES.NOT_FOUND, '下载不存在。'); if (d.state === 'queued') return this._update(id, {state: 'paused'}); this.tokens.get(id)?.cancel('pause'); return d; }
-  resume(id) { const d = this.get(id); if (!['paused', 'failed'].includes(d?.state)) throw new AppError(CODES.INVALID_STATE, '只有暂停或失败的下载可以继续。'); this._update(id, {state: 'queued', error: null}); this.pump(); return this.get(id); }
+  resume(id) { const d = this.get(id); if (!['paused', 'failed'].includes(d?.state)) throw new AppError(CODES.INVALID_STATE, '只有暂停或失败的下载可以继续。'); this._claim(d.destination, id); this._update(id, {state: 'queued', error: null}); this.pump(); return this.get(id); }
   cancel(id) {
     const d = this.get(id); if (!d) throw new AppError(CODES.NOT_FOUND, '下载不存在。');
     if (this.running.has(id)) { this.tokens.get(id)?.cancel('cancel'); return d; }
@@ -129,8 +137,8 @@ class DownloadManager {
         if (have === 0 || !m || Number(m[1]) !== have) throw restart('服务器返回的续传范围不一致，');
         const end = Number(m[2]), total = m[3] === '*' ? null : Number(m[3]);
         if (end < have || (total != null && end !== total - 1) || (total != null && d.totalBytes && total !== d.totalBytes)) throw restart('续传范围与文件总大小不符，');
-        if (d.etag && !sameEtag(d.etag, etag)) throw restart('来源 ETag 已变化，');
-        if (!d.etag && d.lastModified && lastModified && lastModified !== d.lastModified) throw restart('来源修改时间已变化，');
+        if (d.etag && !isWeak(d.etag)) { if (!sameEtag(d.etag, etag)) throw restart('来源 ETag 已变化，'); }
+        else if (d.lastModified && lastModified !== d.lastModified) throw restart('来源修改时间无法确认一致，');
         append = true;
         if (m[3] !== '*') this._update(id, {totalBytes: Number(m[3])});
       } else {
@@ -157,8 +165,11 @@ class DownloadManager {
       const digest = hash.digest('hex');
       if (d.expectedHash && digest !== d.expectedHash) { fs.rmSync(d.tempPath, {force: true}); throw Object.assign(new AppError(CODES.CORRUPT_DATA, 'sha256 校验失败，文件已删除。'), {retryable: false}); }
       if (fs.existsSync(d.destination)) throw Object.assign(new AppError(CODES.CONFLICT, '目标位置在下载期间出现了同名文件，未覆盖。临时文件已保留。'), {retryable: false});
-      fs.renameSync(d.tempPath, d.destination);
-      this._update(id, {state: 'completed', verification: {sha256: digest, matchedExpected: !!d.expectedHash, bytes: received}});
+      token.throwIfCancelled();
+      let published;
+      try { published = await publishNewFile(d.tempPath, d.destination); }
+      catch (error) { if (error.code === 'EEXIST') throw Object.assign(new AppError(CODES.CONFLICT, '目标位置在下载期间出现了同名文件，未覆盖。临时文件已保留。'), {retryable: false}); if (error.code === 'SOURCE_CHANGED') error.retryable = false; throw error; }
+      this._update(id, {state: 'completed', verification: {sha256: digest, matchedExpected: !!d.expectedHash, bytes: received, tempRetained: published.tempRetained}});
     } finally { clearInterval(timer); off?.(); }
   }
 }

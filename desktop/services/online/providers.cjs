@@ -96,6 +96,17 @@ class CivitaiProvider extends BaseProvider {
   async listFiles(modelId, o) { return (await this.detail(modelId, o)).versions.flatMap(v => v.files); }
   async resolveDownload(ref) {
     if (!ref?.versionId) throw new AppError(CODES.INVALID_ARGUMENT, '需要指定模型版本。');
+    if (ref.fileId != null) {
+      // Resolve the exact chosen file afresh. The version-level endpoint otherwise selects
+      // the primary file, silently ignoring fp/format choices made in the file picker.
+      const version = await this.getJson(new URL(`/api/v1/model-versions/${Number(ref.versionId)}`, this.base), {cache: false});
+      const file = (version.files ?? []).find(f => String(f.id) === String(ref.fileId));
+      if (!file?.downloadUrl) throw new AppError(CODES.NOT_FOUND, '所选版本中已找不到这个文件或其下载地址，请刷新文件列表后重新选择。');
+      let selected;
+      try { selected = new URL(file.downloadUrl); } catch { throw new AppError(CODES.INVALID_ARGUMENT, '来源返回了无效的文件下载地址。'); }
+      if (selected.protocol !== 'https:' || selected.username || selected.password) throw new AppError(CODES.FORBIDDEN, '来源文件下载地址必须使用 https 且不能包含账号信息。');
+      return {url: selected.href, headers: selected.origin === new URL(this.base).origin ? this.authHeaders() : {}};
+    }
     const u = new URL(`/api/download/models/${Number(ref.versionId)}`, this.base);
     if (ref.fileType) u.searchParams.set('type', ref.fileType);
     if (ref.format) u.searchParams.set('format', ref.format);

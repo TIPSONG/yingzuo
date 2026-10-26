@@ -6,6 +6,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const {Worker} = require('node:worker_threads');
+const {fileIdentity, identityFromStat, sameIdentity} = require('./publish-new-file.cjs');
 
 const WORKER = path.join(__dirname, 'workers', 'file-worker.cjs');
 const cancelled = (msg = '已取消') => Object.assign(new Error(msg), {code: 'CANCELLED'});
@@ -25,12 +26,17 @@ class TempJournal {
     fs.mkdirSync(path.dirname(this.file), {recursive: true});
     const tmp = `${this.file}.tmp`; fs.writeFileSync(tmp, JSON.stringify({items})); fs.renameSync(tmp, this.file);
   }
-  add(paths, info = {}) { if (!this.file || !paths.length) return; const items = this.read(); for (const p of paths) if (!items.some(i => i.path === p)) items.push({path: p, at: new Date().toISOString(), ...info}); this.write(items); }
+  add(paths, info = {}, claims = null) { if (!this.file || !paths.length) return; const items = this.read(); for (const p of paths) if (!items.some(i => i.path === p)) items.push({path: p, at: new Date().toISOString(), ...info, identity: claims ? claims.get(p) ?? null : fileIdentity(p)}); this.write(items); }
   remove(paths) { if (!this.file || !paths.length) return; this.write(this.read().filter(i => !paths.includes(i.path))); }
   /** 启动恢复：逐项删除登记的未提交临时文件；删不掉的保留在登记中。 */
   recover() {
     const left = [], removed = [];
-    for (const it of this.read()) { try { fs.rmSync(it.path, {force: true}); removed.push(it.path); } catch { left.push(it); } }
+    for (const it of this.read()) {
+      try {
+        if (fs.existsSync(it.path) && !sameIdentity(it.identity, fileIdentity(it.path))) { left.push(it); continue; }
+        fs.rmSync(it.path, {force: true}); removed.push(it.path);
+      } catch { left.push(it); }
+    }
     this.write(left); return {removed, pending: left.map(i => i.path)};
   }
 }
@@ -43,20 +49,29 @@ class WorkerPool {
   run(kind, args, {onProgress, signal, temps = []} = {}) {
     if (this.state !== 'open') return Promise.reject(Object.assign(new Error('文件工作线程正在关闭，未接受新任务。'), {code: 'CLOSED'}));
     return new Promise((resolve, reject) => {
-      const job = {kind, args, onProgress, signal, temps, settled: false, worker: null, cleanup: []};
+      const job = {kind, args, onProgress, signal, temps, claims: new Map(), settled: false, worker: null, cleanup: []};
       job.finish = (ok, v) => {
         if (job.settled) return; job.settled = true;
         for (const f of job.cleanup.splice(0)) { try { f(); } catch { /* 忽略 */ } }
         const i = this.waiting.indexOf(job); if (i >= 0) this.waiting.splice(i, 1);
+        let exited = Promise.resolve();
         if (job.worker) {
           const w = job.worker; this.active.delete(w);
           // RV10：先确认 worker 真正退出（句柄已关闭）再清理登记的临时文件；清理失败保留可恢复记录
-          const exited = new Promise(r => { if (w.threadId === -1) return r(); w.once('exit', r); });
+          exited = new Promise(r => { if (w.threadId === -1) return r(); w.once('exit', r); });
           w.terminate().catch(() => {});
+        }
+        if (job.claims.size) {
           const temps = job.temps.slice();
           const c = exited.then(() => {
             const failed = [];
-            for (const t of temps) { if (ok && !fs.existsSync(t)) continue; try { fs.rmSync(t, {force: true}); } catch { failed.push(t); } }
+            for (const t of temps) {
+              try {
+                if (!fs.existsSync(t)) continue;
+                if (!sameIdentity(job.claims.get(t), fileIdentity(t))) { failed.push(t); continue; }
+                fs.rmSync(t, {force: true});
+              } catch { failed.push(t); }
+            }
             try { this.journal.remove(temps.filter(t => !failed.includes(t))); } catch { /* 记录保留，下次启动处理 */ }
           });
           this.cleanups.add(c); c.finally(() => this.cleanups.delete(c));
@@ -75,8 +90,17 @@ class WorkerPool {
       // RV10：启动 worker 前在主进程分配并登记临时路径
       const planned = TEMP_PLAN[job.kind]?.(job.args ??= {}, id) ?? [];
       job.temps = [...new Set([...job.temps, ...planned])];
-      try { this.journal.add(job.temps, {kind: job.kind}); } catch (e) { job.finish(false, Object.assign(new Error(`无法登记临时文件：${e.message}`), {code: 'TEMP_JOURNAL'})); continue; }
-      const w = new Worker(this.script);
+      try {
+        for (const file of planned) {
+          const fd = fs.openSync(file, 'wx');
+          try { job.claims.set(file, identityFromStat(fs.fstatSync(fd, {bigint: true}))); } finally { fs.closeSync(fd); }
+        }
+        for (const file of job.temps) if (!job.claims.has(file)) job.claims.set(file, fileIdentity(file));
+        job.args.tmpIdentity = job.claims.get(job.args.tmp) ?? null;
+        this.journal.add(job.temps, {kind: job.kind}, job.claims);
+      } catch (e) { job.finish(false, Object.assign(new Error(`无法登记临时文件：${e.message}`), {code: e.code ?? 'TEMP_JOURNAL'})); continue; }
+      let w;
+      try { w = new Worker(this.script); } catch (e) { job.finish(false, e); continue; }
       job.worker = w; this.active.add(w);
       const onMessage = m => {
         if (m.id !== id) return;
@@ -87,8 +111,8 @@ class WorkerPool {
       const onExit = c => job.finish(false, Object.assign(new Error(`worker 意外退出（${c}）`), {code: 'WORKER_EXITED'}));
       w.on('message', onMessage); w.on('error', onError); w.on('exit', onExit);
       job.cleanup.push(() => { w.off('message', onMessage); w.off('error', onError); w.off('exit', onExit); });
-      w.postMessage({id, kind: job.kind, args: job.args});
       this._jobs ??= new Set(); this._jobs.add(job); job.cleanup.push(() => this._jobs.delete(job));
+      try { w.postMessage({id, kind: job.kind, args: job.args}); } catch (e) { job.finish(false, e); }
     }
   }
   close() {

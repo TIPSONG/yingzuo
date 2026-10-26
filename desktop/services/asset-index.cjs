@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const {AppError, CODES} = require('../core/errors.cjs');
 const {isInside, validateSegment} = require('../core/paths.cjs');
 const {detectFormat, readGenerationInfo} = require('../core/image-meta.cjs');
+const {fileIdentity, sameIdentity, openOwnedTemp} = require('../core/publish-new-file.cjs');
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 const VIDEO_EXT = new Set(['.mp4', '.webm']);
@@ -184,15 +185,25 @@ class AssetIndex {
       if (!fs.existsSync(r.canonical_path)) { this.db.run('UPDATE assets SET missing = 1 WHERE id = ?', id); throw new AppError(CODES.NOT_FOUND, `原图已不存在：${r.canonical_path}`); }
       fs.mkdirSync(path.dirname(target), {recursive: true});
       const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+      const workerArgs = {src: r.canonical_path, tmp, size};
+      const cleanOwnedTemp = () => { if (sameIdentity(workerArgs.tmpIdentity, fileIdentity(tmp))) fs.rmSync(tmp, {force: true}); };
       try {
-        if (this.pool) await this.pool.run('thumbnail', {src: r.canonical_path, tmp, size}, {signal});
-        else await this.sharp(r.canonical_path, {limitInputPixels: 268402689, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true}).webp({quality: 80}).toFile(tmp);
+        if (this.pool) await this.pool.run('thumbnail', workerArgs, {signal});
+        else {
+          const {fd, identity} = openOwnedTemp(tmp);
+          workerArgs.tmpIdentity = identity;
+          try {
+            const buffer = await this.sharp(r.canonical_path, {limitInputPixels: 268402689, animated: false}).rotate().resize(size, size, {fit: 'inside', withoutEnlargement: true}).webp({quality: 80}).toBuffer();
+            fs.writeFileSync(fd, buffer);
+          } finally { fs.closeSync(fd); }
+        }
         // 源在生成期间变化：丢弃结果（键含 mtime/大小，下次按新键生成）
         const st = fs.statSync(r.canonical_path);
-        if (st.size !== r.file_size || st.mtimeMs !== r.mtime) { fs.rmSync(tmp, {force: true}); throw new AppError(CODES.CONFLICT, '原图在生成缩略图期间已改变，请重试。'); }
+        if (st.size !== r.file_size || st.mtimeMs !== r.mtime) { cleanOwnedTemp(); throw new AppError(CODES.CONFLICT, '原图在生成缩略图期间已改变，请重试。'); }
+        if (!sameIdentity(workerArgs.tmpIdentity, fileIdentity(tmp))) throw Object.assign(new Error('缩略图临时位置已被替换，未提交。'), {code: 'SOURCE_CHANGED'});
         fs.renameSync(tmp, target);
         return {path: target, cached: false};
-      } catch (e) { fs.rmSync(tmp, {force: true}); if (e.code === 'UNSUPPORTED') throw new AppError(CODES.UNSUPPORTED, e.message); throw e; }
+      } catch (e) { cleanOwnedTemp(); if (e.code === 'UNSUPPORTED') throw new AppError(CODES.UNSUPPORTED, e.message); throw e; }
     })().finally(() => this.thumbJobs.delete(key));
     this.thumbJobs.set(key, job);
     return job;
