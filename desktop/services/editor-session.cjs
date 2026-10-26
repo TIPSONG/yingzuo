@@ -111,7 +111,9 @@ async function recoverForeignGraph() {
     const archive=graph=>{
       const folder=paths.closed;fs.mkdirSync(folder,{recursive:true});
       const file=path.join(folder,`native-${Date.now()}-${randomUUID()}.json`);
-      fs.writeFileSync(file,JSON.stringify(graph,null,2));
+      // Native workflow switches are internal recovery copies too. Refuse an
+      // unsafe write while keeping pendingForeignGraph available for retry.
+      fs.writeFileSync(file,JSON.stringify(secureDisk(graph),null,2),{flag:'wx'});
       foreignRecoveryPath=file;
     };
     // First make any earlier capture durable, even if the renderer has since

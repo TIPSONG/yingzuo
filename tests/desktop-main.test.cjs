@@ -316,6 +316,28 @@ const FAKE_KEY='sk-test-FICTIONALKEY0123456789';
 const KEY_INFO={LMStudioPromptEnhancer:{input:{required:{prompt:['STRING'],lmstudio_api_key:['STRING',{password:true}]}}}};
 const fakeSafe=()=>({isEncryptionAvailable:()=>true,getSelectedStorageBackend:()=>'dpapi',encryptString:s=>Buffer.from(`enc:${s}`),decryptString:b=>b.toString().slice(4)});
 const keyGraph=prompt=>({version:0.4,nodes:[{id:1,type:'CLIPTextEncode',widgets_values:[prompt]},{id:2,type:'LMStudioPromptEnhancer',inputs:[{name:'lmstudio_api_key',type:'STRING',widget:{name:'lmstudio_api_key'}}],widgets_values:['帮我润色',FAKE_KEY]}],links:[],extra:{},definitions:{subgraphs:[{id:'sg1',nodes:[{id:9,type:'Custom',widgets_values:{api_key:FAKE_KEY,steps:20}}]}]}});
+test('foreign native recovery uses the same encrypted storage policy as host drafts',async t=>{
+  const f=await fixture(t,workspace(tab('a')),{safeStorage:fakeSafe(),objectInfo:KEY_INFO});
+  f.bounds({x:200,y:80,width:1200,height:800});assert.equal((await f.send('connect')).ok,true);
+  f.nativeName='foreign';f.nativeGraph=keyGraph('外来图');
+  const result=await f.send('save');assert.equal(result.ok,false);assert.equal(result.state.recoveryPending,false);
+  const folder=path.join(f.root,'.local/data/closed-workflows');
+  const text=fs.readFileSync(path.join(folder,fs.readdirSync(folder)[0]),'utf8');
+  assert.ok(!text.includes(FAKE_KEY));assert.ok(text.includes('__yz_credential__:node-secret:'));
+  assert.equal(f.nativeGraph.nodes[1].widgets_values[1],FAKE_KEY,'live graph is unchanged');
+  assert.equal(f.read().tabs[0].graph.nodes[0].widgets_values[0],'a');
+});
+test('foreign native recovery refuses plaintext when encryption is unavailable and retains the live graph',async t=>{
+  const f=await fixture(t,workspace(tab('a')),{objectInfo:KEY_INFO});
+  f.bounds({x:200,y:80,width:1200,height:800});assert.equal((await f.send('connect')).ok,true);
+  f.nativeName='foreign';f.nativeGraph=keyGraph('不可落盘');
+  const result=await f.send('save');assert.equal(result.ok,false);assert.equal(result.state.recoveryPending,true);
+  assert.match(result.error,/加密存储不可用/);
+  const folder=path.join(f.root,'.local/data/closed-workflows');
+  assert.deepEqual(fs.readdirSync(folder),[]);
+  assert.equal(f.nativeGraph.nodes[1].widgets_values[1],FAKE_KEY);
+  const loads=f.loads.length;assert.equal((await f.send('connect')).ok,false);assert.equal(f.loads.length,loads);
+});
 test('C01：首次输入的密钥——自动保存/关闭归档只存凭据引用，内存与画布保留真实值，普通导出移除并列出需重填字段',async t=>{
   const f=await fixture(t,workspace({id:'a',title:'a',mode:'graph',templateId:null,graph:keyGraph('提示词A')},{id:'b',title:'b',mode:'graph',templateId:null,graph:keyGraph('提示词B')}),{safeStorage:fakeSafe(),objectInfo:KEY_INFO});
   const drafts=path.join(f.root,'.local','data','drafts');
