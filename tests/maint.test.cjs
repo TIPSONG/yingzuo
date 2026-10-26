@@ -252,3 +252,21 @@ test('C04：回退时现场同路径已有内容——停止并保留两份', as
   assert.equal(fs.readFileSync(path.join(scene, 'models', 'm.safetensors'), 'utf8'), 'OTHER');
   assert.ok(fs.readdirSync(base).some(n => n.includes('yz-restore')), 'staged 中的模型仍保留');
 });
+
+test('代码复核：回退一旦开始，不能按旧完成标记再次向前恢复', async () => {
+  const {base, env, dir} = await carryFixture();
+  const eng = new RestoreEngine({journalDir: path.join(base, 'j'), hooks: {afterStep: async (_id, step) => { if (step === 'swap') throw new Error('stop'); }}});
+  const j = await eng.prepare(dir); await assert.rejects(eng.run(j.id), /stop/);
+  const scene = eng.load(j.id).items[0].scene;
+  fs.mkdirSync(path.join(scene, 'models'), {recursive: true});
+  fs.writeFileSync(path.join(scene, 'models', 'm.safetensors'), 'OTHER');
+  await assert.rejects(eng.rollback(j.id), e => e.code === 'CONFLICT');
+  await assert.rejects(eng.resume(j.id), e => e.code === 'INVALID_STATE' && /回退/.test(e.message));
+  assert.notEqual(eng.load(j.id).status, 'done');
+  // 用户保留冲突文件后继续回退，不能丢模型或恢复前的环境。
+  fs.renameSync(path.join(scene, 'models'), path.join(base, 'saved-conflict'));
+  assert.equal((await eng.rollback(j.id)).status, 'aborted');
+  assert.equal(fs.readFileSync(path.join(env, 'models', 'm.safetensors'), 'utf8'), 'MODEL-BYTES');
+  assert.equal(fs.readFileSync(path.join(env, 'main.py'), 'utf8'), 'v2-broken');
+  await assert.rejects(eng.resume(j.id), e => e.code === 'INVALID_STATE');
+});

@@ -20,7 +20,7 @@ const {buildFolderMap, scanModels} = require('../resources/model-scan.cjs');
 const {describeResource, ResourceNotes} = require('../resources/resource-details.cjs');
 const {ReferenceIndex} = require('../resources/reference-index.cjs');
 const {planQuickUse, applyPlan} = require('../resources/quick-use.cjs');
-const {listPlugins, disablePlugin, enablePlugin} = require('../resources/plugin-inventory.cjs');
+const {listPlugins, disablePlugin, enablePlugin, DISABLED_DIR} = require('../resources/plugin-inventory.cjs');
 const {detectManager} = require('./online/dependency-plan.cjs');
 
 function dirSize(dir) { let n = 0; try { for (const e of fs.readdirSync(dir, {withFileTypes: true})) { const p = path.join(dir, e.name); n += e.isDirectory() ? dirSize(p) : e.isFile() ? fs.statSync(p).size : 0; } } catch { /* 忽略 */ } return n; }
@@ -56,14 +56,15 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     const base = new URL(configRepo.config.comfy.url);
     let http = 'fail';
     try { const r = await fetchImpl(new URL('system_stats', base), {signal: AbortSignal.timeout(3000)}); http = r.ok ? 'ok' : 'error'; } catch { http = 'fail'; }
-    let owned = false; try { owned = !!(await comfy.verifyOwned()); } catch { owned = false; }
+    let owned = false; try { owned = !!(await comfy.verifyOwned(configRepo.config.comfy)); } catch { owned = false; }
     if (http === 'ok') return {state: 'running', owned, http};
     if (owned) return {state: 'unknown', owned: true, http, reason: '本应用启动的进程仍存活，但 HTTP 不可用'};
     let recordAlive = false; try { const rec = comfy.record; recordAlive = !!(rec?.pid && (comfy.aliveImpl ? comfy.aliveImpl(rec.pid) : false)); } catch { recordAlive = false; }
     if (recordAlive) return {state: 'unknown', owned: false, http, reason: '登记的进程仍存活但身份无法核实'};
     if (http === 'error') return {state: 'unknown', owned: false, http, reason: '端口上有服务应答但不是正常的 ComfyUI 响应'};
-    const check = portCheck ?? (() => require('./service-probe.cjs').checkPort(base.hostname, Number(base.port) || 80, 3000));
-    let port; try { port = await check(base.hostname, Number(base.port) || 80); } catch (e) { port = {reachable: false, code: 'ERROR', error: e.message}; }
+    const portNumber = Number(base.port) || (base.protocol === 'https:' ? 443 : 80);
+    const check = portCheck ?? (() => require('./service-probe.cjs').checkPort(base.hostname, portNumber, 3000));
+    let port; try { port = await check(base.hostname, portNumber); } catch (e) { port = {reachable: false, code: 'ERROR', error: e.message}; }
     if (!port.reachable && port.code === 'ECONNREFUSED') return {state: 'confirmed-stopped', owned: false, http};
     return {state: 'unknown', owned: false, http, reason: port.reachable ? '端口可连接但服务身份未知' : `无法确认端口状态：${port.error ?? port.code}`};
   }
@@ -75,7 +76,10 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       // S02：本应用启动的后端里也可能有原生画布/其他客户端的任务；核对失败按“不能确认”处理
       try {
         const q = await fetchImpl(new URL('queue', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
-        const ids = [...(q.queue_running ?? []), ...(q.queue_pending ?? [])].map(i => i?.[1]).filter(Boolean);
+        if (!Array.isArray(q?.queue_running) || !Array.isArray(q?.queue_pending)) throw new Error('无法识别后端队列结构');
+        const rows = [...q.queue_running, ...q.queue_pending];
+        if (rows.some(i => !Array.isArray(i) || typeof i[1] !== 'string' || !i[1])) throw new Error('无法识别后端任务身份');
+        const ids = rows.map(i => i[1]);
         foreign = ids.filter(id => !taskService?.tasks?.byPromptId?.(id)).length;
       } catch { foreign = -1; }
       if (foreign) owned = false;
@@ -128,7 +132,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       lease = taskService?.hooks.pauseSubmissions('restore') ?? null;
       await taskService?.hooks.waitForIdle({timeoutMs: 600000});
       if ((await services()).some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, '外部启动的 ComfyUI 仍在运行，或本应用启动的 ComfyUI 正在执行其他程序的任务（或无法确认），请先结束后再恢复。');
-      if (await comfy.verifyOwned()) await comfy.stop();
+      if (await comfy.verifyOwned(configRepo.config.comfy)) await comfy.stop(configRepo.config.comfy);
       hid = `restore-${Date.now().toString(36)}`;
       holds.push({id: hid, reason: '恢复进行中；若被中断，请在“维护”页继续恢复', backupDir, roots: [], at: new Date().toISOString(), inProgress: true}); persistHolds();
       const r = await run();
@@ -156,7 +160,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     const journal = [];
     const tx = new MaintenanceTransaction({
       locks, services, gate,
-      stopService: async () => { await comfy.stop(); },
+      stopService: async () => { await comfy.stop(configRepo.config.comfy); },
       startService: async () => { await comfy.ensureRunning(configRepo.config); },
       queue: taskService ? {pauseSubmissions: r => taskService.hooks.pauseSubmissions(r), waitForIdle: o => taskService.hooks.waitForIdle(o)} : null,
       onHold: h => holdAfterFailure({...h, backupDir: txBackupDir, roots: plan.roots ?? []}),
@@ -221,7 +225,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
       let svc; try { svc = await services(); } catch { return defer('无法确认 ComfyUI 状态'); }
       if (svc.some(s => s.running && !s.owned)) return defer('ComfyUI 中有其他来源的任务或外部启动的服务（或无法确认），可能正在使用模型');
       // RV04：本应用启动但 HTTP 不通的实例：先按既有流程停止并等待真实退出，再处理文件
-      if (svc.some(s => s.state === 'unknown' && s.owned)) { try { await comfy.stop(); } catch (e) { return defer(`无法停止本应用启动的 ComfyUI：${e.message}`); } }
+      if (svc.some(s => s.state === 'unknown' && s.owned)) { try { await comfy.stop(configRepo.config.comfy); } catch (e) { return defer(`无法停止本应用启动的 ComfyUI：${e.message}`); } }
       for (const f of files) {
         const file = path.join(movesDir, f);
         const keep = (action, extra = {}) => { out.push({file: f, action, ...extra}); };
@@ -234,7 +238,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
           const ok = async p => has(p) && await hashFile(p) === j.sha256;
           const destOk = await ok(j.dest), tmpOk = await ok(j.tmp);
           const srcHas = has(j.src), srcSame = srcHas && await hashFile(j.src) === j.sha256;
-          // C05：tmp 只有内容被证明等于被移动文件（或在源完好时为不超过源大小的半成品）才可丢弃；不同内容的 tmp 一律保留
+          // 只有 hash 证明是被移动内容的 tmp 才可丢弃；大小不足不能证明它是本次移动的半成品。
           const dropTmp = () => { if (has(j.tmp) && tmpOk) fs.rmSync(j.tmp, {force: true}); };
           if (srcHas && !srcSame) {
             // 源路径出现了新内容：两份都保留
@@ -243,7 +247,7 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
             fs.writeFileSync(file, JSON.stringify({...j, conflict: reason}));
             keep('conflict', {src: j.src, dest: j.dest, reason}); continue;
           }
-          if (has(j.tmp) && !tmpOk && !(srcSame && fs.statSync(j.tmp).isFile() && fs.statSync(j.tmp).size <= fs.statSync(j.src).size)) { keep('needs-attention', {reason: '临时文件内容与移动记录不符，可能被其他程序替换，已保留现场。', tmp: j.tmp}); continue; }
+          if (has(j.tmp) && !tmpOk) { keep('needs-attention', {reason: '临时文件内容与移动记录不符，无法确认是中断副本还是其他程序的文件，已保留现场。', tmp: j.tmp}); continue; }
           if (srcSame && destOk) { dropTmp(); fs.rmSync(j.src); drop('completed', {dest: j.dest}); continue; }
           if (srcSame && !has(j.dest)) { if (has(j.tmp)) fs.rmSync(j.tmp, {force: true}); drop('rolled-back', {src: j.src}); continue; }
           if (srcSame) { keep('conflict', {src: j.src, dest: j.dest, reason: '目标路径有不同内容，两份都已保留。'}); continue; }
@@ -313,7 +317,23 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     'maintenance.pruneBackups': async () => { const list = planPrune(configRepo.config.maintenance?.keepBackups ?? 5); const moved = list.map(b => trash.move(b.dir, {kind: 'backup', note: b.createdAt})); return {moved: list.map(b => b.dir), to: trash.dir, items: moved.map(e => e.id)}; },
     // ----- R14：回收区（只管理本应用登记条目；永久清理需确认并逐项再核对） -----
     'trash.list': async () => { const items = trash.list(); return {items, bytes: items.reduce((n, e) => n + e.bytes, 0)}; },
-    'trash.restore': async id => trash.restore(id),
+    'trash.restore': async id => {
+      const entry = trash.list().find(e => e.id === id);
+      if (!entry) throw new AppError(CODES.NOT_FOUND, '回收条目不存在。');
+      if (entry.kind !== 'plugin') return trash.restore(id);
+      // 恢复插件同样会修改 ComfyUI 环境，必须复用安装/移除的锁、队列和服务保护。
+      const nodes = path.join(comfyRoot(), 'custom_nodes');
+      const parent = path.resolve(path.dirname(entry.origin));
+      if (![nodes, path.join(nodes, DISABLED_DIR)].some(p => path.resolve(p) === parent)) {
+        throw new AppError(CODES.INVALID_PATH, '该插件不属于当前配置的 ComfyUI，请切换到原环境后再恢复。');
+      }
+      let restored;
+      const r = await runTransaction({title: `恢复插件 ${path.basename(entry.origin)}`, kind: 'plugin-restore', roots: [nodes], requiredBytes: 0,
+        apply: async () => { restored = trash.restore(id); },
+        check: async () => fs.existsSync(entry.origin) && !fs.existsSync(entry.stored)});
+      if (r.status !== 'done') throw new AppError(r.error?.code ?? CODES.INVALID_STATE, r.error?.message ?? '恢复插件未完成。', {details: {transactionId: r.id, status: r.status}});
+      return restored;
+    },
     'trash.planPurge': async (opts = {}) => trash.planPurge({olderThanMs: opts.olderThanDays != null ? opts.olderThanDays * 86400000 : null, ids: opts.ids ?? null, isProtected: trashProtected}),
     'trash.purge': async (opts = {}) => { const plan = trash.planPurge({olderThanMs: opts.olderThanDays != null ? opts.olderThanDays * 86400000 : null, ids: opts.ids ?? null, isProtected: trashProtected}); return trash.purge(plan, {confirm: opts.confirm === true, isProtected: trashProtected}); },
     // ----- U06：执行更新 -----
@@ -371,14 +391,30 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
         try { await taskService?.hooks.waitForIdle({timeoutMs: 5000}); } catch { throw new AppError(CODES.INVALID_STATE, '有任务正在启动，请稍后再移动。'); }
         const svcNow = await services();
         if (svcNow.some(s => s.running && !s.owned)) throw new AppError(CODES.NOT_OWNED, 'ComfyUI 是外部启动的、正在执行其他来源的任务或无法确认状态，可能正在使用该模型；请先结束后再移动。');
-        if (svcNow.some(s => s.state === 'unknown' && s.owned)) await comfy.stop(); // RV04：HTTP 不通的本应用实例先停止并等待退出
+        if (svcNow.some(s => s.state === 'unknown' && s.owned)) await comfy.stop(configRepo.config.comfy); // RV04：HTTP 不通的本应用实例先停止并等待退出
         if (fs.existsSync(dest)) throw new AppError(CODES.CONFLICT, `目标已有同名文件：${dest}`);
         fs.mkdirSync(path.dirname(dest), {recursive: true});
         const tmp = `${dest}.yz-moving`;
         if (fs.existsSync(tmp)) throw new AppError(CODES.CONFLICT, `目标目录有未处理的临时文件：${tmp}，可能是上次中断的移动，请先在启动核对中处理。`);
-        // 同盘：link 到目标（目标已存在时失败，不覆盖）后删除源；不支持硬链接或跨盘时走复制校验
-        try { linkImpl(it.path, dest); fs.rmSync(it.path); lastScan = null; return {moved: dest, method: 'rename', referencesChanged: false}; }
+        // 同盘：link 到目标后核对两条路径仍指向同一普通文件，才删除源。
+        // 仅 link 失败可转复制；unlink 失败不能误入复制分支或覆盖已发布目标。
+        let linked = false;
+        try { linkImpl(it.path, dest); linked = true; }
         catch (e) { if (e.code === 'EEXIST') throw new AppError(CODES.CONFLICT, `目标已有同名文件：${dest}`); }
+        if (linked) {
+          let reason;
+          try {
+            const source = fs.lstatSync(it.path, {bigint: true}), target = fs.lstatSync(dest, {bigint: true});
+            if (!source.isFile() || !target.isFile() || source.ino === 0n || source.ino !== target.ino || source.dev !== target.dev) {
+              reason = '建立目标后源路径已变化或无法确认文件身份，已保留源和目标，请手动决定。';
+            } else fs.rmSync(it.path);
+          } catch (e) { reason = `目标已建立，但无法安全删除源文件，已保留现场：${e.message}`; }
+          lastScan = null;
+          if (!reason) return {moved: dest, method: 'rename', referencesChanged: false};
+          fs.mkdirSync(movesDir, {recursive: true});
+          fs.writeFileSync(path.join(movesDir, `${crypto.randomBytes(6).toString('hex')}.json`), JSON.stringify({src: it.path, dest, tmp, conflict: reason, at: now()}));
+          return {moved: dest, method: 'rename', status: 'conflict', reason, sourceKept: fs.existsSync(it.path), referencesChanged: false};
+        }
         fs.mkdirSync(movesDir, {recursive: true}); const journal = path.join(movesDir, `${crypto.randomBytes(6).toString('hex')}.json`);
         const srcStat = fs.statSync(it.path); const srcHash = await hashFile(it.path);
         const jrec = {src: it.path, dest, tmp, sha256: srcHash, size: srcStat.size, at: new Date().toISOString()};

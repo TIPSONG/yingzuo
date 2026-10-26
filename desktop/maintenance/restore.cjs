@@ -63,6 +63,11 @@ class RestoreEngine {
 
   async resume(id) {
     const j = this.load(id);
+    // 回退会把已切换的数据搬回现场；此后旧的 forward steps 不再描述磁盘状态。
+    // 不能再按这些完成标记向前恢复，必须继续同一次回退（兼容旧 journal 的回退痕迹）。
+    if (j.rollbackStartedAt || ['rolling-back', 'aborted'].includes(j.status) || j.items.some(i => i.rolledBack || i.carriedBack?.length)) {
+      throw new AppError(CODES.INVALID_STATE, '本次恢复已开始回退，不能继续向前恢复；请继续回退，完成后可重新选择备份。');
+    }
     if (j.status === 'done') return j;
     const rec = JSON.parse(fs.readFileSync(path.join(j.backupDir, 'backup.json'), 'utf8'));
     j.status = 'running'; this.save(j);
@@ -94,6 +99,7 @@ class RestoreEngine {
     const j = this.load(id);
     if (j.status === 'done') throw new AppError(CODES.INVALID_STATE, '恢复已完成，不能回退；可另行恢复到更早的备份。');
     let rec = null; try { rec = JSON.parse(fs.readFileSync(path.join(j.backupDir, 'backup.json'), 'utf8')); } catch { /* 备份不可读时只按 journal 记录搬回 */ }
+    j.rollbackStartedAt ??= this.now();
     j.status = 'rolling-back'; this.save(j);
     const freeName = base => { let p = base, n = 1; while (fs.existsSync(p)) p = `${base}-${n++}`; return p; };
     for (const item of [...j.items].reverse()) {

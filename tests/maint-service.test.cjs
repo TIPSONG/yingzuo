@@ -41,7 +41,7 @@ function setup(opt = {}) {
   const mk = () => createMaintenanceService({portCheck: opt.portCheck ?? (async () => ({reachable: false, code: 'ECONNREFUSED'})), db, layout, configRepo, locks, events, comfy, taskService, editor, linkImpl: opt.linkImpl, pool: opt.pool, fetchImpl: opt.fetchImpl ?? (async () => { throw new Error('offline'); })});
   const svc = mk();
   const reopen = mk;
-  return {base, root, ext, svc, db, calls, paused, layout, locks, reopen, taskService};
+  return {base, root, ext, svc, db, calls, paused, layout, locks, reopen, taskService, configRepo};
 }
 
 test('resources.scan/detail/references：引用来自草稿和任务快照', async () => {
@@ -165,6 +165,42 @@ test('R08 只能移动到同用途已登记目录；跨目录移动后原文件�
   assert.ok(!fs.existsSync(path.join(root, 'models', 'loras', 'style.safetensors')));
 });
 
+test('代码复核：同盘硬链接后源路径被替换，保留新源与已移动内容并报告冲突', async () => {
+  const original = Buffer.alloc(64, 1), replacement = Buffer.alloc(64, 2);
+  const {svc, root, ext, layout} = setup({linkImpl: (src, dest) => {
+    fs.linkSync(src, dest);
+    fs.renameSync(src, src + '.old');
+    fs.writeFileSync(src, replacement);
+  }});
+  const scan = await svc.methods['resources.scan']();
+  const lora = scan.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras');
+  const r = await svc.methods['resources.moveModel'](lora.id, path.join(ext, 'loras'));
+  assert.equal(r.status, 'conflict'); assert.equal(r.sourceKept, true);
+  assert.deepEqual(fs.readFileSync(path.join(root, 'models', 'loras', 'style.safetensors')), replacement);
+  assert.deepEqual(fs.readFileSync(r.moved), original);
+  assert.equal(fs.readdirSync(path.join(layout.root, 'model-moves')).length, 1);
+});
+
+test('代码复核：恢复回收区插件也必须取得环境锁并拒绝外部 ComfyUI', async () => {
+  const ctx = setup();
+  const entry = new (require('../desktop/maintenance/trash-store.cjs').TrashStore)({trashDir: ctx.layout.trash})
+    .move(path.join(ctx.root, 'custom_nodes', 'node-a'), {kind: 'plugin'});
+  const held = ctx.locks.environment.tryAcquire('another-maintenance');
+  try {
+    await assert.rejects(ctx.svc.methods['trash.restore'](entry.id), e => e.code === 'LOCKED');
+    assert.ok(fs.existsSync(entry.stored)); assert.ok(!fs.existsSync(entry.origin));
+  } finally { held(); }
+  const external = createMaintenanceService({db: ctx.db, layout: ctx.layout, locks: ctx.locks, events: {emit() {}},
+    configRepo: {config: {comfy: {root: ctx.root, url: 'http://127.0.0.1:1/', python: ''}}, derived: () => ({backups: path.join(ctx.base, 'backups')})},
+    comfy: {verifyOwned: async () => false}, taskService: ctx.taskService, fetchImpl: async () => new Response('{}')});
+  await assert.rejects(external.methods['trash.restore'](entry.id), e => e.code === 'NOT_OWNED');
+  assert.ok(fs.existsSync(entry.stored)); assert.ok(!fs.existsSync(entry.origin));
+  const restored = await ctx.svc.methods['trash.restore'](entry.id);
+  assert.equal(restored.id, entry.id); assert.ok(fs.existsSync(entry.origin));
+  assert.equal(ctx.locks.environment.locked, false);
+  assert.equal((await ctx.svc.methods['maintenance.transactions']()).find(t => t.scope === 'plugin-restore').phase, 'done');
+});
+
 test('U07 备份列表与保留：使用中/每个来源最近一份不清理', async () => {
   const {svc} = setup();
   for (let i = 0; i < 3; i++) assert.equal((await svc.methods['maintenance.createBackup']()).status, 'done');
@@ -202,17 +238,72 @@ function moveFixture(opt = {}) {
   const journal = (name, j) => fs.writeFileSync(path.join(moves, `${name}.json`), JSON.stringify(j));
   return {...ctx, r1, moves, h, mk, journal};
 }
-test('R06：跨盘移动中断后启动核对——目标完整则删源，否则删临时副本保留源', async () => {
+
+function ownedMaintenanceFixture({mismatch, offline = false} = {}) {
+  const ctx = moveFixture(), {ComfyProcessManager} = require('../desktop/services/comfy-process.cjs');
+  const cfg = ctx.configRepo.config.comfy; cfg.python = path.join(ctx.root, 'python.exe');
+  const registered = {...cfg}, calls = []; let alive = true;
+  const comfy = new ComfyProcessManager({registryFile: path.join(ctx.layout.root, 'services.json'), logsDir: ctx.layout.root,
+    aliveImpl: () => alive, identityImpl: async () => ({executable: registered.python, startTime: 'fixture-start'}),
+    killImpl: async () => { calls.push('kill'); alive = false; return true; }});
+  comfy.writeRegistry({services: {comfy: {pid: 98765, executable: registered.python, configuredExecutable: registered.python,
+    startTime: 'fixture-start', cwd: registered.root, url: registered.url}}});
+  if (mismatch === 'url') cfg.url = 'http://127.0.0.1:2/';
+  if (mismatch === 'root') { cfg.root = path.join(ctx.base, 'other-ComfyUI'); fs.mkdirSync(cfg.root); }
+  if (mismatch === 'python') cfg.python = path.join(ctx.root, 'other-python.exe');
+  const verify = comfy.verifyOwned.bind(comfy), stop = comfy.stop.bind(comfy);
+  comfy.verifyOwned = async expected => { calls.push({verify: expected && {...expected}}); return verify(expected); };
+  comfy.stop = async expected => { calls.push({stop: expected && {...expected}}); return stop(expected); };
+  comfy.ensureRunning = async () => { calls.push('start'); };
+  const svc = createMaintenanceService({db: ctx.db, layout: ctx.layout, configRepo: ctx.configRepo, locks: ctx.locks,
+    events: {emit() {}}, comfy, taskService: ctx.taskService,
+    portCheck: async () => ({reachable: false, code: 'ECONNREFUSED'}),
+    fetchImpl: async u => { if (offline) throw new Error('offline'); return new Response(JSON.stringify(String(u).endsWith('/queue') ? {queue_running: [], queue_pending: []} : {})); }});
+  const src = ctx.mk('original.safetensors', 'COPY'), dest = ctx.mk('moved.safetensors', 'COPY');
+  ctx.journal('move', {src, dest, tmp: dest + '.yz-moving', sha256: ctx.h('COPY')});
+  return {...ctx, svc, comfy, calls, src, cfg};
+}
+
+test('集成复核：维护、恢复和模型移动核对绑定当前配置，不停止旧配置的进程', async () => {
+  for (const mismatch of ['url', 'root', 'python']) {
+    const ctx = ownedMaintenanceFixture({mismatch});
+    const result = await ctx.svc.methods['maintenance.createBackup']();
+    assert.equal(result.status, 'blocked', mismatch); assert.equal(result.error.code, 'NOT_OWNED');
+    await assert.rejects(ctx.svc.methods['maintenance.resumeRestore']('missing'), e => e.code === 'NOT_OWNED');
+    assert.equal((await ctx.svc.recoverModelMoves())[0].action, 'deferred');
+    assert.ok(fs.existsSync(ctx.src)); assert.equal(ctx.comfy.record.pid, 98765);
+    assert.ok(!ctx.calls.includes('kill')); assert.ok(!ctx.calls.includes('start'));
+    assert.equal(ctx.locks.environment.locked, false);
+  }
+});
+
+test('集成复核：正确 owned 配置的维护、恢复及离线移动停止传递当前配置', async () => {
+  for (const operation of ['backup', 'restore', 'moves', 'move-new']) {
+    const ctx = ownedMaintenanceFixture({offline: operation.startsWith('move')});
+    if (operation === 'backup') assert.equal((await ctx.svc.methods['maintenance.createBackup']()).status, 'done');
+    if (operation === 'restore') await assert.rejects(ctx.svc.methods['maintenance.resumeRestore']('missing'), e => e.code === 'NOT_FOUND');
+    if (operation === 'moves') assert.equal((await ctx.svc.recoverModelMoves())[0].action, 'completed');
+    if (operation === 'move-new') {
+      const scan = await ctx.svc.methods['resources.scan']();
+      const model = scan.items.find(i => i.name === 'style.safetensors' && i.folder === 'loras');
+      assert.ok(fs.existsSync((await ctx.svc.methods['resources.moveModel'](model.id, path.join(ctx.ext, 'loras'))).moved));
+    }
+    const stops = ctx.calls.filter(c => c && typeof c === 'object' && Object.hasOwn(c, 'stop'));
+    assert.equal(stops.length, 1, operation); assert.deepEqual(stops[0].stop, ctx.cfg, operation);
+    assert.ok(ctx.calls.includes('kill')); assert.equal(ctx.locks.environment.locked, false);
+  }
+});
+test('R06：跨盘移动中断后启动核对——目标完整则删源，未证实身份的半成品保留待处理', async () => {
   const {svc, r1, moves, h, mk, journal} = moveFixture();
   const s1 = mk('s1.safetensors', 'AAA'), d1 = mk('d1.safetensors', 'AAA');
   journal('a', {src: s1, dest: d1, tmp: d1 + '.yz-moving', sha256: h('AAA')});
   const s2 = mk('s2.safetensors', 'BBB'), d2 = path.join(r1, 'd2.safetensors'), t2 = mk('d2.safetensors.yz-moving', 'BB');
   journal('b', {src: s2, dest: d2, tmp: t2, sha256: h('BBB')});
   const r = await svc.recoverModelMoves();
-  assert.deepEqual(r.map(x => x.action).sort(), ['completed', 'rolled-back']);
+  assert.deepEqual(r.map(x => x.action).sort(), ['completed', 'needs-attention']);
   assert.ok(!fs.existsSync(s1) && fs.existsSync(d1));
-  assert.ok(fs.existsSync(s2) && !fs.existsSync(t2));
-  assert.deepEqual(fs.readdirSync(moves), []);
+  assert.ok(fs.existsSync(s2) && fs.existsSync(t2));
+  assert.deepEqual(fs.readdirSync(moves), ['b.json']);
 });
 test('S04：源路径出现新内容（含同大小）——不删除、两份保留、标冲突且下次仍保留', async () => {
   const {svc, moves, h, mk, journal} = moveFixture();
@@ -274,6 +365,27 @@ test('S02：本应用启动的 ComfyUI 中有其他客户端任务——视为�
   assert.equal(r.status, 'blocked'); assert.match(r.error.message, /外部服务/);
 });
 
+test('代码复核：后端队列应答缺字段或含无法识别的任务时不能当成空队列', async () => {
+  for (const queue of [{}, {queue_running: [], queue_pending: null}, {queue_running: [[0]], queue_pending: []}, {queue_running: [], queue_pending: [{prompt_id: 'foreign'}]}]) {
+    const {svc, root, calls} = setup({verifyOwned: async () => true, fetchImpl: async u => new Response(JSON.stringify(String(u).endsWith('queue') ? queue : {}))});
+    const r = await svc.methods['resources.disablePlugin']('node-a');
+    assert.equal(r.status, 'blocked'); assert.equal(r.error.code, 'NOT_OWNED');
+    assert.deepEqual(calls, []); assert.ok(fs.existsSync(path.join(root, 'custom_nodes', 'node-a')));
+  }
+});
+
+test('代码复核：HTTPS 服务未显式配置端口时以443核对占用', async () => {
+  const ctx = setup(); let checkedPort;
+  const svc = createMaintenanceService({db: ctx.db, layout: ctx.layout, locks: ctx.locks, events: {emit() {}},
+    configRepo: {config: {comfy: {root: ctx.root, url: 'https://localhost/', python: ''}}, derived: () => ({backups: path.join(ctx.base, 'backups')})},
+    comfy: {verifyOwned: async () => false}, taskService: ctx.taskService,
+    portCheck: async (_host, port) => { checkedPort = port; return port === 443 ? {reachable: true} : {reachable: false, code: 'ECONNREFUSED'}; },
+    fetchImpl: async () => { throw new Error('TLS unavailable'); }});
+  const r = await svc.methods['resources.disablePlugin']('node-a');
+  assert.equal(checkedPort, 443); assert.equal(r.status, 'blocked'); assert.equal(r.error.code, 'NOT_OWNED');
+  assert.ok(fs.existsSync(path.join(ctx.root, 'custom_nodes', 'node-a')));
+});
+
 /* ---------- 第三轮 C02/C05 ---------- */
 const exdev = () => { throw Object.assign(new Error('cross-device'), {code: 'EXDEV'}); };
 test('C05：正常跨盘移动——复制期间源被替换则两份保留并记录冲突，不删除新源', async () => {
@@ -325,6 +437,17 @@ test('C05：启动核对——目标完整但 tmp 被替换为不同内容时保
   journal('a', {src: s, dest: d, tmp: t, sha256: h('AAAA')});
   const r = await svc.recoverModelMoves();
   assert.equal(r[0].action, 'needs-attention'); assert.ok(fs.existsSync(t) && fs.existsSync(s));
+});
+
+test('代码复核：短于源的未知临时文件也不能仅凭大小删除', async () => {
+  const {svc, h, mk, journal, moves} = moveFixture();
+  const src = mk('short-src.safetensors', 'AAAA'), dest = path.join(path.dirname(src), 'short-dest.safetensors');
+  const temp = mk('short-dest.safetensors.yz-moving', 'NEW');
+  journal('short', {src, dest, tmp: temp, sha256: h('AAAA')});
+  const r = await svc.recoverModelMoves();
+  assert.equal(r[0].action, 'needs-attention');
+  assert.equal(fs.readFileSync(temp, 'utf8'), 'NEW'); assert.equal(fs.readFileSync(src, 'utf8'), 'AAAA');
+  assert.equal(fs.readdirSync(moves).length, 1);
 });
 test('C02：apply 中途进程被结束——重启后从事务记录重建阻断、保留备份；未修改环境的事务取消登记', async () => {
   const {svc, db, reopen, paused, root} = setup();
