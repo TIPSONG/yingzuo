@@ -30,14 +30,20 @@ class ComfyProcessManager {
     if (!fs.existsSync(c.python)) throw new AppError(CODES.NOT_FOUND, `Python 不存在：${c.python}`);
     if (!fs.existsSync(main)) throw new AppError(CODES.NOT_FOUND, `ComfyUI 目录中没有 main.py：${c.root}`);
     const host = url.hostname === 'localhost' ? '127.0.0.1' : url.hostname.replace(/^\[|\]$/g, '');
-    const userArgs = c.extraArgs.filter(a => !/^--(listen|port)(=|$)/.test(a));
-    return {executable: c.python, args: [main, '--listen', host, '--port', String(url.port || 8188), ...userArgs], cwd: c.root};
+    const userArgs = [];
+    for (let i = 0; i < c.extraArgs.length; i++) {
+      const arg = c.extraArgs[i];
+      if (/^--(listen|port)=/.test(arg)) continue;
+      if (/^--(listen|port)$/.test(arg)) { if (c.extraArgs[i + 1] && !c.extraArgs[i + 1].startsWith('-')) i++; continue; }
+      userArgs.push(arg);
+    }
+    return {executable: c.python, args: [main, '--listen', host, '--port', String(url.port || 80), ...userArgs], cwd: c.root};
   }
   /** 已有正确服务就连接（external）；否则启动并等待真实就绪。 */
   async ensureRunning(config, {token, onProgress = () => {}} = {}) {
     const first = await this.probe(config.comfy.url);
     if (first.summary === 'ready' || first.summary === 'degraded') {
-      const owned = await this.verifyOwned();
+      const owned = await this.verifyOwned(config.comfy);
       return {ownership: owned ? 'owned' : 'external', probe: first, started: false};
     }
     if (first.summary === 'port-occupied') throw new AppError(CODES.SERVICE_IDENTITY, first.identity?.error || '端口被其他程序占用。', {details: first});
@@ -76,9 +82,12 @@ class ComfyProcessManager {
     throw new AppError(CODES.TIMEOUT, `等待 ComfyUI 就绪超时（${config.comfy.startTimeoutSec} 秒）。进程仍保留，可查看日志：${stderrFile}`, {details: {stdoutFile, stderrFile, last}});
   }
   /** 重新核实：进程存活、启动时间与可执行路径与登记一致。不只凭 PID 或进程名。 */
-  async verifyOwned() {
+  async verifyOwned({url, root, python} = {}) {
     const rec = this.record;
     if (!rec?.pid) return false;
+    if (url) { try { if (new URL(rec.url).href !== new URL(url).href) return false; } catch { return false; } }
+    if (root && !samePath(root, rec.cwd, this.platform)) return false;
+    if (python && !samePath(python, rec.configuredExecutable ?? rec.executable, this.platform)) return false;
     if (!this.aliveImpl(rec.pid)) return false;
     const now = await this.identityImpl(rec.pid, {platform: this.platform});
     if (!now) return false;
@@ -88,10 +97,12 @@ class ComfyProcessManager {
     return true;
   }
   /** 停止：只停核实过的 owned 实例；外部服务返回 NOT_OWNED。 */
-  async stop({graceMs = 10000} = {}) {
-    if (!(await this.verifyOwned())) {
+  async stop({graceMs = 10000, ...expected} = {}) {
+    if (!(await this.verifyOwned(expected))) {
       const rec = this.record;
-      if (rec) { const reg = this.readRegistry(); delete reg.services.comfy; reg.stale = [...(reg.stale ?? []), {...rec, droppedAt: new Date(this.now()).toISOString()}].slice(-20); this.writeRegistry(reg); }
+      // A configuration change does not invalidate a still-owned process at
+      // the old endpoint. Keep its record so switching back can manage it.
+      if (rec && !(await this.verifyOwned())) { const reg = this.readRegistry(); delete reg.services.comfy; reg.stale = [...(reg.stale ?? []), {...rec, droppedAt: new Date(this.now()).toISOString()}].slice(-20); this.writeRegistry(reg); }
       throw new AppError(CODES.NOT_OWNED, '当前 ComfyUI 不是本应用启动的实例（或无法核实），为安全起见不停止。');
     }
     const {pid} = this.record;
@@ -100,7 +111,7 @@ class ComfyProcessManager {
     let sent = false; try { sent = await this.killImpl(pid, {platform: this.platform}); } catch { sent = false; }
     let gone = await waitExit(sent ? graceMs : 0);
     if (!gone) {
-      if (!(await this.verifyOwned())) throw new AppError(CODES.NOT_OWNED, '强制停止前核对身份失败（进程可能已被替换），未强制停止。');
+      if (!(await this.verifyOwned(expected))) throw new AppError(CODES.NOT_OWNED, '强制停止前核对身份失败（进程可能已被替换），未强制停止。');
       let forced = false; try { forced = await this.killImpl(pid, {platform: this.platform, force: true}); } catch { forced = false; }
       gone = await waitExit(forced ? 5000 : 0);
     }

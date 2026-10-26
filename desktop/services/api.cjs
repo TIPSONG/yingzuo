@@ -18,8 +18,10 @@ const {prepareQuit: prepareQuitFlow} = require('./quit-flow.cjs');
 function createApi(ctx) {
   const {electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow, fetch: fetchImpl, root} = ctx;
   const credentials = ctx.credentials ?? new CredentialStore(path.join(layout.root, 'credentials.json'), electron.safeStorage);
-  const comfy = ctx.comfy ?? new ComfyProcessManager({registryFile: path.join(layout.root, 'services.json'), logsDir: layout.logs, probe: url => probeComfy(url, {fetchImpl})});
-  const lmFor = () => new LmStudioAdapter({cliPath: configRepo.config.lmstudio.cli, registryFile: path.join(layout.root, 'lmstudio.json')});
+  const probeComfyService = ctx.probeComfy ?? probeComfy, probeLmService = ctx.probeLmStudio ?? probeLmStudio;
+  const comfy = ctx.comfy ?? new ComfyProcessManager({registryFile: path.join(layout.root, 'services.json'), logsDir: layout.logs, probe: url => probeComfyService(url, {fetchImpl})});
+  const lmFor = ctx.lmFactory ?? (() => new LmStudioAdapter({cliPath: configRepo.config.lmstudio.cli, registryFile: path.join(layout.root, 'lmstudio.json')}));
+  const lmPort = () => Number(new URL(configRepo.config.lmstudio.url).port || 80);
   let lastStatus = null;
   let startGate = () => null;
   const hooks = ctx.taskService?.hooks ?? {activeTasks: () => [], waitForIdle: async () => {}, cancelActive: async () => {}, pauseSubmissions: () => () => {}};
@@ -27,16 +29,17 @@ function createApi(ctx) {
   async function serviceStatus() {
     const config = configRepo.config;
     let comfyProbe, lmProbe;
-    try { comfyProbe = await probeComfy(config.comfy.url, {fetchImpl, editorReady: {ready: editor.connected}}); }
+    try { comfyProbe = await probeComfyService(config.comfy.url, {fetchImpl, editorReady: {ready: editor.connected}}); }
     catch (e) { comfyProbe = {summary: 'config-error', error: e.message}; }
-    if (comfyProbe.summary === 'ready' || comfyProbe.summary === 'degraded') comfyProbe.ownership = (await comfy.verifyOwned()) ? 'owned' : 'external';
+    if (comfyProbe.summary === 'ready' || comfyProbe.summary === 'degraded') comfyProbe.ownership = (await comfy.verifyOwned(config.comfy)) ? 'owned' : 'external';
     if (comfyProbe.summary === 'ready') ctx.taskService?.warmObjectInfo?.().catch?.(() => {}); // RV02：连上即缓存节点定义（落盘），供首次保存识别敏感字段
     const lm = lmFor();
     const cli = await lm.detect();
-    try { lmProbe = await probeLmStudio(config.lmstudio.url, {fetchImpl, cli: {...cli, listLoaded: cli.available && cli.canListLoaded ? () => lm.listLoaded() : null}}); }
+    try { lmProbe = await probeLmService(config.lmstudio.url, {fetchImpl, cli: {...cli, listLoaded: cli.available && cli.canListLoaded ? () => lm.listLoaded() : null}}); }
     catch (e) { lmProbe = {summary: 'config-error', error: e.message}; }
     lmProbe.gemma = findModel(lmProbe.models, ['gemma-4', 'gemma']);
-    lmProbe.serverOwnership = lm.registry().serverOwned ? 'owned' : (lmProbe.api?.ok ? 'external' : null);
+    let lmOwned = false; try { lmOwned = lm.isServerOwned({port: lmPort()}); } catch { /* Invalid URL remains a settings error. */ }
+    lmProbe.serverOwnership = lmProbe.api?.ok ? (lmOwned ? 'owned' : 'external') : null;
     const label = {ready: '已就绪', degraded: '已连接（WebSocket 异常）', offline: '未运行', 'port-occupied': '端口被占用', 'config-error': '配置错误', 'api-ready': 'API 已就绪', 'app-only': '已安装，API 未启动'};
     lastStatus = {comfy: comfyProbe, lmstudio: lmProbe, summary: {comfy: label[comfyProbe.summary] ?? comfyProbe.summary, lmstudio: label[lmProbe.summary] ?? lmProbe.summary}};
     events.emit('services.status', null, lastStatus);
@@ -59,8 +62,10 @@ function createApi(ctx) {
      锁内重新核实服务归属与后端队列（有其他来源任务或无法确认时拒绝）→ 执行 → 释放租约与锁。 */
   async function backendForeignJobs() {
     const q = await fetchImpl(new URL('queue', configRepo.config.comfy.url), {signal: AbortSignal.timeout(3000)}).then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
-    const ids = [...(q.queue_running ?? []), ...(q.queue_pending ?? [])].map(i => i?.[1]).filter(Boolean);
-    return ids.filter(id => !ctx.taskService?.tasks?.byPromptId?.(id));
+    if (!Array.isArray(q?.queue_running) || !Array.isArray(q?.queue_pending) || [...q.queue_running, ...q.queue_pending].some(i => !Array.isArray(i) || typeof i[1] !== 'string' || !i[1])) throw new Error('后端队列格式无法确认');
+    // A known prompt ID may already be terminal in our DB while the backend
+    // still owns it. Any remaining backend work blocks destructive operations.
+    return [...q.queue_running, ...q.queue_pending].map(i => i[1]);
   }
   async function withEnvironmentGuard(name, fn, {force = false} = {}) {
     const release = locks.environment.tryAcquire(name);
@@ -78,15 +83,22 @@ function createApi(ctx) {
   }
   async function guardedServiceOp(name, fn, {allowExternal = false} = {}) {
     return withEnvironmentGuard(name, async () => {
-      let owned = false; try { owned = !!(await comfy.verifyOwned()); } catch { owned = false; }
+      let owned = false; try { owned = !!(await comfy.verifyOwned(configRepo.config.comfy)); } catch { owned = false; }
       if (!owned && !allowExternal) throw new AppError(CODES.NOT_OWNED, '当前 ComfyUI 不是本应用启动的实例（或无法核实），为安全起见不操作。');
       let foreign;
       try { foreign = await backendForeignJobs(); } catch (e) { throw new AppError(CODES.INVALID_STATE, `无法确认 ComfyUI 后端队列（${e.message}），为避免影响其他任务已停止操作。`); }
-      if (foreign.length) throw new AppError(CODES.INVALID_STATE, `ComfyUI 后端还有 ${foreign.length} 个其他来源（原生画布或其他程序）的任务，已阻止。`, {details: {foreign: foreign.length}});
+      if (foreign.length) throw new AppError(CODES.INVALID_STATE, `ComfyUI 后端还有 ${foreign.length} 个任务（含其他来源的任务），已阻止。`, {details: {foreign: foreign.length}});
       const r = await fn({owned});
       serviceStatus().catch(() => {});
       return r;
     });
+  }
+  async function assertLmStopIdle() {
+    const state = await probeComfyService(configRepo.config.comfy.url, {fetchImpl});
+    if (state.summary === 'offline' && state.port?.code === 'ECONNREFUSED') return;
+    if (!['ready', 'degraded'].includes(state.summary)) throw new AppError(CODES.INVALID_STATE, '无法确认绘图后端空闲，LM Studio API 保持运行。');
+    let jobs; try { jobs = await backendForeignJobs(); } catch { throw new AppError(CODES.INVALID_STATE, '无法确认绘图后端队列，LM Studio API 保持运行。'); }
+    if (jobs.length) throw new AppError(CODES.INVALID_STATE, '绘图后端仍有任务可能使用润色模型，LM Studio API 保持运行。');
   }
   const pickable = new Set(['comfy.root', 'comfy.python', 'comfy.workflowsDir', 'comfy.outputDir', 'comfy.inputDir', 'lmstudio.cli', 'paths.favorites', 'paths.downloads', 'paths.backups', 'gemma.patchFile']);
 
@@ -108,7 +120,7 @@ function createApi(ctx) {
     }, {owner: 'start-comfy', timeoutMs: 1000}),
     'services.stopComfy': async () => guardedServiceOp('stop-comfy', async ({owned}) => {
       if (!owned) throw new AppError(CODES.NOT_OWNED, '当前 ComfyUI 不是本应用启动的实例（或无法核实），为安全起见不停止。');
-      const result = await comfy.stop();
+      const result = await comfy.stop(configRepo.config.comfy);
       if (editor.connected) editor.disconnectEditor();
       return result;
     }),
@@ -117,17 +129,27 @@ function createApi(ctx) {
       if (!owned && confirmExternal !== true) throw new AppError(CODES.INVALID_STATE, '这是外部启动的 ComfyUI，释放显存会卸载它为其他程序加载的模型。需要确认后才执行。', {details: {needsConfirm: true}});
       return comfy.freeMemory(configRepo.config.comfy.url, fetchImpl);
     }, {allowExternal: true}),
-    'services.startLmServer': async () => {
+    'services.startLmServer': () => withEnvironmentGuard('start-lm-server', async () => {
+      if (editor.quitting) throw new AppError(CODES.INVALID_STATE, '正在保存并退出，请稍候。');
+      const held = startGate(); if (held) throw held;
+      if (configRepo.config.lmstudio.manageServer === false) throw new AppError(CODES.INVALID_STATE, 'LM Studio 服务管理已禁用，请在 LM Studio 中启动 API。');
       const lm = lmFor(); const cli = await lm.detect();
       if (!cli.available) throw new AppError(CODES.NOT_FOUND, `${cli.error} 也可以手动打开 LM Studio，在 Developer 页面启动 Server。`);
-      const status = lastStatus ?? await serviceStatus();
       const url = new URL(configRepo.config.lmstudio.url ?? 'http://127.0.0.1:1234');
-      const port = Number(url.port) || null;
-      const waitReady = async () => { for (let i = 0; i < 30; i++) { try { const r = await fetchImpl(new URL('models', url.href.replace(/\/?$/, '/')), {signal: AbortSignal.timeout(2000)}); if (r.ok) return true; } catch { /* 未就绪 */ } await new Promise(r => setTimeout(r, 1000)); } return false; };
-      const result = await lm.startServer({apiReachable: !!status.lmstudio?.api?.ok, port, waitReady});
+      const port = Number(url.port || 80);
+      // Re-probe at click time; a stale dashboard must not confer ownership on
+      // an external server that started since the previous status refresh.
+      const status = await probeLmService(url.href, {fetchImpl});
+      const waitReady = async () => { for (let i = 0; i < 30; i++) { try { const r = await probeLmService(url.href, {fetchImpl}); if (r.api?.ok) return true; } catch { /* 未就绪 */ } await new Promise(r => setTimeout(r, 1000)); } return false; };
+      const result = await lm.startServer({apiReachable: !!status.api?.ok, port, waitReady});
       await serviceStatus(); return result;
-    },
-    'services.stopLmServer': async () => { const lm = lmFor(); await lm.detect(); const r = await lm.stopServer({port: Number(new URL(configRepo.config.lmstudio.url ?? 'http://127.0.0.1:1234').port) || null}); await serviceStatus(); return r; },
+    }),
+    'services.stopLmServer': () => withEnvironmentGuard('stop-lm-server', async () => {
+      const lm = lmFor();
+      if (!lm.isServerOwned({port: lmPort()})) throw new AppError(CODES.NOT_OWNED, 'LM Studio 服务不是本应用当前配置启动的，保持运行。');
+      await assertLmStopIdle(); await lm.detect();
+      const r = await lm.stopServer({port: lmPort()}); await serviceStatus(); return r;
+    }),
     'services.logs': async () => ({comfy: comfy.logTail(), app: logger.tail(200)}),
     // ----- settings -----
     'settings.get': async () => ({...configRepo.snapshot(), dataRoot, locations: knownLocations(), credentials: credentials.status()}),
@@ -195,13 +217,13 @@ function createApi(ctx) {
         logger.warn('用户选择仍然退出，绘图和 LM Studio 服务保持运行');
       } else {
         try {
-          if (await comfy.verifyOwned()) {
+          if (await comfy.verifyOwned(configRepo.config.comfy)) {
             let foreign = null; try { foreign = await backendForeignJobs(); } catch (e) { logger.warn('退出时无法确认 ComfyUI 后端队列，保持运行', {error: e.message}); }
-            if (foreign && !foreign.length) await comfy.stop();
+            if (foreign && !foreign.length) await comfy.stop(configRepo.config.comfy);
             else if (foreign) logger.warn('退出时 ComfyUI 中还有其他来源任务，保持运行', {foreign: foreign.length});
           }
         } catch (e) { logger.warn('stop owned comfy failed', {error: e.message}); }
-        try { const lm = lmFor(); if (lm.registry().serverOwned) { await lm.detect(); await lm.stopServer(); } } catch (e) { logger.warn('stop owned lm server failed', {error: e.message}); }
+        try { const lm = lmFor(); if (lm.isServerOwned({port: lmPort()})) { await assertLmStopIdle(); await lm.detect(); await lm.stopServer({port: lmPort()}); } } catch (e) { logger.warn('stop owned lm server failed', {error: e.message}); }
       }
       return finalize();
     }, {force});
