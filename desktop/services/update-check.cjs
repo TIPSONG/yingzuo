@@ -49,11 +49,28 @@ async function checkEnvironment({comfyRoot, customNodesDir, fetchRemote, gitPath
   }
   return out;
 }
-/** U08：比较语义版本（忽略前缀 v 与预发布后缀的细分）。 */
+function parseVersion(value) {
+  const m = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(String(value));
+  if (!m) return null;
+  const pre = m[4]?.split('.') ?? [];
+  if (pre.some(id => /^0\d+$/.test(id))) return null;
+  return {core: m.slice(1, 4).map(BigInt), pre};
+}
+/** U08：正式版高于同版本预发布；构建元数据不影响升级顺序。 */
 function compareVersions(a, b) {
-  const p = v => String(v).replace(/^v/, '').split(/[.-]/).map(x => (/^\d+$/.test(x) ? Number(x) : x));
-  const [x, y] = [p(a), p(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) { const m = x[i] ?? 0, n = y[i] ?? 0; if (m === n) continue; if (typeof m === 'number' && typeof n === 'number') return m < n ? -1 : 1; return String(m) < String(n) ? -1 : 1; }
+  const x = parseVersion(a), y = parseVersion(b);
+  if (!x || !y) throw new AppError(CODES.INVALID_ARGUMENT, '发行版本须使用 major.minor.patch 格式，可带预发布标识。');
+  for (let i = 0; i < 3; i++) if (x.core[i] !== y.core[i]) return x.core[i] < y.core[i] ? -1 : 1;
+  if (!x.pre.length || !y.pre.length) return x.pre.length === y.pre.length ? 0 : x.pre.length ? -1 : 1;
+  for (let i = 0; i < Math.max(x.pre.length, y.pre.length); i++) {
+    const m = x.pre[i], n = y.pre[i];
+    if (m === n) continue;
+    if (m === undefined || n === undefined) return m === undefined ? -1 : 1;
+    const mn = /^\d+$/.test(m), nn = /^\d+$/.test(n);
+    if (mn && nn) return BigInt(m) < BigInt(n) ? -1 : 1;
+    if (mn !== nn) return mn ? -1 : 1;
+    return m < n ? -1 : 1;
+  }
   return 0;
 }
 async function checkAppRelease({currentVersion, repo = 'TIPSONG/yingzuo', channel = 'stable', fetchImpl = fetch}) {
@@ -61,9 +78,10 @@ async function checkAppRelease({currentVersion, repo = 'TIPSONG/yingzuo', channe
   const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases?per_page=10`, {headers: {accept: 'application/vnd.github+json'}, signal: AbortSignal.timeout(15000)});
   if (res.status === 404) return {currentVersion, latest: null, note: '发行来源不可访问（仓库可能是私有的）。请从开发者处获取安装包并手动升级。'};
   if (!res.ok) throw new AppError(CODES.SERVICE_UNAVAILABLE, `无法读取发行版本：HTTP ${res.status}`);
-  const list = (await res.json()).filter(r => !r.draft);
-  // U05：stable 只看正式版；beta 同时考虑预发布，取版本号最高者
-  const latest = channel === 'beta' ? [...list].sort((a, b) => compareVersions(b.tag_name, a.tag_name))[0] ?? null : list.find(r => !r.prerelease) ?? null;
+  const list = (await res.json()).filter(r => !r.draft && parseVersion(r.tag_name));
+  // 两种渠道都按版本顺序选择，避免新发布的旧维护版本遮住较新版本。
+  const candidates = channel === 'beta' ? list : list.filter(r => !r.prerelease && !parseVersion(r.tag_name).pre.length);
+  const latest = candidates.sort((a, b) => compareVersions(b.tag_name, a.tag_name))[0] ?? null;
   if (!latest) return {currentVersion, channel, latest: null, note: channel === 'beta' ? '还没有任何发行版本。' : '还没有正式发行版本。'};
   const assets = latest.assets.map(a => ({name: a.name, size: a.size, url: a.browser_download_url}));
   return {currentVersion, channel, latest: {version: latest.tag_name, prerelease: !!latest.prerelease, name: latest.name, notes: latest.body ?? '', publishedAt: latest.published_at, assets, hasChecksums: assets.some(a => a.name === 'SHA256SUMS.txt')}, updateAvailable: compareVersions(currentVersion, latest.tag_name) < 0, signed: false, note: '安装包未签名：请下载后核对校验值，再手动运行安装程序或替换便携版文件夹。'};
