@@ -152,8 +152,10 @@ function bridgeRuntime(operation, payload, app) {
     if (!item) return fail('GRAPH_NOT_FOUND', '找不到该子图。');
     const node = (item.graph.nodes ?? item.graph._nodes ?? []).find(n => String(n.id) === String(payload.nodeId));
     if (!node) return fail('NODE_NOT_FOUND', '节点不存在。');
-    if (scope.length && typeof app.canvas.setGraph === 'function') app.canvas.setGraph(item.graph);
-    else if (scope.length) return fail('SUBGRAPH_NAVIGATION_UNAVAILABLE', '当前前端不能直接打开子图，请手动进入子图后查看。');
+    if (scope.length || (app.canvas.graph ?? app.graph) !== item.graph) {
+      if (typeof app.canvas.setGraph === 'function') app.canvas.setGraph(item.graph);
+      else return fail('SUBGRAPH_NAVIGATION_UNAVAILABLE', '当前前端不能切换到目标画布，请手动进入对应画布后查看。');
+    }
     app.canvas.selectNode?.(node);
     app.canvas.centerOnNode?.(node);
     app.canvas.setDirty?.(true, true);

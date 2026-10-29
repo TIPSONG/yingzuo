@@ -259,13 +259,24 @@ async function newTab(title,graph,templateId=null,templateVersionId=null) {
   graph=resolveMem(graph);
   return changeWorkspace(()=>{workspace.activeId=Store.addTab(workspace,title,graph,templateId,templateVersionId).id;},true);
 }
+function secureApiForStorage(prompt) {
+  // API inputs already carry their field names. Reuse the same node policy
+  // without guessing widget positions or leaving an unprotected import archive.
+  const nodes=Object.entries(prompt).map(([id,node])=>({id,type:node.class_type,widgets_values:node.inputs}));
+  const safe=(graphPolicy??fallbackPolicy).secureWithValues({nodes});
+  const out=structuredClone(prompt);
+  for(const node of safe.graph.nodes)out[node.id].inputs=node.widgets_values;
+  return require('../../shared/secret-fields.cjs').redactValues(out,safe.values);
+}
 // E05：统一导入。UI 图直接成为新标签；API 图先保存原文件，再在新空白标签中用官方 loadApiJson 重建。
 async function importText(text,name){
   const info=ImportPipeline.analyze(text,{name});
   if(info.format==='ui')return {...await newTab(info.name,Store.validateGraph(info.graph)),importInfo:{format:'ui',nodeCount:info.nodeCount,notes:info.notes}};
+  info.apiPrompt=resolveMem(info.apiPrompt);
+  const archived=secureApiForStorage(info.apiPrompt);
   const folder=path.join(paths.root,'imports');fs.mkdirSync(folder,{recursive:true});
-  const original=path.join(folder,`${Date.now()}-${Store.safeName(info.name)}.api.json`);
-  fs.writeFileSync(original,JSON.stringify(info.apiPrompt,null,2));
+  const original=path.join(folder,`${Date.now()}-${randomUUID()}-${Store.safeName(info.name)}.api.json`);
+  fs.writeFileSync(original,JSON.stringify(archived,null,2),{flag:'wx'});
   if(!connected)throw new Error(`这是 API 格式工作流，需要连接 ComfyUI 才能用官方转换重建可视图。原文件已保存：${original}`);
   await newTab(`${info.name}（API 转换）`,{last_node_id:0,last_link_id:0,nodes:[],links:[],groups:[],config:{},extra:{},version:0.4});
   const tab=active();
@@ -393,8 +404,9 @@ const commands = {
     if(expectedRevision!==undefined&&expectedRevision!==(tab.revision??0))throw new Error('该标签已被修改（版本不一致），已拒绝写入，请重新检查。');
     const before=structuredClone(tab.graph),beforeRev=tab.revision;
     Store.setGraph(tab,structuredClone(graph));
-    try{persist();if(tab.id===workspace.activeId&&connected){lastSnapshot=null;loadedId=null;await loadActive();}layout();}
-    catch(error){tab.graph=before;tab.revision=beforeRev;try{persist();}catch{}throw error;}
+    let changedEditor=false;
+    try{persist();if(tab.id===workspace.activeId&&connected){changedEditor=true;lastSnapshot=null;loadedId=null;await loadActive();}layout();}
+    catch(error){tab.graph=before;tab.revision=beforeRev;if(changedEditor)disconnectEditor();try{persist();}catch{}layout();throw error;}
     notify({});return {state:state(),revision:tab.revision};
   },
   showEditor: async()=>{currentView='editor';layout();return {state:state(),snapshot:currentSnapshot()};},
