@@ -57,7 +57,7 @@ async function fixture(overrides={}) {
   }]));
   api.setBounds=()=>{};
   api.onStatus=callback=>{notify=callback;};
-  vm.runInNewContext(source,{window:{yingzuoDesktop:api},document,ResizeObserver:class{observe(){}}});
+  vm.runInNewContext(source,{window:{yingzuoDesktop:api,...(overrides.yingzuo?{yingzuo:overrides.yingzuo}:{})},document,ResizeObserver:class{observe(){}}});
   await flush();
   return {
     get, calls, notify:data=>notify(data),
@@ -87,7 +87,7 @@ test('parameter edits share the busy gate with navigation, save and repeated edi
   assert.equal(f.callsFor('activateTab').length,0);
   assert.equal(f.callsFor('save').length,0);
   assert.equal(f.callsFor('applyParameters').length,1);
-  assert.deepEqual(f.callsFor('applyParameters')[0].args,[[{nodeId:7,graphId:'root',widgetName:'text',value:'typed'}],'a']);
+  assert.deepEqual(f.callsFor('applyParameters')[0].args.slice(0,2),[[{nodeId:7,graphId:'root',widgetName:'text',value:'typed'}],'a']);assert.equal(f.callsFor('applyParameters')[0].args.length,3,'C06：带 expectedRevision');
   update.resolve(result('server normalized'));
   await pending;
   assert.match(f.get('#fields').innerHTML,/server normalized/);
@@ -175,4 +175,34 @@ test('background same-tab snapshots do not replace a form while the user is typi
   assert.doesNotMatch(f.get('#fields').innerHTML,/data-field=/);
   f.change('stale field');
   assert.equal(f.callsFor('applyParameters').length,0);
+});
+
+/* ---------- C06：表单面板缓存身份与写回入口 ---------- */
+const tplState=(vid,rev=1)=>state('a',{tabs:[{id:'a',title:'First',mode:'parameters',templateId:'tpl1',templateVersionId:vid,revision:rev},{id:'b',title:'Second',mode:'parameters'}]});
+const formData=(label,vid,rev=1)=>({ok:true,data:{tabId:'a',revision:rev,templateId:'tpl1',versionId:vid,pinned:true,fields:[{index:0,label,group:'采样',widgetType:'int',constraints:{min:1,max:30},status:'ok',target:{nodeId:7,graphId:null,widgetName:'steps'}}]}});
+const snapRoot=()=>({graph:{nodes:[{id:7}]},nodes:[{nodeId:7,graphId:'root',type:'K',title:'K',path:[],widgets:[{name:'steps',value:12,type:'number',editable:true}]}]});
+test('C06：同一标签保存新表单版本后面板立即失效重载；迟到的旧版本响应不覆盖新版',async()=>{
+  const pending=[];const formCalls=[];
+  const yingzuo={tasks:{form:tabId=>{formCalls.push(tabId);const d=deferred();pending.push(d);return d.promise;},applyFormField:async()=>({ok:true,data:{}})}};
+  const f=await fixture({yingzuo,boot:()=>Promise.resolve({ok:true,state:tplState('v1'),snapshot:snapRoot(),templates:[]})});
+  await flush();
+  assert.equal(formCalls.length,1);
+  f.notify({...tplState('v2'),snapshot:snapRoot()});await flush();
+  assert.equal(formCalls.length,2,'同一标签版本变化触发重新映射');
+  pending[1].resolve(formData('新标签名','v2'));await flush();
+  assert.match(f.get('#fields').innerHTML,/新标签名/);
+  pending[0].resolve(formData('旧标签名','v1'));await flush();
+  assert.match(f.get('#fields').innerHTML,/新标签名/);assert.doesNotMatch(f.get('#fields').innerHTML,/旧标签名/);
+});
+test('C06：表单字段越界前端即时拒绝；合法值经主进程表单入口写回（带表单版本与标签版本）',async()=>{
+  const applied=[];
+  const yingzuo={tasks:{form:async()=>formData('步数','v1',5),applyFormField:async(tabId,o)=>{applied.push({tabId,...o});return {ok:true,data:{}};}}};
+  const f=await fixture({yingzuo,boot:()=>Promise.resolve({ok:true,state:tplState('v1',5),snapshot:snapRoot(),templates:[]}),snapshot:()=>Promise.resolve({ok:true,state:tplState('v1',5),snapshot:snapRoot()})});
+  await flush();await flush();
+  assert.match(f.get('#fields').innerHTML,/步数/);
+  await f.change('99').pending;
+  assert.equal(applied.length,0);assert.match(f.get('#status').textContent,/超出允许范围/);
+  await f.change('20').pending;await flush();
+  assert.deepEqual(applied,[{tabId:'a',index:0,value:20,expectedRevision:5,versionId:'v1'}]);
+  assert.equal(f.callsFor('applyParameters').length,0,'表单字段不绕过主进程约束直接写画布');
 });

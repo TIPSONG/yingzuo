@@ -31,7 +31,8 @@ function accept(result,fields=true){
  const previousId=current.activeId, previousConnection=current.connected, previousView=current.currentView;
  if(result.state)current={...current,...result.state};
  const changed=previousId!==current.activeId||previousConnection!==current.connected||previousView!==current.currentView;
- if(changed)contextVersion++;
+ if(changed){contextVersion++;formPanel=null;Promise.resolve().then(loadFormPanel);}
+ else if(formStale())Promise.resolve().then(loadFormPanel); // C06：同一标签保存新表单/重绑/图变化后失效缓存并重新映射
  const invalid=!current.connected||!current.tabs.some(tab=>tab.id===current.activeId);
  if(Object.hasOwn(result,'snapshot')){
   const next=invalid?null:result.snapshot;
@@ -51,8 +52,42 @@ async function run(operation,message,fields=true,isCurrent=()=>true){
  finally{busy=false;renderState();}
 }
 async function requireConnection(){if(!current.connected)accept(await api.connect());}
+// S07：模板保存了自定义表单时，左侧正式参数面板按表单显示（中文名、分组、顺序），修改经同一桥接写回 UI 根图。
+// C06：面板缓存身份 {tabId, revision, templateId, templateVersionId}；任一变化即失效，只接受所属标签与版本的异步响应。
+let formPanel=null,formSeq=0,formKey=null;
+const keyOf=tab=>tab?`${tab.id}|${tab.revision??0}|${tab.templateId??''}|${tab.templateVersionId??''}`:null;
+function formStale(){const tab=(current.tabs||[]).find(t=>t.id===current.activeId);return !!tab?.templateId&&current.connected&&keyOf(tab)!==formKey;}
+async function loadFormPanel(){
+ const tabId=current.activeId,seq=++formSeq,tab=(current.tabs||[]).find(t=>t.id===tabId),key=keyOf(tab);
+ const had=!!formPanel;formPanel=null;formKey=key;
+ if(!tab?.templateId||!current.connected||!window.yingzuo?.tasks?.form){if(had)renderFields();return;}
+ try{const r=await window.yingzuo.tasks.form(tabId);const now=(current.tabs||[]).find(t=>t.id===tabId);if(seq!==formSeq||current.activeId!==tabId||keyOf(now)!==key)return;formPanel=r?.ok&&r.data?.fields?r.data:null;}catch{formPanel=null;}
+ renderFields();
+}
+function widgetFor(target){
+ const node=(snapshot?.nodes||[]).find(n=>String(n.nodeId)===String(target.nodeId)&&(target.graphId==null?!(n.path||[]).length:String(n.graphId)===String(target.graphId)));
+ return node&&node.widgets.find(w=>w.name===target.widgetName);
+}
+function renderFormPanel(){
+ const groups=[...new Set(formPanel.fields.map(f=>f.group||'参数'))];
+ return groups.map(g=>`<section class="node-fields"><h3>${escapeHtml(g)}</h3>${formPanel.fields.filter(f=>(f.group||'参数')===g).map(f=>{
+  const label=f.label||f.fieldName,w=f.target&&widgetFor(f.target);
+  if(!w||!w.editable)return `<label class="field"><span>${escapeHtml(label)}</span><span class="err">${escapeHtml(f.reason||f.panelReason||(w?'该参数已连线或只读，请在画布中编辑。':'未在当前画布中找到该参数，请刷新。'))}</span></label>`;
+  const index=fieldRefs.push({nodeId:f.target.nodeId,graphId:f.target.graphId,widgetName:f.target.widgetName,type:typeof w.value,value:w.value,form:{index:f.index,revision:formPanel.revision,versionId:formPanel.versionId??null,constraints:f.constraints||{},widgetType:f.widgetType,label}})-1;
+  const attrs=`data-field="${index}" aria-label="${escapeHtml(label)}"`,c=f.constraints||{};
+  let input;
+  if(typeof w.value==='boolean')input=`<input type="checkbox" ${attrs} ${w.value?'checked':''}>`;
+  else if(Array.isArray(w.options?.values)&&w.options.values.length)input=`<select ${attrs}>${w.options.values.map(v=>`<option value="${escapeHtml(v)}" ${String(v)===String(w.value)?'selected':''}>${escapeHtml(v)}</option>`).join('')}</select>`;
+  else if(Array.isArray(c.values)&&c.values.length)input=`<select ${attrs}>${c.values.map(v=>`<option value="${escapeHtml(v)}" ${String(v)===String(w.value)?'selected':''}>${escapeHtml(v)}</option>`).join('')}</select>`;
+  else if(typeof w.value==='number')input=`<input type="number" step="${escapeHtml(c.step??w.options?.step??'any')}" ${c.min!==undefined?`min="${escapeHtml(c.min)}"`:''} ${c.max!==undefined?`max="${escapeHtml(c.max)}"`:''} ${attrs} value="${w.value}">`;
+  else if(f.widgetType==='text'||c.multiline||w.options?.multiline||String(w.value).length>100)input=`<textarea ${attrs}>${escapeHtml(w.value)}</textarea>`;
+  else input=`<input type="text" ${attrs} value="${escapeHtml(w.value)}">`;
+  return `<label class="field"><span>${escapeHtml(label)}</span>${input}${f.help?`<small class="muted">${escapeHtml(f.help)}</small>`:''}</label>`;
+ }).join('')}</section>`).join('')+`<p class="muted">按模板表单显示${formPanel.pinned?'（固定到该标签打开时的模板版本）':''}；修改直接写入画布，运行、快捷键、批量与润色使用同一份内容。</p>`;
+}
 function renderFields(){
  fieldRefs=[];
+ if(formPanel&&formPanel.tabId===current.activeId&&snapshot){$('#fields').innerHTML=renderFormPanel();return;}
  const nodes=(snapshot?.nodes||[]).filter(node=>node.widgets.some(widget=>widget.editable));
  $('#fields').innerHTML=nodes.map(node=>{
   const fields=node.widgets.filter(widget=>widget.editable).map(widget=>{
@@ -82,17 +117,24 @@ $('#save').addEventListener('click',()=>run(()=>api.save(),'当前工作区已�
 $('#export').addEventListener('click',()=>run(()=>api.exportWorkflow(),'JSON 副本已导出。',false));
 $('#import').addEventListener('click',()=>run(async()=>{await requireConnection();return api.importWorkflow();},'已导入工作流。'));
 $('#blank').addEventListener('click',()=>run(async()=>{await requireConnection();return api.newBlank();},'已创建零节点工作副本。'));
-$('#duplicate').addEventListener('click',()=>run(()=>api.duplicateTab(),'已创建独立副本。'));
+$('#duplicate').addEventListener('click',()=>{const from=current.activeId;run(async()=>{const r=await api.duplicateTab();const to=r?.state?.activeId;if(from&&to&&to!==from)await window.yingzuo?.tasks?.copyRefs(from,to);return r;},'已创建独立副本（含参考图选择）。');});
 $('#preview').addEventListener('click',()=>run(()=>api.showPreview(),'当前是 A 测界面，点击“创作工作区”返回真实编辑器。',false));
 $('#editor-home').addEventListener('click',()=>run(()=>api.showEditor(),'已返回桌面创作工作区。'));
-$('#refresh-fields').addEventListener('click',()=>run(()=>api.snapshot(),'已从真实画布读取参数。'));
+$('#refresh-fields').addEventListener('click',()=>run(()=>api.snapshot(),'已从真实画布读取参数。').then(loadFormPanel));
 $('#fields').addEventListener('change',async event=>{
  const input=event.target.closest('[data-field]');if(!input)return;
  const ref=fieldRefs[Number(input.dataset.field)];if(!ref||busy)return;
  const originTabId=current.activeId, originVersion=contextVersion;
  const value=ref.type==='boolean'?input.checked:ref.type==='number'?Number(input.value):input.value;
  if(ref.type==='number'&&(!input.value.trim()||!Number.isFinite(value))){input.value=String(ref.value);status('请输入有效数字。',true);return;}
- return run(()=>api.applyParameters([{nodeId:ref.nodeId,graphId:ref.graphId,widgetName:ref.widgetName,value}],originTabId),
+ const tabRevision=(current.tabs||[]).find(t=>t.id===originTabId)?.revision;
+ if(ref.form){
+  // C06：表单字段经主进程入口写回（版本、映射、约束在主进程再次校验）；前端只做即时提示
+  const c=ref.form.constraints;if(typeof value==='number'&&((c.min!==undefined&&value<c.min)||(c.max!==undefined&&value>c.max)||(['int','seed'].includes(ref.form.widgetType)&&!Number.isInteger(value)))){input.value=String(ref.value);status(`“${ref.form.label}”超出允许范围或不是整数。`,true);return;}
+  return run(async()=>{const r=await window.yingzuo.tasks.applyFormField(originTabId,{index:ref.form.index,value,expectedRevision:ref.form.revision,versionId:ref.form.versionId});if(!r?.ok)throw new Error(r?.error?.message||'表单写入被拒绝，请刷新表单。');return api.snapshot();},
+   '参数已按表单写入画布，草稿已保存。',true,()=>current.activeId===originTabId&&current.connected&&contextVersion===originVersion).finally(loadFormPanel);
+ }
+ return run(()=>api.applyParameters([{nodeId:ref.nodeId,graphId:ref.graphId,widgetName:ref.widgetName,value}],originTabId,tabRevision),
   '参数已同步到真实画布，草稿已保存。',true,
   ()=>current.activeId===originTabId&&current.connected&&contextVersion===originVersion);
 });
