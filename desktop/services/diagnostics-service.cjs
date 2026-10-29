@@ -67,7 +67,12 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
   const cacheFile = path.join(layout.root, 'diagnostics-cache.json');
   const undo = new Map(); // tabId → [{before, revisionAfter, change}]
   let lastCatalog = null;
-  const tabGraph = tabId => editor.enqueue(() => editor.commands.tabGraph(tabId));
+  // Keep graph and revision in the same editor turn. Network catalog collection
+  // may finish after the user has edited the tab again.
+  const tabGraph = tabId => editor.enqueue(async () => {
+    const t = await editor.commands.tabGraph(tabId);
+    return {...t, revision: editor.workspace?.tabs?.find(x => x.id === t.tabId)?.revision ?? null};
+  });
   async function catalog(refresh = false) {
     if (!lastCatalog || refresh) lastCatalog = await collectCatalog({client: client(), fetchImpl, lmUrl: configRepo.config.lmstudio.url, cacheFile});
     return lastCatalog;
@@ -75,7 +80,7 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
   async function analyse(tabId, refresh) {
     const [t, cat] = [await tabGraph(tabId), await catalog(refresh)];
     const result = Compat.analyse(t.graph, cat);
-    return {tabId: t.tabId, revision: (editor.workspace?.tabs?.find(x => x.id === t.tabId)?.revision) ?? null, ...result, catalog: {sources: cat.sources, checkedAt: cat.checkedAt, nodeTypes: cat.nodeTypes.length, models: cat.models.length, plugins: cat.plugins}};
+    return {tabId: t.tabId, revision: t.revision, ...result, catalog: {sources: cat.sources, checkedAt: cat.checkedAt, nodeTypes: cat.nodeTypes.length, models: cat.models.length, plugins: cat.plugins}};
   }
   const methods = {
     'templates.diagnose': (tabId, {refresh = false} = {}) => analyse(tabId, refresh),
@@ -83,12 +88,17 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
     /** T07：应用单个候选（单字段），记录撤销信息并自动复查。 */
     'templates.applyFix': async (tabId, issueKey, candidateId, expectedRevision) => {
       const t = await tabGraph(tabId);
+      if (expectedRevision !== undefined && expectedRevision !== t.revision) throw new AppError(CODES.CONFLICT, '标签版本不一致，请重新诊断后再修复。');
       const cat = await catalog();
       let plan, next;
       try { plan = Compat.plan(t.graph, cat, issueKey, candidateId); next = Compat.patch(t.graph, plan.path, plan.before, plan.after); }
       catch (e) { throw new AppError(CODES.CONFLICT, e.message); }
-      const r = await editor.enqueue(() => editor.commands.replaceGraph(t.tabId, next, expectedRevision));
-      const stack = undo.get(t.tabId) ?? []; stack.push({before: t.graph, revisionAfter: r.revision, change: plan}); undo.set(t.tabId, stack.slice(-20));
+      const r = await editor.enqueue(() => editor.commands.replaceGraph(t.tabId, next, t.revision));
+      const prior = undo.get(t.tabId) ?? [];
+      // A user edit between fixes is a history boundary: undoing through it
+      // would restore an older whole graph and discard that edit.
+      const stack = prior.at(-1)?.revisionAfter === t.revision ? prior : [];
+      stack.push({before: t.graph, revisionBefore: t.revision, revisionAfter: r.revision, change: plan}); undo.set(t.tabId, stack.slice(-20));
       return {applied: plan, recheck: await analyse(t.tabId, false), canUndo: true};
     },
     'templates.undoFix': async tabId => {
@@ -96,9 +106,14 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
       const stack = undo.get(id) ?? [];
       const last = stack.at(-1);
       if (!last) throw new AppError(CODES.NOT_FOUND, '没有可撤销的修复。');
-      try { await editor.enqueue(() => editor.commands.replaceGraph(id, last.before, last.revisionAfter)); }
+      let restored;
+      try { restored = await editor.enqueue(() => editor.commands.replaceGraph(id, last.before, last.revisionAfter)); }
       catch (e) { throw new AppError(CODES.CONFLICT, `修复后标签又被修改过，不能直接撤销：${e.message}`); }
       stack.pop();
+      if (stack.length) {
+        if (stack.at(-1).revisionAfter === last.revisionBefore) stack.at(-1).revisionAfter = restored.revision;
+        else stack.length = 0;
+      }
       return {undone: last.change, recheck: await analyse(id, false), canUndo: stack.length > 0};
     },
     'templates.exportFixed': async tabId => {

@@ -20,24 +20,28 @@ const MODEL_EXT = new Set(['.ckpt', '.pt', '.pt2', '.bin', '.pth', '.safetensors
 /** 解析 extra_model_paths.yaml 常见两级结构（无需完整 YAML 库）。 */
 function parseExtraModelPaths(text, yamlDir) {
   const out = {};
-  let section = null, base = null, key = null;
+  const sections = [];
+  let section = null, key = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.replace(/\s+#.*$/, '');
     if (!line.trim() || line.trim().startsWith('#')) continue;
     const indent = line.match(/^ */)[0].length;
     const m = /^\s*([\w.-]+):\s*(.*)$/.exec(line);
-    if (indent === 0 && m) { section = m[1]; base = null; key = null; continue; }
+    if (indent === 0 && m) { section = {base: null, paths: []}; sections.push(section); key = null; continue; }
     if (!section) continue;
     if (m && indent > 0) {
       const [, k, v] = m;
       const val = v.replace(/^["'|]|["']$/g, '').trim();
-      if (k === 'base_path') { base = path.resolve(yamlDir, val); continue; }
-      if (k === 'is_default') continue;
+      if (k === 'base_path') { section.base = path.resolve(yamlDir, val); key = null; continue; }
+      if (k === 'is_default') { key = null; continue; }
       key = k;
       if (val) for (const p of val.split(/\s*,\s*/)) add(k, p);
     } else if (key) add(key, line.trim());
   }
-  function add(k, p) { if (!p) return; (out[k] ??= []).push(path.resolve(base ?? yamlDir, p)); }
+  // ComfyUI reads base_path before iterating folder entries; YAML key order
+  // must not change the directories a section refers to.
+  for (const s of sections) for (const {k, p} of s.paths) (out[k] ??= []).push(path.resolve(s.base ?? yamlDir, p));
+  function add(k, p) { if (p) section.paths.push({k, p}); }
   return out;
 }
 
