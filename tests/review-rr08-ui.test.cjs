@@ -33,6 +33,19 @@ test('RR08: an explicit empty array renders the actual empty state without seede
   assert.match(await page.$eval('#as-grid', el => el.textContent), /还没有作品/);
   assert.equal(await page.$$eval('#as-grid .asset-card', cards => cards.length), 0);
 });
+
+test('Issue 5: favorites use saved-copy IDs for thumbnails and viewer when source assets are missing', {skip}, async t => {
+  const {page, shots} = await browserFixture(t, {favoriteSourcesMissing: true});
+  await shots.prepareScenario(page, 'favorites');
+  assert.equal(await page.$$eval('#as-board .cell img', images => images.filter(i => i.naturalWidth > 0).length), 2);
+  const ref = await page.$eval('[data-fav-thumb]', el => el.dataset.favThumb);
+  assert.match(ref, /^favorite:/);
+  await page.click('[data-fav-thumb]'); await shots.waitReady(page, 'assets-viewer');
+  assert.equal(await page.$eval('.viewer [data-v="fav"]', el => el.disabled), true);
+  const calls = await page.evaluate(() => window.__yzCalls.filter(c => ['assets.get', 'assets.thumbnail'].includes(c[0])));
+  assert.ok(calls.some(c => c[0] === 'assets.get' && c[1][0] === ref));
+  await shots.assertNoErrors(page);
+});
 test('RR08: recycling and application-backup handlers register without an out-of-scope startup error', {skip}, async t => {
   const {page, shots} = await browserFixture(t);
   await shots.prepareScenario(page, 'resources');

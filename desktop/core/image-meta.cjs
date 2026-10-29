@@ -19,6 +19,36 @@ const shareSupport = format => SHARE_FORMATS.includes(format)
   : {supported: false, reason: `暂不能可靠清除 ${format} 格式的元数据，已禁用分享副本导出（可用原图导出）。`};
 const bad = msg => new AppError(CODES.UNSUPPORTED, `文件结构无法可靠解析：${msg}，未生成分享副本。`);
 
+// PNG/WebP 也可能依赖 Exif 方向。保留最小方向标签，移除原 Exif 的提示词、GPS、作者等内容。
+function exifOrientation(data) {
+  const t = data.subarray(data.toString('latin1', 0, 6) === 'Exif\0\0' ? 6 : 0);
+  if (t.length < 8) return null;
+  const order = t.toString('latin1', 0, 2), le = order === 'II';
+  if (!le && order !== 'MM') return null;
+  const u16 = o => le ? t.readUInt16LE(o) : t.readUInt16BE(o), u32 = o => le ? t.readUInt32LE(o) : t.readUInt32BE(o);
+  if (u16(2) !== 42) return null;
+  const ifd = u32(4); if (ifd + 2 > t.length) return null;
+  for (let i = 0, n = u16(ifd); i < n; i++) {
+    const e = ifd + 2 + i * 12; if (e + 12 > t.length) return null;
+    if (u16(e) === 0x0112 && u16(e + 2) === 3 && u32(e + 4) === 1) {
+      const value = u16(e + 8); return value >= 1 && value <= 8 ? value : null;
+    }
+  }
+  return null;
+}
+function orientationExif(orientation) {
+  const t = Buffer.alloc(26); t.write('II'); t.writeUInt16LE(42, 2); t.writeUInt32LE(8, 4);
+  t.writeUInt16LE(1, 8); t.writeUInt16LE(0x0112, 10); t.writeUInt16LE(3, 12); t.writeUInt32LE(1, 14); t.writeUInt16LE(orientation, 18);
+  return t;
+}
+function pngChunk(type, data) {
+  const result = Buffer.alloc(data.length + 12); result.writeUInt32BE(data.length); result.write(type, 4, 'latin1'); data.copy(result, 8);
+  result.writeUInt32BE(zlib.crc32(result.subarray(4, data.length + 8)), data.length + 8); return result;
+}
+function webpChunk(type, data) {
+  const result = Buffer.alloc(8 + data.length + (data.length & 1)); result.write(type, 0, 'latin1'); result.writeUInt32LE(data.length, 4); data.copy(result, 8); return result;
+}
+
 // ---------- PNG ----------
 function pngChunks(buf) {
   if (detectFormat(buf) !== 'png') throw bad('不是 PNG');
@@ -58,6 +88,7 @@ function stripPng(buf) {
   const kept = [PNG_SIG];
   for (const c of chunks) {
     if (PNG_KEEP.has(c.type)) kept.push(buf.subarray(c.start, c.end));
+    else if (c.type === 'eXIf' && exifOrientation(c.data) > 1) { kept.push(pngChunk('eXIf', orientationExif(exifOrientation(c.data)))); removed.push('eXIf（仅保留显示方向）'); }
     else if (/^[A-Z]/.test(c.type)) throw bad(`未知关键块 ${c.type}`);
     else removed.push(c.type);
   }
@@ -165,10 +196,13 @@ const WEBP_KEEP = new Set(['VP8 ', 'VP8L', 'VP8X', 'ALPH', 'ANIM', 'ANMF', 'ICCP
 function stripWebp(buf) {
   const chunks = webpChunks(buf), parts = [], removed = [];
   if (!chunks.some(c => ['VP8 ', 'VP8L', 'ANMF'].includes(c.type))) throw bad('WebP 缺少图像数据');
+  const orientation = chunks.filter(c => c.type === 'EXIF').map(c => exifOrientation(c.data)).find(v => v > 1);
+  let keptOrientation = false;
   for (const c of chunks) {
+    if (c.type === 'EXIF' && orientation && !keptOrientation) { parts.push(webpChunk('EXIF', orientationExif(orientation))); removed.push('EXIF（仅保留显示方向）'); keptOrientation = true; continue; }
     if (!WEBP_KEEP.has(c.type)) { removed.push(c.type.trim()); continue; }
     let piece = Buffer.from(buf.subarray(c.start, c.end));
-    if (c.type === 'VP8X') piece[8] &= ~(0x08 | 0x04); // 清除 EXIF、XMP 标志位
+    if (c.type === 'VP8X') { piece[8] &= ~(0x08 | 0x04); if (orientation) piece[8] |= 0x08; } // 只保留最小 Exif 方向标志，清除 XMP
     parts.push(piece);
   }
   const body = Buffer.concat(parts), header = Buffer.alloc(12);

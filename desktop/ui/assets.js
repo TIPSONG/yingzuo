@@ -38,7 +38,7 @@ async function loadBoard() {
     const byId = new Map(r.items.map(i => [i.id, i]));
     q('#as-count').textContent = `收藏 ${r.total} 张${r.items.some(i => i.broken) ? `（${r.items.filter(i => i.broken).length} 张收藏文件丢失）` : ''}`;
     board.style.height = `${lay.height}px`;
-    board.innerHTML = lay.cells.map(c => { const f = byId.get(c.id); return `<div class="cell" data-cell="${esc(c.id)}" title="${esc(f.storedPath)}${f.sourceMissing ? '（原图已删除，收藏副本仍在）' : ''}"><div class="fill" data-fav-thumb="${esc(f.assetId ?? '')}"></div><button data-unfav="${esc(f.id)}">取消收藏</button></div>`; }).join('') || '<div class="empty-state"><h3>还没有收藏</h3><p>在作品查看器中点“收藏”。</p></div>';
+    board.innerHTML = lay.cells.map(c => { const f = byId.get(c.id); return `<div class="cell" data-cell="${esc(c.id)}" title="${esc(f.storedPath)}${f.sourceMissing ? '（原图已删除，收藏副本仍在）' : ''}"><div class="fill" data-fav-thumb="${esc(`favorite:${f.id}`)}"></div><button data-unfav="${esc(f.id)}">取消收藏</button></div>`; }).join('') || '<div class="empty-state"><h3>还没有收藏</h3><p>在作品查看器中点“收藏”。</p></div>';
     // CSP 禁止内联 style 属性：位置用 CSSOM 设置
     const cells = new Map(lay.cells.map(c => [c.id, c]));
     for (const el of board.querySelectorAll('[data-cell]')) { const c = cells.get(el.dataset.cell); Object.assign(el.style, {left: `${c.x}px`, top: `${c.y}px`, width: `${c.width}px`, height: `${c.height}px`}); }
@@ -61,7 +61,7 @@ async function openViewer(id) {
     ${g.seed != null ? `<p>seed：${esc(String(g.seed))}</p>` : ''}${g.checkpoints.length ? `<p>模型：${g.checkpoints.map(esc).join('、')}</p>` : ''}
     ${a.task ? `<p>来自任务 ${esc(a.task.id)}（${esc(a.task.state ?? '记录缺失')}）</p>` : ''}
     ${a.missingFields.length ? `<p class="muted">缺少：${a.missingFields.map(esc).join('、')}（如实显示，不推测）</p>` : ''}${a.readError ? `<p class="err">${esc(a.readError)}</p>` : ''}
-    <div class="actions"><button data-v="fav" class="primary">收藏</button><button data-v="open">用系统程序打开</button><button data-v="reveal">在文件夹中显示</button><button data-v="export">导出原图…</button><button data-v="share" ${share.supported ? '' : `disabled title="${esc(share.reason ?? '')}"`}>导出分享副本…</button><button data-v="close">关闭</button></div>
+    <div class="actions"><button data-v="fav" class="primary" ${a.favoriteId ? 'disabled' : ''}>${a.favoriteId ? '已收藏' : '收藏'}</button><button data-v="open">用系统程序打开</button><button data-v="reveal">在文件夹中显示</button><button data-v="export">导出原图…</button><button data-v="share" ${share.supported ? '' : `disabled title="${esc(share.reason ?? '')}"`}>导出分享副本…</button><button data-v="close">关闭</button></div>
     <p class="muted">滚轮缩放 · 拖动平移 · 0 适应 · 1 原始比例 · Esc 关闭</p>`;
   await modal(`<div class="viewer"><div class="stage">${url ? `<img alt="" src="${url}" draggable="false">` : '<span class="muted">无法预览</span>'}</div><div class="meta">${meta}</div></div>`, (back, done) => {
     const img = back.querySelector('.stage img'), stage = back.querySelector('.stage');

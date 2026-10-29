@@ -172,9 +172,18 @@ class AssetIndex {
   /** 缩略图缓存：键 = 路径 + mtime + 大小 + 尺寸；源文件变化后自动失效。
    *  S09：有 WorkerPool 时在 worker 中由 sharp 生成；同一键并发请求去重；临时文件写完再原子改名；可用 signal 取消。 */
   async thumbnail(id, {size = 256, signal = null} = {}) {
-    size = [128, 256, 512, 1024].includes(size) ? size : 256;
     const r = this.db.get('SELECT * FROM assets WHERE id = ?', id);
     if (!r) throw new AppError(CODES.NOT_FOUND, '作品不在索引中。');
+    return this._thumbnailRecord(r, {size, signal});
+  }
+  /** 已由服务层核对登记关系的收藏副本，不插入普通作品索引。 */
+  async thumbnailFile(file, opts = {}) {
+    let st; try { st = fs.statSync(file); } catch { throw new AppError(CODES.NOT_FOUND, `收藏副本已不存在：${file}`); }
+    if (!st.isFile()) throw new AppError(CODES.INVALID_PATH, '收藏副本不是文件。');
+    return this._thumbnailRecord({canonical_path: file, kind: kindOf(path.extname(file).toLowerCase()), mtime: st.mtimeMs, file_size: st.size}, opts);
+  }
+  async _thumbnailRecord(r, {size = 256, signal = null} = {}) {
+    size = [128, 256, 512, 1024].includes(size) ? size : 256;
     if (r.kind !== 'image') throw new AppError(CODES.UNSUPPORTED, '该类型没有缩略图。');
     if (!this.pool && !this.sharp) throw new AppError(CODES.UNSUPPORTED, '缩略图组件不可用（sharp 未加载）。');
     const key = crypto.createHash('sha1').update(`${r.canonical_path}|${r.mtime}|${r.file_size}|${size}`).digest('hex');
@@ -182,7 +191,7 @@ class AssetIndex {
     if (fs.existsSync(target)) return {path: target, cached: true};
     if (this.thumbJobs.has(key)) return this.thumbJobs.get(key);
     const job = (async () => {
-      if (!fs.existsSync(r.canonical_path)) { this.db.run('UPDATE assets SET missing = 1 WHERE id = ?', id); throw new AppError(CODES.NOT_FOUND, `原图已不存在：${r.canonical_path}`); }
+      if (!fs.existsSync(r.canonical_path)) { if (r.id) this.db.run('UPDATE assets SET missing = 1 WHERE id = ?', r.id); throw new AppError(CODES.NOT_FOUND, `原图已不存在：${r.canonical_path}`); }
       fs.mkdirSync(path.dirname(target), {recursive: true});
       const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
       const workerArgs = {src: r.canonical_path, tmp, size};
