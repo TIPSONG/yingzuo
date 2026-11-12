@@ -79,7 +79,7 @@ node --test tests/workflow-import.test.cjs tests/compatibility.test.cjs
 默认执行 19 项便携测试；涉及本机实际工作流目录的 1 项集成检查会明确跳过。要执行全部 20 项，设置实际目录：
 
 ```powershell
-$env:COMFYUI_WORKFLOWS_DIR = 'D:\agent\ComfyUI\user\default\workflows'
+$env:COMFYUI_WORKFLOWS_DIR = Join-Path (Read-Host 'ComfyUI 安装目录') 'user\default\workflows'
 npm test
 ```
 
