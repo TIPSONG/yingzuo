@@ -1,0 +1,35 @@
+name: PR validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    name: PR validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies when available
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - name: Run checks for this branch
+        shell: bash
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.check ? 0 : 1)"; then
+            npm run check
+          else
+            npm test
+          fi
