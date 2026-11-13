@@ -23,7 +23,8 @@ class FavoritesBoard {
     const hashOf = async f => (this.pool ? (await this.pool.run('sha256', {file: f})).sha256 : sha256File(f));
     const hash = await hashOf(sourcePath);
     const dup = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
-    if (dup && !this.view(dup).broken) return {...this.view(dup), duplicate: true};
+    const repairing = !!dup && this.view(dup).broken;
+    if (dup && !repairing) return {...this.view(dup), duplicate: true};
     const ext = {png: '.png', jpeg: '.jpg', webp: '.webp', gif: '.gif'}[format];
     const month = this.now().slice(0, 7);
     const stored = path.join(this.dir, month, `${hash.slice(0, 16)}${ext}`);
@@ -39,7 +40,7 @@ class FavoritesBoard {
       throw new AppError(CODES.INTEGRITY, '收藏副本校验失败；文件已保留供核对，未登记收藏。');
     }
     const concurrent = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
-    if (concurrent && !this.view(concurrent).broken) return {...this.view(concurrent), duplicate: true};
+    if (concurrent && !this.view(concurrent).broken) return {...this.view(concurrent), duplicate: !repairing, ...(repairing ? {repaired: true} : {})};
     const buf = Buffer.alloc(65536); { const fd = fs.openSync(stored, 'r'); try { const n = fs.readSync(fd, buf, 0, buf.length, 0); buf.fill(0, n); } finally { fs.closeSync(fd); } } // 只读文件头
     const dim = imageSize(buf) ?? {};
     // 副本丢失时保留收藏身份，并按当前目录配置重建；失效登记不能阻止再次收藏。

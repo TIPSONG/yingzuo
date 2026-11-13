@@ -29,8 +29,8 @@ async function loadAll(more = false) {
     fillThumbs(q('#as-grid'));
   } catch (e) { q('#as-grid').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
-async function loadBoard() {
-  thumbCache.clear();
+async function loadBoard(refresh = true) {
+  if (refresh) thumbCache.clear();
   const board = q('#as-board');
   try {
     const r = await call(yz.assets.favorites({limit: 500}));
@@ -101,5 +101,5 @@ q('#as-scan').addEventListener('click', async () => { try { const r = await call
 q('#as-open-output').addEventListener('click', () => call(yz.assets.openLocation('output')).catch(swallow));
 q('#as-open-fav').addEventListener('click', () => call(yz.assets.openLocation('favorites')).catch(swallow));
 q('#nav').addEventListener('click', e => { if (e.target.closest('[data-page="assets"]')) show(tab).catch(swallow); });
-window.addEventListener('resize', () => { if (S.page === 'assets' && tab === 'fav') loadBoard(); });
+window.addEventListener('resize', () => { if (S.page === 'assets' && tab === 'fav') loadBoard(false); });
 })();

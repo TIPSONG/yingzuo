@@ -7,8 +7,9 @@ const stub = require('../tools/ui-shots/stub.cjs');
 async function fixture(t) {
   const shots = await import('../tools/ui-shots.mjs');
   const server = await shots.startServer();
-  const browser = await require('puppeteer-core').launch({executablePath: chrome, headless: true, args: ['--no-sandbox', '--disable-gpu']});
-  t.after(async () => { await browser.close(); await new Promise(r => server.close(r)); });
+  let browser;
+  t.after(async () => { if (browser) await browser.close(); await new Promise(r => server.close(r)); });
+  browser = await require('puppeteer-core').launch({executablePath: chrome, headless: true, args: ['--no-sandbox', '--disable-gpu']});
   const page = await browser.newPage(); page.captureErrors = [];
   await page.evaluateOnNewDocument(stub(shots.fixtures, {}));
   await page.evaluateOnNewDocument(() => {
@@ -60,4 +61,17 @@ test('missing favorite copies retain a visible remove action', {skip}, async t =
   const id = await page.$eval('#as-board [data-unfav]', el => el.dataset.unfav);
   await page.click('#as-board [data-unfav]');
   assert.equal(await page.evaluate(() => window.removedFavorite), id);
+});
+
+test('resizing the favorites board reuses thumbnails while reopening refreshes them', {skip}, async t => {
+  const {page, shots} = await fixture(t);
+  await shots.prepareScenario(page, 'favorites');
+  await page.waitForFunction(() => [...document.querySelectorAll('#as-board [data-fav-thumb]')].every(el => el.querySelector('img')));
+  const before = await page.evaluate(() => window.thumbRequests);
+  await page.setViewport({width: 1100, height: 800});
+  await shots.waitReady(page, 'favorites');
+  await page.waitForFunction(() => [...document.querySelectorAll('#as-board [data-fav-thumb]')].every(el => el.querySelector('img')));
+  assert.equal(await page.evaluate(() => window.thumbRequests), before, 'layout changes must not reread unchanged image files');
+  await page.click('#as-tab-fav');
+  await page.waitForFunction(before => window.thumbRequests > before, {}, before);
 });
