@@ -19,7 +19,7 @@ async function fillThumbs(root) {
   }
 }
 async function loadAll(more = false) {
-  if (!more) { offset = 0; items = []; }
+  if (!more) { offset = 0; items = []; thumbCache.clear(); }
   try {
     const r = await call(yz.assets.list({offset, limit: 60, query: q('#as-q').value.trim()}));
     items.push(...r.items); offset += r.items.length;
@@ -30,6 +30,7 @@ async function loadAll(more = false) {
   } catch (e) { q('#as-grid').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 async function loadBoard() {
+  thumbCache.clear();
   const board = q('#as-board');
   try {
     const r = await call(yz.assets.favorites({limit: 500}));
@@ -37,10 +38,12 @@ async function loadBoard() {
     const lay = await call(yz.assets.favoriteLayout({width, rowHeight: 220, gap: 8}));
     const byId = new Map(r.items.map(i => [i.id, i]));
     q('#as-count').textContent = `收藏 ${r.total} 张${r.items.some(i => i.broken) ? `（${r.items.filter(i => i.broken).length} 张收藏文件丢失）` : ''}`;
-    board.style.height = `${lay.height}px`;
-    board.innerHTML = lay.cells.map(c => { const f = byId.get(c.id); return `<div class="cell" data-cell="${esc(c.id)}" title="${esc(f.storedPath)}${f.sourceMissing ? '（原图已删除，收藏副本仍在）' : ''}"><div class="fill" data-fav-thumb="${esc(`favorite:${f.id}`)}"></div><button data-unfav="${esc(f.id)}">取消收藏</button></div>`; }).join('') || '<div class="empty-state"><h3>还没有收藏</h3><p>在作品查看器中点“收藏”。</p></div>';
+    const broken = r.items.filter(i => i.broken);
+    const allCells = [...lay.cells, ...broken.map((f, i) => ({id: f.id, x: 0, y: lay.height + 8 + i * 104, width, height: 96}))];
+    board.style.height = `${broken.length ? lay.height + 8 + broken.length * 104 : lay.height}px`;
+    board.innerHTML = allCells.map(c => { const f = byId.get(c.id); return `<div class="cell" data-cell="${esc(c.id)}" title="${esc(f.storedPath)}${f.sourceMissing ? '（原图已删除）' : ''}">${f.broken ? '<p class="muted">收藏副本已丢失；原图仍在时，可重新收藏以恢复。</p>' : `<div class="fill" data-fav-thumb="${esc(`favorite:${f.id}`)}"></div>`}<button data-unfav="${esc(f.id)}">${f.broken ? '移除失效记录' : '取消收藏'}</button></div>`; }).join('') || '<div class="empty-state"><h3>还没有收藏</h3><p>在作品查看器中点“收藏”。</p></div>';
     // CSP 禁止内联 style 属性：位置用 CSSOM 设置
-    const cells = new Map(lay.cells.map(c => [c.id, c]));
+    const cells = new Map(allCells.map(c => [c.id, c]));
     for (const el of board.querySelectorAll('[data-cell]')) { const c = cells.get(el.dataset.cell); Object.assign(el.style, {left: `${c.x}px`, top: `${c.y}px`, width: `${c.width}px`, height: `${c.height}px`}); }
     for (const el of board.querySelectorAll('[data-fav-thumb]')) { const id = el.dataset.favThumb; const url = id ? await thumb(id, 512) : null; el.innerHTML = url ? `<img alt="" src="${url}">` : '<span class="muted">缩略图不可用</span>'; }
   } catch (e) { board.innerHTML = `<p class="err">${esc(e.message)}</p>`; }

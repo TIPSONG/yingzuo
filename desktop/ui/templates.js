@@ -95,23 +95,40 @@ q('#tpl-form').addEventListener('click', async () => {
   const tplId = tab.templateId?.startsWith('tpl_') ? tab.templateId : null;
   if (!tplId) { toast('表单随模板版本保存：请先“存为模板”，再从模板库打开后设置表单。', true); return; }
   let d; try { d = await call(yz.templates.formDraft(tplId, tab.id)); } catch (e) { swallow(e); return; }
-  let fields = d.fields.map(f => ({...f}));
+  let fields = d.fields.map(f => ({...f})), conflict = false, failureText = '';
   const row = (f, i) => { const m = d.mapping[i]; return `<div class="row" data-i="${i}"><span><input data-k="label" value="${esc(f.label ?? f.fieldName)}" class="w110"> <input data-k="group" value="${esc(f.group ?? '')}" placeholder="分组" class="w70"> <input data-k="order" type="number" value="${f.order ?? i}" class="w50"> <small>${esc(f.nodeType)} #${esc(f.nodeId)} · ${esc(f.fieldName)}</small>${m && m.status !== 'ok' ? `<br><small class="err">${esc(STATUS[m.status])}：${esc(m.reason)}${m.candidates.length ? ` 可重新绑定到：${m.candidates.map(c => `<button data-rebind="${esc(c)}">#${esc(c)}</button>`).join('')}` : ''}</small>` : ''}</span><span>${['int', 'float', 'seed', 'number'].includes(f.widgetType) ? `<input data-k="min" type="number" value="${f.constraints?.min ?? ''}" placeholder="最小" class="w60"><input data-k="max" type="number" value="${f.constraints?.max ?? ''}" placeholder="最大" class="w60">` : ''}<button data-del="${i}">移除</button></span></div>`; };
   const html = () => `<h3>表单设置 · ${esc(tab.title)}</h3><p class="muted">${d.fromSaved ? '已保存的表单' : '根据当前工作流推断的默认表单'}；保存后连同当前图成为模板新版本。${d.baseVersionId && d.latestVersionId && d.baseVersionId !== d.latestVersionId ? '<br>起点是此标签固定的版本（不是模板最新版）；保存后此标签固定到新版本。' : ''}</p><div id="f-list" class="list scroll">${fields.map(row).join('')}</div>
     <label>添加字段</label><select id="f-add"><option value="">选择未连线的输入…</option>${d.available.map((a, i) => `<option value="${i}">${esc(a.nodeType)} #${esc(a.nodeId)} · ${esc(a.fieldName)}</option>`).join('')}</select>
-    <div class="actions"><button data-x="no">取消</button><button data-x="yes" class="primary">保存为新版本</button></div>`;
-  const result = await modal(html(), (back, done) => {
+    <p id="f-error" class="err" role="alert">${esc(failureText)}</p><div class="actions"><button data-x="no">取消</button><button id="f-copy" data-x="copy" ${conflict ? '' : 'hidden'}>另存为新模板</button><button data-x="yes" class="primary">保存为新版本</button></div>`;
+  await modal(html(), (back, done) => {
+    let saving = false;
     const sync = () => back.querySelectorAll('[data-i]').forEach(el => { const f = fields[Number(el.dataset.i)]; el.querySelectorAll('[data-k]').forEach(inp => { const k = inp.dataset.k, v = inp.value; if (k === 'order') f.order = Number(v) || 0; else if (k === 'min' || k === 'max') { f.constraints = {...f.constraints}; if (v === '') delete f.constraints[k]; else f.constraints[k] = Number(v); } else f[k] = v; }); });
     const rerender = () => { back.querySelector('.modal').innerHTML = html(); };
     back.addEventListener('change', ev => { if (ev.target.id === 'f-add' && ev.target.value !== '') { sync(); const a = d.available[Number(ev.target.value)]; fields.push({scopePath: [], nodeId: a.nodeId, nodeType: a.nodeType, fieldName: a.fieldName, widgetType: typeof a.value === 'number' ? (Number.isInteger(a.value) ? 'int' : 'float') : typeof a.value === 'boolean' ? 'boolean' : 'string', constraints: {}, label: a.fieldName, group: '其他', order: fields.length, defaultValue: a.value}); d.mapping.push({status: 'ok'}); rerender(); } });
     back.addEventListener('click', async ev => {
-      const x = ev.target.closest('button'); if (!x) return;
+      const x = ev.target.closest('button'); if (!x || saving) return;
       if (x.dataset.del !== undefined) { sync(); fields.splice(Number(x.dataset.del), 1); d.mapping.splice(Number(x.dataset.del), 1); rerender(); }
       if (x.dataset.rebind) { sync(); const i = Number(x.closest('[data-i]').dataset.i); fields[i] = {...fields[i], nodeId: x.dataset.rebind}; d.mapping[i] = {status: 'ok'}; rerender(); }
-      if (x.dataset.x) { sync(); done(x.dataset.x === 'yes'); }
+      if (x.dataset.x === 'no') { done(false); return; }
+      if (x.dataset.x === 'yes' || x.dataset.x === 'copy' && conflict) {
+        sync(); saving = true;
+        const controls = [...back.querySelectorAll('input, select, button')];
+        controls.forEach(el => { el.disabled = true; });
+        const savedFields = [...fields].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        try {
+          if (x.dataset.x === 'copy') await call(yz.templates.saveFromTab(tab.id, {asNew: true, name: `${tab.title}（表单副本）`, formSchema: savedFields}), '已另存为新模板，原模板保持不变。');
+          else await call(yz.templates.saveForm(tplId, tab.id, savedFields, undefined, {baseVersionId: d.baseVersionId}), '表单已保存为模板新版本。');
+          done(true);
+        } catch (err) {
+          conflict = conflict || err.code === 'CONFLICT';
+          failureText = conflict ? '模板已在别处更新。你的表单修改仍保留，可以另存为新模板，或取消后重新打开最新版本。' : `${err.message}；修改仍保留，可以重试。`;
+          back.querySelector('#f-error').textContent = failureText;
+          back.querySelector('#f-copy').hidden = !conflict;
+          swallow(err);
+        } finally { saving = false; controls.forEach(el => { el.disabled = false; }); }
+      }
     });
   });
-  if (result) call(yz.templates.saveForm(tplId, tab.id, fields.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))), '表单已保存为模板新版本。').catch(swallow);
 });
 /* ---------- T05–T07 诊断与修复 ---------- */
 const SRC = {objectInfo: 'ComfyUI 节点', models: 'ComfyUI 模型目录', lmstudio: 'LM Studio'};
@@ -124,11 +141,18 @@ async function diagnose(refresh) {
     const issues = r.issues.map(i => `<div class="row block"><strong>${i.severity === 'error' ? '⛔' : '⚠'} ${esc(i.title)}</strong> <small>${esc(i.nodeTitle ?? '')} #${esc(i.nodeId ?? '')}${i.scope ? ` · ${esc(i.scope)}` : ''}${i.field ? ` · ${esc(i.field)}` : ''}</small><br><small>${esc(i.reason)} ${esc(i.advice ?? '')}</small>${i.value ? `<br><small>当前值：${esc(i.value)}</small>` : ''}${(i.candidates ?? []).map(c => `<div><small>→ ${esc(c.value)}（${esc(c.label)}；${esc(c.reason)}）</small>${c.canApply ? ` <button data-fix="${esc(i.key)}" data-cand="${esc(c.id)}">应用此替换</button>` : ''}</div>`).join('')}</div>`).join('') || '<p>没有发现问题。</p>';
     const act = await modal(`<h3>诊断 · ${esc(tab.title)}</h3><p class="muted">${src}</p><p>检查 ${r.nodeCount} 个节点、${r.checkedModels} 个模型引用：${r.errors} 个错误，${r.reviews} 个待核实。</p><div class="list scroll">${issues}</div><div class="actions"><button data-x="refresh">重新采集</button>${canUndo ? '<button data-x="undo">撤销上次修复</button>' : ''}<button data-x="export">导出修复副本</button><button data-x="close" class="primary">关闭</button></div>`, (back, done) => back.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; if (b.dataset.fix) done({fix: b.dataset.fix, cand: b.dataset.cand}); else if (b.dataset.x) done({x: b.dataset.x}); }));
     try {
-      if (act.fix) { const cur = (current.tabs.find(x => x.id === tab.id) || {}).revision; const res = await call(yz.templates.applyFix(tab.id, act.fix, act.cand, cur), d => `已修改 ${d.applied.field}：${d.applied.before} → ${d.applied.after}`); r = res.recheck; canUndo = true; continue; }
+      if (act.fix) { const res = await call(yz.templates.applyFix(tab.id, act.fix, act.cand, r.revision), d => `已修改 ${d.applied.field}：${d.applied.before} → ${d.applied.after}`); r = res.recheck; canUndo = true; continue; }
       if (act.x === 'undo') { const res = await call(yz.templates.undoFix(tab.id), '已撤销。'); r = res.recheck; canUndo = res.canUndo; continue; }
       if (act.x === 'refresh') { r = await call(yz.templates.diagnose(tab.id, {refresh: true})); continue; }
       if (act.x === 'export') { await call(yz.templates.exportFixed(tab.id), d => d.cancelled ? '已取消。' : `已导出：${d.path}`); continue; }
-    } catch (e) { swallow(e); continue; }
+    } catch (e) {
+      swallow(e);
+      if (e.code === 'CONFLICT') {
+        try { r = await call(yz.templates.diagnose(tab.id, {refresh: true})); canUndo = false; toast('工作流已变化，已重新诊断；请核对最新结果后再选择替换。'); }
+        catch (refreshError) { swallow(refreshError); return; }
+      }
+      continue;
+    }
     return;
   }
 }

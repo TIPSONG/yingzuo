@@ -6,7 +6,7 @@
   "main": "desktop/entry.cjs",
   "scripts": {
     "test": "node --test tests/*.test.cjs",
-    "test:browser": "node --test tests/review-rv13-ui.test.cjs tests/review-rr07-ui.test.cjs tests/review-rr08-ui.test.cjs",
+    "test:browser": "node --test tests/*-ui.test.cjs",
     "screenshots": "node tools/ui-shots.mjs",
     "check": "node tools/check.cjs && npm test",
     "desktop": "electron .",

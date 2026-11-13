@@ -101,6 +101,30 @@ function createApi(ctx) {
     if (jobs.length) throw new AppError(CODES.INVALID_STATE, '绘图后端仍有任务可能使用润色模型，LM Studio API 保持运行。');
   }
   const pickable = new Set(['comfy.root', 'comfy.python', 'comfy.workflowsDir', 'comfy.outputDir', 'comfy.inputDir', 'lmstudio.cli', 'paths.favorites', 'paths.downloads', 'paths.backups', 'gemma.patchFile']);
+  const pendingEnvironmentStates = ['queued', 'paused', 'preparing', 'submitting', 'submitted', 'running', 'reconciling', 'unknown'];
+  const changesEnvironment = patch => ['comfy', 'lmstudio', 'gemma'].some(group =>
+    patch?.[group] && Object.entries(patch[group]).some(([key, value]) => JSON.stringify(value) !== JSON.stringify(configRepo.config[group]?.[key])));
+  const environmentTasks = () => ctx.taskService?.tasks?.list?.({states: pendingEnvironmentStates, limit: 1}) ?? hooks.activeTasks();
+  async function updateSettings(patch) {
+    const save = () => { const result = configRepo.update(patch); logger.info('settings updated', {keys: Object.keys(patch)}); events.emit('settings.changed', null, {}); return result; };
+    // Cosmetic settings remain available. Changing an environment must not redirect
+    // active/recoverable jobs, queued snapshots, or an in-flight maintenance operation.
+    if (!changesEnvironment(patch)) return save();
+    const release = locks.environment.tryAcquire('settings-environment');
+    if (!release) throw new AppError(CODES.LOCKED, '环境正在操作，请稍后再修改服务配置。');
+    let lease;
+    try {
+      lease = hooks.pauseSubmissions('settings-environment');
+      const assertIdle = () => {
+        if (environmentTasks().length) throw new AppError(CODES.INVALID_STATE, '还有运行、排队、暂停或状态未知的任务，请先完成、取消或核对这些任务，再修改服务配置。');
+      };
+      assertIdle();
+      try { await hooks.waitForIdle({timeoutMs: 5000}); }
+      catch { throw new AppError(CODES.INVALID_STATE, '有任务正在启动，请稍后再修改服务配置。'); }
+      assertIdle();
+      return save();
+    } finally { lease?.(); release(); }
+  }
 
   const methods = {
     // ----- assets（A01–A08，见 assets-api.cjs）-----
@@ -153,14 +177,14 @@ function createApi(ctx) {
     'services.logs': async () => ({comfy: comfy.logTail(), app: logger.tail(200)}),
     // ----- settings -----
     'settings.get': async () => ({...configRepo.snapshot(), dataRoot, locations: knownLocations(), credentials: credentials.status()}),
-    'settings.update': async patch => { const r = configRepo.update(patch); logger.info('settings updated', {keys: Object.keys(patch)}); events.emit('settings.changed', null, {}); return r; },
+    'settings.update': updateSettings,
     'settings.pickPath': async field => {
       if (!pickable.has(field)) throw new AppError(CODES.INVALID_ARGUMENT, '该配置项不能通过选择器设置。');
       const isFile = ['comfy.python', 'lmstudio.cli', 'gemma.patchFile'].includes(field);
       const result = await electron.dialog.showOpenDialog(getWindow(), {title: '选择位置', properties: [isFile ? 'openFile' : 'openDirectory']});
       if (result.canceled || !result.filePaths?.length) return {cancelled: true};
       const [group, key] = field.split('.');
-      return configRepo.update({[group]: {[key]: result.filePaths[0]}});
+      return updateSettings({[group]: {[key]: result.filePaths[0]}});
     },
     'settings.setCredential': async (name, secret) => { credentials.set(name, secret); return credentials.status(); },
     'settings.removeCredential': async name => { credentials.remove(name); return credentials.status(); },

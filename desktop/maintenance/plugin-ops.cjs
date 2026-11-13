@@ -10,8 +10,8 @@ const {execFile} = require('node:child_process');
 const {AppError, CODES} = require('../core/errors.cjs');
 const {DISABLED_DIR} = require('../resources/plugin-inventory.cjs');
 
-function run(cmd, args, {cwd, timeoutMs = 600000, env} = {}) {
-  return new Promise((resolve, reject) => execFile(cmd, args, {cwd, shell: false, timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024, env: {...process.env, GIT_TERMINAL_PROMPT: '0', ...env}}, (err, stdout, stderr) => err ? reject(Object.assign(new AppError(CODES.INTERNAL, `${path.basename(cmd)} ${args[0]} 失败：${(stderr || err.message).trim().slice(0, 2000)}`), {stdout, stderr})) : resolve({stdout: stdout.trim(), stderr: stderr.trim()})));
+function run(cmd, args, {cwd, timeoutMs = 600000, env, trimOutput = true} = {}) {
+  return new Promise((resolve, reject) => execFile(cmd, args, {cwd, shell: false, timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024, env: {...process.env, GIT_TERMINAL_PROMPT: '0', ...env}}, (err, stdout, stderr) => err ? reject(Object.assign(new AppError(CODES.INTERNAL, `${path.basename(cmd)} ${args[0]} 失败：${(stderr || err.message).trim().slice(0, 2000)}`), {stdout, stderr})) : resolve({stdout: trimOutput ? stdout.trim() : stdout, stderr: stderr.trim()})));
 }
 const git = (cwd, args, o = {}) => run(o.gitPath ?? 'git', ['-C', cwd, ...args], o);
 function assertGitUrl(url, {allowLocal = false} = {}) {
@@ -75,7 +75,7 @@ function removePlan({comfyRoot, name, trashDir, trash = null}) {
     result: () => ({name, trashPath: to, needsRestart: true})};
 }
 /** U06/R07 更新 Git 仓库（Comfy 本体或插件）到目标 revision；本地改动保存为补丁并重放。 */
-function updatePlan({repoDir, revision, python = null, patchesDir, title, kind = 'update', updateDeps = true, fetch = true}) {
+function updatePlan({repoDir, revision, python = null, patchesDir, title, kind = 'update', updateDeps = true, fetch = true, platform = process.platform}) {
   if (!fs.existsSync(path.join(repoDir, '.git'))) throw new AppError(CODES.UNSUPPORTED, '不是 Git 仓库，无法按 revision 更新。');
   const envDir = updateDeps ? pythonEnvDir(python) : null;
   const plan = {title: title ?? `更新 ${path.basename(repoDir)}`, kind, target: repoDir, roots: [repoDir, ...(envDir ? [envDir] : [])], backupRoots: envDir ? [envDir] : [], requiredBytes: 256 * 1024 * 1024, pending: null,
@@ -97,11 +97,16 @@ function updatePlan({repoDir, revision, python = null, patchesDir, title, kind =
           throw new AppError(CODES.CONFLICT, `本地改动无法在目标版本上重放，已取消更新（环境未改动）。补丁保存在 ${ctx.patchFile}，可手动合并后再更新。`, {details: plan.pending});
         } finally { fs.rmSync(idx, {force: true}); }
       }
-      // 未跟踪文件与目标版本同名时，强制切换会覆盖它们：阻止
-      const untracked = (await git(repoDir, ['ls-files', '--others', '--exclude-standard'])).stdout.split('\n').filter(Boolean);
+      // --force 会覆盖 ignored 文件及文件/目录祖先冲突，必须一并预检。
+      // -z 保留中文、换行和前后空格的真实路径，不解析 Git 的引号转义输出。
+      const untracked = (await git(repoDir, ['ls-files', '--others', '-z'], {trimOutput: false})).stdout.split('\0').filter(Boolean);
       if (untracked.length) {
-        const inTarget = new Set((await git(repoDir, ['ls-tree', '-r', '--name-only', ctx.target])).stdout.split('\n'));
-        const clash = untracked.filter(f => inTarget.has(f));
+        const key = name => { const value = name.replace(/\/$/, ''); return platform === 'win32' ? value.toLowerCase() : value; };
+        const targetFiles = (await git(repoDir, ['ls-tree', '-r', '--name-only', '-z', ctx.target], {trimOutput: false})).stdout.split('\0').filter(Boolean).map(key);
+        const inTarget = new Set(targetFiles), targetParents = new Set();
+        const parents = name => { const parts = name.split('/'), out = []; for (let i = 1; i < parts.length; i++) out.push(parts.slice(0, i).join('/')); return out; };
+        for (const file of targetFiles) for (const parent of parents(file)) targetParents.add(parent);
+        const clash = untracked.filter(file => { const name = key(file); return inTarget.has(name) || targetParents.has(name) || parents(name).some(parent => inTarget.has(parent)); });
         if (clash.length) throw new AppError(CODES.CONFLICT, `未跟踪文件与目标版本冲突，已取消更新：${clash.slice(0, 5).join('、')}`, {details: {clash}});
       }
       ctx.reqBefore = await git(repoDir, ['show', `${ctx.before}:requirements.txt`]).then(r => r.stdout, () => null);

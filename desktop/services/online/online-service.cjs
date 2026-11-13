@@ -108,8 +108,7 @@ function createOnlineService({db, configRepo, layout, credentials, fetchImpl, ev
     const text = await res.text();
     let info; try { info = ImportPipeline.analyze(text, {name}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
     if (info.format !== 'ui') throw new AppError(CODES.INVALID_ARGUMENT, '这是 API 格式工作流，没有界面信息；请下载后在创作页导入。');
-    const cache = path.join(layout.root, 'downloads', 'online-templates'); fs.mkdirSync(cache, {recursive: true});
-    fs.writeFileSync(path.join(cache, `${Date.now()}-${info.name.replace(/[^\w.-]+/g, '_')}.json`), text);
+    // 模板仓库统一保护凭据；原文下载缓存无人读取，不能绕过安全保存政策另存明文。
     const t = templateRepo.create({name: meta.title ?? info.name, graph: info.graph, folder, tags, source: meta.source, license: meta.license, author: meta.author, note: `在线导入${meta.revision ? ` @${String(meta.revision).slice(0, 12)}` : ''}`});
     return {template: t, nodeTypes: info.nodeTypes, notes: ['未安装任何插件或模型；请用“诊断”检查缺失项。', ...info.notes]};
   }

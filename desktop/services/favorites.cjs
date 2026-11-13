@@ -23,7 +23,7 @@ class FavoritesBoard {
     const hashOf = async f => (this.pool ? (await this.pool.run('sha256', {file: f})).sha256 : sha256File(f));
     const hash = await hashOf(sourcePath);
     const dup = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
-    if (dup) return {...this.view(dup), duplicate: true};
+    if (dup && !this.view(dup).broken) return {...this.view(dup), duplicate: true};
     const ext = {png: '.png', jpeg: '.jpg', webp: '.webp', gif: '.gif'}[format];
     const month = this.now().slice(0, 7);
     const stored = path.join(this.dir, month, `${hash.slice(0, 16)}${ext}`);
@@ -39,9 +39,15 @@ class FavoritesBoard {
       throw new AppError(CODES.INTEGRITY, '收藏副本校验失败；文件已保留供核对，未登记收藏。');
     }
     const concurrent = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
-    if (concurrent) return {...this.view(concurrent), duplicate: true};
+    if (concurrent && !this.view(concurrent).broken) return {...this.view(concurrent), duplicate: true};
     const buf = Buffer.alloc(65536); { const fd = fs.openSync(stored, 'r'); try { const n = fs.readSync(fd, buf, 0, buf.length, 0); buf.fill(0, n); } finally { fs.closeSync(fd); } } // 只读文件头
     const dim = imageSize(buf) ?? {};
+    // 副本丢失时保留收藏身份，并按当前目录配置重建；失效登记不能阻止再次收藏。
+    if (concurrent) {
+      this.db.run('UPDATE favorites SET asset_id = ?, source_path = ?, stored_path = ?, width = ?, height = ? WHERE id = ?',
+        assetId ?? idFor(sourcePath), path.resolve(sourcePath), stored, dim.width ?? null, dim.height ?? null, concurrent.id);
+      return {...this.view(this.db.get('SELECT * FROM favorites WHERE id = ?', concurrent.id)), duplicate: false, repaired: true};
+    }
     const id = crypto.randomUUID();
     this.db.run('INSERT INTO favorites (id, asset_id, source_path, stored_path, content_hash, width, height, created_at) VALUES (?,?,?,?,?,?,?,?)',
       id, assetId ?? idFor(sourcePath), path.resolve(sourcePath), stored, hash, dim.width ?? null, dim.height ?? null, this.now());

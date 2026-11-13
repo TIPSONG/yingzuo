@@ -4,6 +4,7 @@
 const yz = window.yingzuo, S = window.yzShell;
 const q = s => document.querySelector(s);
 const {esc, toast, call, swallow, modal} = S;
+const confirmModal = (title, text) => modal(`<h3>${esc(title)}</h3><p>${esc(text)}</p><div class="actions"><button data-x="no">返回</button><button data-x="yes" class="primary">继续</button></div>`, (back, done) => back.addEventListener('click', e => { const button = e.target.closest('[data-x]'); if (button) done(button.dataset.x === 'yes'); }));
 const STATE = {draft: '草稿', queued: '排队中', preparing: '准备中', submitting: '提交中', submitted: '已提交', running: '运行中', reconciling: '核对中', succeeded: '已完成', failed: '失败', cancelled: '已取消', paused: '已暂停', unknown: '状态未知'};
 let tasks = [], queueState = {}, refreshTimer = null;
 const waiters = new Map(); // taskId → resolve（等待终态）

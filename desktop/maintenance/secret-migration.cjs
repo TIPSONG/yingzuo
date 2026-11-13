@@ -74,6 +74,34 @@ function migrateStoredGraphs({db, layout, repo, policy, credentials, persistDraf
   graphFiles(layout.closed ?? path.join(layout.root, 'closed-workflows'), 'closed');
   graphFiles(path.join(layout.root, 'drafts'), 'draft');
 
+  // 旧在线导入曾在模板安全保存前留下原文副本。只处理该入口的顶层命名格式，
+  // 不碰在线目录索引/缩略图；包装文档按原导入语义仅保留 UI 图，丢弃冗余原文 prompt。
+  const onlineCache = path.join(layout.root, 'downloads', 'online-templates');
+  if (fs.existsSync(onlineCache)) {
+    let entries = [];
+    try { entries = fs.readdirSync(onlineCache, {withFileTypes: true}); }
+    catch { problem('online-template-cache', 'directory', 'READ_FAILED'); }
+    for (const entry of entries) {
+      if (!/^\d+-[\w.-]+\.json$/.test(entry.name)) continue;
+      const kind = 'online-template-cache', id = entry.name;
+      if (!entry.isFile() || entry.isSymbolicLink()) { problem(kind, id, 'UNSUPPORTED_FILE'); continue; }
+      const file = path.join(onlineCache, id);
+      let original, graph, hits;
+      try {
+        original = readJson(file);
+        graph = Array.isArray(original?.workflow?.nodes) ? original.workflow : original;
+        hits = graphCheck(graph); checkRefs(graph);
+      } catch { problem(kind, id, 'READ_OR_CREDENTIAL_FAILED'); continue; }
+      try {
+        const secured = policy.secureForStorage(graph);
+        if (graphCheck(secured).length) throw new Error('graph remains unresolved');
+        if (same(original, secured)) continue;
+        writeFileAtomic(file, JSON.stringify(secured, null, 2));
+        note(kind, id, hits, true);
+      } catch { problem(kind, id, 'MIGRATION_FAILED', hits); }
+    }
+  }
+
   // 同一模板版本的图和表单一起预检、更新；表单默认值可以直接清除，不要求系统加密可用。
   if (db && repo) {
     let rows = [];

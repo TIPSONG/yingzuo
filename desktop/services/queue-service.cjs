@@ -17,6 +17,7 @@ class QueueService {
   constructor({tasks, client, gpuLock, events, logger, clientId, prepare = async (_t, s) => s.apiPrompt, onTerminal = () => {}, pollMs = 1500, externalWaitMs = 3000, sleep = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()}) {
     Object.assign(this, {tasks, client, gpuLock, events, logger, clientId, prepare, onTerminal, pollMs, externalWaitMs, sleep, now});
     this.paused = false; this.running = null; this.tokens = new Map(); this.external = new Map(); this.pumping = false; this.stopped = false; this.idleWaiters = []; this.leases = new Map(); this.leaseSeq = 0; this.ready = Promise.resolve(); this.followers = new Map(); this.starting = 0;
+    this.terminalNotified = new Set();
   }
   /* ---------- 入队 ---------- */
   enqueue({kind = 'generate', workflowId, snapshot, inputRevision, groupId = null}) {
@@ -143,7 +144,7 @@ class QueueService {
   async follow(taskId, token) {
     for (;;) {
       let task = this.tasks.get(taskId);
-      if (['succeeded', 'failed', 'cancelled', 'unknown'].includes(task.state)) { if (task.state !== 'unknown') this.onTerminal(task); return task; }
+      if (['succeeded', 'failed', 'cancelled', 'unknown'].includes(task.state)) { this.notifyTerminal(task); return task; }
       if (task.state === 'reconciling') { await this.reconcile(taskId); continue; }
       let client; try { client = this.client(); } catch { await this.sleep(this.pollMs); continue; }
       try {
@@ -167,12 +168,23 @@ class QueueService {
       await this.sleep(this.pollMs);
     }
   }
+  /** Reconciliation and ordinary polling share completion effects; concurrent observers notify once per session. */
+  notifyTerminal(task) {
+    if (!['succeeded', 'failed', 'cancelled'].includes(task.state) || this.terminalNotified.has(task.id)) return;
+    this.terminalNotified.add(task.id);
+    try { Promise.resolve(this.onTerminal(task)).catch(e => this.logger?.warn('任务终态处理失败', {id: task.id, error: e.message})); }
+    catch (e) { this.logger?.warn('任务终态处理失败', {id: task.id, error: e.message}); }
+  }
   finish(task, entry) {
     const map = {succeeded: 'succeeded', failed: 'failed', cancelled: 'cancelled'};
     const to = map[entry.state];
-    let from = this.tasks.get(task.id).state;
+    const current = this.tasks.get(task.id);
+    let from = current.state;
+    if (['succeeded', 'failed', 'cancelled'].includes(from)) { this.notifyTerminal(current); return; }
     if (from === 'submitted' && to !== 'cancelled') { this.tasks.transition(task.id, 'running', {reason: '历史记录显示已执行'}); from = 'running'; }
-    this.tasks.transition(task.id, to, {reason: '以 history 终态确认', patch: {outputs: entry.outputs, error: entry.error, progress: {cachedNodes: entry.cachedNodes}}});
+    const finished = this.tasks.transition(task.id, to, {reason: '以 history 终态确认', patch: {outputs: entry.outputs, error: entry.error, progress: {cachedNodes: entry.cachedNodes}}});
+    this.notifyTerminal(finished);
+    this.settleIdle();
   }
   /** 第 5.4 节：核对后端 queue/history 再决定状态；无法证明则 unknown。 */
   async reconcile(taskId) {
@@ -228,7 +240,7 @@ class QueueService {
   }
   startFollower(id) {
     if (this.followers.has(id)) return this.followers.get(id);
-    const p = this.follow(id, new CancelToken()).catch(e => this.logger?.warn('跟踪失败', {id, error: e.message})).finally(() => { this.followers.delete(id); this.kick(); });
+    const p = this.follow(id, new CancelToken()).catch(e => this.logger?.warn('跟踪失败', {id, error: e.message})).finally(() => { this.followers.delete(id); this.settleIdle(); this.kick(); });
     this.followers.set(id, p); return p;
   }
   /** 重启或断连后，继续跟踪仍在后端的任务 */
@@ -280,7 +292,17 @@ class QueueService {
   }
   retry(taskId) { const t = this.tasks.retry(taskId); this.kick(); return t; }
   /** unknown 任务：用户要求重新核对 */
-  async recheck(taskId) { const t = this.tasks.get(taskId); if (t?.state !== 'unknown') throw new AppError(CODES.INVALID_STATE, '只有状态未知的任务需要核对。'); this.tasks.transition(taskId, 'reconciling', {reason: '用户要求重新核对'}); await this.reconcile(taskId); return this.tasks.get(taskId); }
+  async recheck(taskId) {
+    const t = this.tasks.get(taskId);
+    if (t?.state !== 'unknown') throw new AppError(CODES.INVALID_STATE, '只有状态未知的任务需要核对。');
+    this.tasks.transition(taskId, 'reconciling', {reason: '用户要求重新核对'});
+    await this.reconcile(taskId);
+    const result = this.tasks.get(taskId);
+    if (['submitted', 'running', 'reconciling'].includes(result.state)) this.startFollower(taskId);
+    else this.notifyTerminal(result);
+    this.settleIdle();
+    return result;
+  }
   /* ---------- WebSocket 事件（Q05） ---------- */
   handleSocketEvent(message) {
     const d = message?.data ?? {}, pid = d.prompt_id;
