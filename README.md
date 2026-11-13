@@ -2,130 +2,198 @@
 
 贡献与 PR 规则请见 [CONTRIBUTING.md](./CONTRIBUTING.md)。欢迎公开审阅；合并由维护者决定。
 
-面向 Windows 的本地 AI 绘图工作台，让启动服务、切换工作流、生成、找图和管理资源在一个应用中完成。
+面向 Windows 的本地 AI 绘图桌面应用，将服务启停、多工作流标签、节点编辑、参数表单、任务队列和作品管理放在一个窗口中。绘图由本机 ComfyUI 执行，提示词润色可连接 LM Studio。
 
-> **当前版本：0.1.0-alpha.1，WebUI 前端原型。**
-> 最终交付是 **Windows 独立桌面应用**：管理页面与完整 ComfyUI 节点画布在同一窗口，支持托盘和统一服务启停。目前还没有桌面安装包，原型中的绘图、润色和队列为演示。
+> **当前版本：0.1.0-alpha.1，开发分支 `feat/grovebot-impl`。**
+> 程序实现、自动回归和 Windows 打包已完成；真实 ComfyUI／LM Studio／GPU 操作仍待人工验收。 [PR #11](https://github.com/TIPSONG/yingzuo/pull/11) 保持草稿、未合并。有限支持项见[开发进度](./docs/development/Grovebot开发进度.md)，人工验收见[待验收清单](./docs/development/待Codex验收.md)。
 
-## 为什么做这个项目
+## 下载与运行
 
-使用 ComfyUI 和 LM Studio 时，启停服务、切换工作流、找生成图片需要在多个窗口、脚本和文件夹之间跳转。映作把这些日常操作放到一个入口，同时保留完整节点编辑能力。
+前往 [0.1.0-alpha.1 Release](https://github.com/TIPSONG/yingzuo/releases/tag/v0.1.0-alpha.1) 下载 Alpha 预发布版：
 
-目标使用流程：
+- **安装版**：[Yingzuo-Setup-0.1.0-alpha.1-x64.exe](https://github.com/TIPSONG/yingzuo/releases/download/v0.1.0-alpha.1/Yingzuo-Setup-0.1.0-alpha.1-x64.exe)，按安装向导启动。
+- **便携版**：[Yingzuo-Portable-0.1.0-alpha.1-x64.exe](https://github.com/TIPSONG/yingzuo/releases/download/v0.1.0-alpha.1/Yingzuo-Portable-0.1.0-alpha.1-x64.exe)。如需将数据保存在程序旁，在 exe 同目录新建空文件 `portable.flag`，首次启动后使用该目录下的 `data/`。
+- `SHA256SUMS.txt` 和 `artifacts.json` 提供文件校验值；`smoke-result.json`、`init-result.json` 是打包后的自动自检结果。
 
-**打开应用 → 选择工作流 → 按需启动服务 → 表单或节点编辑 → 可选 Gemma 润色 → 排队生成 → 查看／导出图片。**
+这是 **Windows x64、未签名的 Alpha 构建**，不是已经完成真机验收的稳定版。应用不附带 ComfyUI、LM Studio、模型权重或 Python 环境；下载 exe 后无需安装 Node.js。
 
-## 当前已经能体验什么
+首次打开后，在“设置”中填写实际的 ComfyUI 目录、Python 可执行文件、服务地址，以及需要时的 LM Studio CLI／API 地址。默认地址分别为 `http://127.0.0.1:8188/` 和 `http://127.0.0.1:1234/v1`；默认路径来自开发设备，需要按自己的安装位置修改。
 
-| 功能 | 当前状态 |
+**选择工作流 → 启动或连接已有服务 → 表单／节点编辑 → 可选润色 → 排队生成 → 查看与导出图片。**
+
+关闭窗口默认缩到托盘；托盘提供退出入口。退出时会处理本应用正在运行的任务、保存草稿，并检查服务归属和后端队列。无法确认任务结束而选择“仍然退出”时，绘图及 LM Studio 服务保持运行。
+
+## 桌面版功能
+
+以下为程序实现范围，不代表已经完成全部人工验收。
+
+| 页面 | 功能 |
 | --- | --- |
-| 首页、创作、资源、作品、收藏和设置 | 可点击的 A 测界面 |
-| 多工作流标签 | 独立草稿、复制、重命名、关闭、恢复、刷新保留 |
-| 简洁表单／节点模式 | 可切换；节点模式目前是结构预览，尚未接入真实 ComfyUI 编辑器 |
-| 新建工作流 | 导入 JSON、选择模板、空白节点画布三种入口 |
-| JSON 导入 | 文件选择、粘贴与拖放处理；普通工作流和 API 格式；保留子图 |
-| 导入诊断 | 根据清单快照分析模型引用、用途、格式，显示问题位置及有依据的替代建议 |
-| 修复工作副本 | 预览单字段替换、应用、复查、撤销、JSON 预览和复制 |
-| 润色、生成、队列、作品浏览 | 演示交互，未调用真实模型或扫描实时生成结果 |
+| 首页／服务与日志 | 探测、按需启停本应用管理的本机服务；日志与诊断导出；版本检查，只提示更新，由用户发起 |
+| 创作工作区 | 真实 ComfyUI 节点画布与参数表单；多标签草稿；导入 JSON、选择模板、新建空白画布；运行／Ctrl+Enter、批量生成、参考图、Gemma 润色 |
+| 模板库 | 模板版本、固定表单版本、自定义参数、映射检查；诊断、替代建议、单字段修复与撤销；图和参考素材包导入／导出 |
+| 在线资源 | Hugging Face／Civitai 搜索、断点续传、SHA-256 校验、工作流依赖检查与补齐 |
+| 作品与收藏 | 任务输出关联、目录扫描、图片查看器、元数据、文件定位、原图／分享副本导出、收藏板 |
+| 资源与维护 | 模型扫描、详情、引用检查、快捷使用、移动；插件启用／禁用／安装／更新／移除；备份、校验、恢复、回收区 |
+| 任务队列 | 绘图任务依次执行；按后端能力取消任务；重试、状态核对与重启恢复；未知状态重试需要确认 |
+| 设置 | 服务与文件路径、加密凭据、批量上限、托盘、更新频率；深色／浅色／跟随系统，默认／NASA 朋克皮肤 |
 
-现有五种模板布局：文生图、多图编辑、Gemma 润色文生图、Gemma 润色多图编辑、单独润色提示词。
+五种既有模板布局：文生图、多图编辑、Gemma 润色文生图、Gemma 润色多图编辑、单独润色提示词。实际运行需要匹配的节点、模型与服务。
 
-导入诊断不会把“同为 GGUF”当作模型可互换的依据。没有可靠候选时保持待核实；需要换加载器、改连线或跨模型架构的情况不会仅替换文件名。
+导入诊断不会仅因“同为 GGUF”就判定模型可以互换。需要更换加载器、修改连线或跨架构时，不会只替换文件名；没有可靠候选时保留待核实状态。
 
-## 快速预览
+## 本轮修复与验证
 
-前端没有 npm 运行依赖，也不需要下载 ComfyUI 或任何模型。
+2026-10-26 的后续程序修复覆盖队列／批量、服务归属、恢复文件与密钥保护、维护／模型移动、下载及作品文件操作，详见[本轮修复记录](./docs/development/2026-10-26程序问题修复记录.md)。下表保留公开 Alpha 1 对应提交的历史验证结果；后续修复仍在草稿 PR #11，尚未发布为新的 Release。
 
-### Windows 双击
+2026-10-15，代码基线 [`aab1998`](https://github.com/TIPSONG/yingzuo/commit/aab1998255f4bd6876f086e59fa1a72c578f1f2c) 完成 RR01–RR08 修复：
 
-运行根目录下的 `Start-Preview.cmd`。脚本优先使用用户目录中的 Python 3.11；找不到时直接打开 `index.html`。
+- 保存与导出：不再将普通模型名猜成凭据；敏感输入位置无法确认时阻止保存／导出，并保留内存草稿。模板表单、任务快照、图包和修复副本采用相应的敏感字段检查。
+- 迁移与备份：检查旧 API 图、UI 图、表单及未引用文件；迁移失败或检查未完成时阻止应用备份；历史任务与版本引用保留。
+- 退出与任务：退出服从环境锁及提交暂停租约；快捷使用同样检查最终参数和固定表单约束。
+- 设置与界面：迟到的保存响应不清除新输入；修复资源页按钮事件、图片查看器及标题栏裁切。
+- 截图工具：接口不匹配、页面异常或加载未完成时失败，不再生成误导性的成功记录。增加必跑 Chrome CI 作业。
 
-### 使用 Python 启动
+| 验证项 | `aab1998` 结果 |
+| --- | --- |
+| `npm run check`：语法、接口白名单、Node 回归 | 438 项：437 通过、1 跳过、0 失败 |
+| `npm run test:browser`：真实无头 Chrome，包含于 Node 回归 | 13 通过、0 跳过 |
+| Python 部署基线测试 | 7 通过 |
+| Windows／Linux CI | 通过 |
+| Windows 安装包与便携版构建 | 通过 |
+| 打包后原生模块自检、隔离数据根业务初始化 | 通过 |
 
-已在 Python 3.11 上验证。从仓库根目录执行：
+跳过的 1 项是需要 `COMFYUI_WORKFLOWS_DIR` 的实际工作流目录检查。上述结果绑定指定代码提交，后续提交以各自的 CI 为准。
+
+[回归 CI](https://github.com/TIPSONG/yingzuo/actions/runs/38686551420) · [Windows 构建与自检](https://github.com/TIPSONG/yingzuo/actions/runs/38686551049) · [56 张界面截图](./docs/development/ui-shots/README.md)
+
+截图覆盖 14 个场景 × 4 种配色，使用真实桌面页面和明确的接口替身；manifest 记录源文件哈希。截图、模拟集成和打包自检均不代替真实 ComfyUI／GPU 验收，人工验收栏仍留空。
+
+## 数据与配置
+
+| 运行方式 | 默认应用数据目录 |
+| --- | --- |
+| 源码开发 | 项目下 `.local/data/` |
+| 安装版，或未启用便携数据模式 | Electron 用户数据目录下的 `data/`（通常为 `%APPDATA%\映作\data`） |
+| 便携版且同目录存在 `portable.flag` | exe 所在目录下的 `data/` |
+| 显式设置 `YINGZUO_DATA_ROOT` | 使用该环境变量指定的目录 |
+
+应用数据包括 `config.json`、`yingzuo.sqlite`、`workspace.json`，以及 `drafts/`、`closed-workflows/`、`templates/`、`task-snapshots/`、`references/`、`favorites/`、`exports/`、`logs/`、`backups/` 等目录。生成原图位于设置中的 ComfyUI 输出目录，默认是 `<ComfyUI>/output`；可从作品页定位文件。
+
+模板固定保存在应用数据目录的 `templates/`，旧自定义模板目录设置会被忽略并提示。旧 `.local` 数据迁移采用复制方式，保留源文件。敏感节点输入使用系统加密凭据引用；加密不可用或字段无法可靠定位时，会明确阻止相关保存操作。
+
+配置优先通过应用“设置”页修改。`desktop/config.local.json` 是旧开发配置的兼容入口，不作为当前设置教程；机器路径、凭据和 `.local/` 数据不应提交到仓库。
+
+## 从源码开发
+
+需要 Node.js **22.12 或更新版本**。Electron **44.4.3**、依赖版本及锁文件随仓库维护。开发当前 Alpha 时使用 `feat/grovebot-impl` 分支：
+
+```powershell
+git clone --branch feat/grovebot-impl https://github.com/TIPSONG/yingzuo.git
+cd yingzuo
+npm ci
+npm run desktop
+```
+
+`npm run desktop` 通过正式入口启动，包含单实例检查与启动前恢复流程。ComfyUI 与 LM Studio 需另行安装；服务地址当前限定为本机 HTTP。
+
+桌面工作区单图上限 8 MB，最多 20 个标签。API 格式工作流需要连接 ComfyUI，由其接口重建可视图；不支持的参数控件仍在节点画布编辑。真实 Gemma 节点名称、输入契约及模型兼容性仍需在目标环境核对。
+
+### 自动检查
+
+```powershell
+npm run check
+npm run test:browser
+python -m unittest discover -s tests -p test_p0_baseline.py -v
+```
+
+浏览器测试使用固定依赖 `puppeteer-core` 和本机 Chrome。可用 `CHROME_PATH` 指定浏览器；CI 专项作业设置 `REQUIRE_BROWSER_TESTS=1`，缺浏览器时失败而非跳过。普通本地测试没有 Chrome 时会注明跳过。
+
+可选的实际工作流目录检查只读取 JSON，不启动生成任务；其断言依赖测试中的模型清单，需使用匹配的工作流夹具：
+
+```powershell
+$env:COMFYUI_WORKFLOWS_DIR = 'D:\your-comfyui\user\default\workflows'
+npm test
+```
+
+重拍静态界面截图：
+
+```powershell
+npm run screenshots -- --chrome 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+```
+
+### Windows 打包
+
+在 Windows x64 上构建，原生模块需要对应 Electron ABI：
+
+```powershell
+npm ci
+npm run build:win
+```
+
+产物位于 `dist/`。GitHub Actions 的 [Windows build](./.github/workflows/windows-build.yml) 执行打包后自检及隔离数据根初始化，再整理 `dist/release/` 为完整的 7 个文件：安装包、便携版、blockmap、两份清单和两份自检结果。Actions 上传这个目录，发布前对下载解压后的实际目录再次验证：
+
+```powershell
+node tools/release-assets.cjs verify <解压目录>
+```
+
+发布使用仓库内的统一入口，需要环境变量 `GITHUB_TOKEN`（仓库 Contents 写权限），不要把令牌写进文件或命令参数：
+
+若目标提交相对默认分支改动了 `.github/workflows/`，令牌还须允许修改工作流：细粒度令牌／GitHub App 需 Workflows 写权限，经典 PAT 需 `workflow` 范围。Actions 自动提供的 `GITHUB_TOKEN` 无法获得这项权限；此时应将具备相应权限的发布凭据注入脚本同名环境变量。详见 [GitHub Release API 权限说明](https://docs.github.com/en/rest/releases/releases?apiVersion=2022-11-28#create-a-release)。
+
+```powershell
+node tools/publish-release.cjs <解压目录> v<版本号> <40位构建提交SHA>
+```
+
+默认创建或补齐草稿；明确发布时在末尾加 `--publish`。脚本校验实际待上传的完整 7 个文件字节，重新核对远端资产集合、大小和 SHA-256 后才公开为预发布版。版本和标签必须一致，提交 SHA 必须来自该次构建；拒绝修改已有公开 Release 或覆盖冲突标签／资产。同一标签只由一个发布者操作，上传期间不要手动发布或改动草稿。
+
+Actions 产物有保留期限，公开下载使用 Releases。旧 Alpha 1 缺少的 blockmap 若无法从原构建取回，应保留缺件说明，不能重新构建并伪装成同名历史产物；该版本不因新增检查自动成为“完整清单已验证”。旧的仓库外六文件发布脚本已停用，后续只使用上述入口。
+
+## 原 A 测 WebUI 预览
+
+根目录 `index.html` 是保留的早期界面原型，与 `desktop/workbench.html` 桌面工作台分开。预览无需 npm 依赖、ComfyUI 或模型：
 
 ```powershell
 python preview.py --open
 ```
 
-然后访问 [本地预览](http://127.0.0.1:8840/)。服务只监听本机；已有同一预览时会复用。若端口被其他程序占用，`--open` 会改为打开本地 HTML，不会停止占用端口的程序。
+也可运行 `Start-Preview.cmd`，或访问脚本启动的 `http://127.0.0.1:8840/`。服务只监听本机。
 
-不需要打开浏览器时省略 `--open`。正式桌面应用的入口将在后续阶段交付。
+A 测预览中的润色、生成、队列、在线管理等属于演示交互，不启停真实服务、不生成或导出真实图片。JSON 解析与修改逻辑可用，但模型清单为静态快照。浏览器草稿保存在本地存储，参考图只在本次会话有效；导入上限 2 MB、结构预览最多 120 个节点。
 
-## 预览边界
+## 下一步与已知边界
 
-- 不启动或停止 ComfyUI／LM Studio，不真实生成、润色、安装、更新或导出图片。
-- JSON 诊断及工作副本修改是真实逻辑，但本机清单是开发环境快照，不代表当前设备实时检测，也不保证模型实际可运行。
-- 模板入口、资源清单和示例路径来自既有开发环境，不能视为其他设备已安装相同资源。
-- 导入最大 2 MB，每次结构预览最多展示 120 个节点；支持定位子图。
-- 草稿保存在当前浏览器本地存储。新上传图片使用内存引用，仅本次会话有效。
-- 原工作流文件不会因预览替换而改写；导出窗口可复制 JSON。当前内嵌浏览器的下载落盘尚未完成验证。
-- 本仓库不分发模型权重、ComfyUI、LM Studio、用户凭据或完整运行环境。
+程序任务与审阅修复进入真机验收阶段；早期 P0–P7 天数估算属于历史规划，不再作为当前剩余排期。
 
-## 开发与测试
+原 82 项任务现为 79 项程序完成、3 项有限支持，未进行人工验收的部分继续保留。各轮修复、测试和构建的对应提交见[当前状态与验证证据](./docs/development/当前状态与验证证据.md)；发布清单一致性另由 [Issue #16](https://github.com/TIPSONG/yingzuo/issues/16) 跟踪。
 
-浏览器页面直接加载 JavaScript／CSS，无构建步骤。自动化测试使用 Node.js 内置测试运行器，已在 Node.js 24 上验证；`package.json` 不包含第三方依赖。
+1. 在 Windows 上验证真实节点画布、多标签切换、表单与画布同步、快捷键、焦点和托盘退出。
+2. 核对 Gemma 节点与 LM Studio 契约，运行既有文生图、多图编辑及润色工作流，验证串行 GPU 队列和输出关联。
+3. 验证服务归属、外部 ComfyUI 任务、模型移动、更新失败恢复，以及 Windows 文件占用与 Worker 句柄释放。
+4. 完成安装／升级／便携数据、系统加密、深浅主题及大量作品浏览验收，再决定稳定版发布与 PR 合并。
 
-```powershell
-npm test
-```
+插件安装使用受限 Git 后端，尚未集成 ComfyUI-Manager；未知自定义节点在缺少定义缓存时的敏感字段识别仍有边界。更完整的限制、步骤与验收证据见下列项目资料。
 
-也可直接执行：
-
-```powershell
-node --test tests/workflow-import.test.cjs tests/compatibility.test.cjs
-```
-
-默认执行 19 项便携测试；涉及本机实际工作流目录的 1 项集成检查会明确跳过。要执行全部 20 项，设置实际目录：
-
-```powershell
-$env:COMFYUI_WORKFLOWS_DIR = Join-Path (Read-Host 'ComfyUI 安装目录') 'user\default\workflows'
-npm test
-```
-
-这个检查只读取 JSON，不启动绘图服务；结果与当前模型清单快照有关。完整界面操作记录见[验收记录](./验收记录.md)。
-
-## 开发排期
-
-进展在 [排期总览 #1](https://github.com/TIPSONG/yingzuo/issues/1) 和 [GitHub Issues](https://github.com/TIPSONG/yingzuo/issues) 中跟踪；各阶段写明依赖、任务和验收条件。三个交付节点见 [Milestones](https://github.com/TIPSONG/yingzuo/milestones)。
-
-| 阶段 | 内容 | 估算有效开发日 |
-| --- | --- | --- |
-| P0 | 桌面接入预研、真实画布与工作流状态验证 | 1–2 |
-| P1 | 独立桌面应用开发版、服务控制、托盘、基础设置 | 3–4 |
-| P2 | 五个真实工作流、双模式、Gemma、串行队列 | 5–7 |
-| P3 | 真实作品库、文件定位和两种导出 | 3–4 |
-| P4 | 模板版本、自定义表单、本地资源、实时诊断、收藏板 | 4–6 |
-| P5 | Hugging Face／Civitai、下载、插件和在线模板 | 4–6 |
-| P6 | 高级批量、任务恢复、更新备份与回滚 | 4–6 |
-| P7 | 自然操作回归、Windows 打包和交付 | 2–3 |
-
-日常可用版预计在 P3 后交付，约 12–17 个有效开发日；完整计划为 26–38 日，另留 5–7 日缓冲。均为估算，P0 后重新评估；不是日历日期承诺。
-
-## 目录
+## 目录与项目资料
 
 ```text
-index.html / app.js / style.css    页面、状态和交互
-workspace-tabs.*                   多标签和独立草稿
-workflow-start.*                   新建入口与结构预览
-workflow-import.js                 JSON 解析与校验
-compatibility*.js / .css           导入诊断、候选与修复
-assets/                           A 测示例图片及标识
-tests/                            解析与兼容性测试
-tools/snapshot_compatibility.py    开发环境清单快照工具
-preview.py / Start-Preview.cmd     本机预览入口
-docs/                             产品规格、预览说明和既有环境说明
+desktop/                      Electron 入口、服务、存储、原生画布桥接与桌面界面
+shared/                       Schema、表单、工作流检查与敏感字段策略
+tests/                        单元、模拟集成、浏览器和部署基线测试
+tools/                        检查、打包、截图、进度与部署基线工具
+docs/development/             程序进度、交接、人工验收清单与截图
+index.html / app.js / style.css  早期 A 测 WebUI
+preview.py / Start-Preview.cmd  本机预览入口
+assets/                       标识和示例图片
 ```
 
-快照工具目前使用开发设备的固定路径，维护其他环境时需先调整路径；它只读取文件名和 Python AST，不导入或运行插件。
-
-## 项目资料
-
-- [项目总结与后续排期](./项目总结与后续排期.md)
+- [程序任务与开发进度](./docs/development/Grovebot开发进度.md)
+- [当前状态与验证证据](./docs/development/当前状态与验证证据.md)
+- [待人工验收清单](./docs/development/待Codex验收.md)
+- [Grovebot 历史交接记录](./docs/development/交接-下一个agent.md)
+- [交付记录](./docs/development/交付记录.md)
 - [产品规格](./docs/产品规格.md)
-- [验收记录](./验收记录.md)
-- [A 测预览详细说明](./docs/A测预览说明.md)
-- [既有 Gemma 集成说明](./docs/Gemma集成说明.md)
-- [早期讨论与实施记录](./docs/历史实施计划.md)
-
-产品范围以规格为准，实际完成情况以验收记录为准，后续进展以 Issues 为准。既有环境说明中的本机路径用于追溯部署，不作为通用安装教程。
+- [排期总览 Issue #1](https://github.com/TIPSONG/yingzuo/issues/1) 与 [项目 Issues](https://github.com/TIPSONG/yingzuo/issues)
+- [A 测预览说明](./docs/A测预览说明.md)
+- [P0 接入研究（历史）](./docs/research/P0桌面接入验证.md)
+- [Gemma 集成说明](./docs/Gemma集成说明.md)

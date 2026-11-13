@@ -1,0 +1,1191 @@
+
+/* 无边框窗口标题栏
+ * 左列 main（可有底边/色条）| 右列 controls（无底边、无阴影、不透明，线条不得穿过图标）
+ */
+.titlebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  gap: 0;
+  background: var(--sidebar);
+  border: 0;              /* 整条不要底边，否则会穿过窗口按钮 */
+  border-bottom: 0;
+  box-shadow: none;
+  user-select: none;
+  z-index: 40;
+  overflow: hidden;
+}
+.titlebar-main {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--sidebar-line, var(--line)); /* 底边只在左列 */
+  box-shadow: none;
+}
+.titlebar-drag {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.titlebar-stripe {
+  display: none;
+  height: 3px;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
+  pointer-events: none;
+  border: 0;
+  box-shadow: none;
+}
+.titlebar-mark { width: 16px; height: 16px; flex-shrink: 0; }
+.titlebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+.titlebar-sub {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-left: 2px;
+}
+.titlebar-controls {
+  display: flex;
+  flex: none;
+  flex-shrink: 0;
+  align-items: stretch;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  position: relative;
+  z-index: 5;
+  isolation: isolate;
+  background: var(--sidebar);
+  /* 控制列：禁止任何会切过图标的线；底缘用不透明垫条盖住与 #pages 的接缝 */
+  border: 0 !important;
+  border-bottom: 0 !important;
+  border-top: 0 !important;
+  border-right: 0 !important;
+  border-left: 1px solid var(--sidebar-line, var(--line));
+  box-shadow: none !important;
+  outline: none;
+  padding: 0 0 2px; /* 底部 2px 实心垫，与背景同色 */
+  margin: 0;
+  box-sizing: border-box;
+}
+.titlebar-controls::after {
+  content: none; /* 垫条用 padding + 背景，不再画线 */
+}
+.titlebar-btn {
+  width: 48px;
+  height: 38px; /* 略矮于列，底部留给垫条 */
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  outline: none;
+  background: var(--sidebar);
+  color: var(--sub);
+  font-size: 14px;
+  line-height: 1;
+  /* 字形上移：底侧留白，任何接缝线都在图标下方空白区 */
+  padding: 0 0 10px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  position: relative;
+  z-index: 6;
+  box-sizing: border-box;
+}
+.titlebar-btn > span {
+  display: block;
+  transform: translateY(-2px); /* 再略抬高字形 */
+}
+.titlebar-btn:hover { background: var(--hover); color: var(--text); transform: none; }
+.titlebar-btn:focus-visible { outline: var(--focus); outline-offset: -2px; }
+.titlebar-btn-close:hover { background: #e81123; color: #fff; border-color: transparent; }
+
+[data-skin="nasa-punk"] .titlebar {
+  background: var(--nasa-chrome);
+  border: 0;
+  border-bottom: 0;
+  box-shadow: none;
+}
+[data-skin="nasa-punk"] .titlebar-main {
+  background: var(--nasa-chrome);
+  border-bottom: 0; /* 底边改由色条承担，避免叠线 */
+  box-shadow: none;
+}
+[data-skin="nasa-punk"] .titlebar-stripe {
+  display: block;
+  background: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%);
+}
+[data-skin="nasa-punk"] .titlebar-controls {
+  background: var(--nasa-chrome);
+  border: 0 !important;
+  border-left: 1px solid var(--line) !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+  padding-bottom: 2px;
+}
+[data-skin="nasa-punk"] .titlebar-btn {
+  background: var(--nasa-chrome);
+  color: var(--nasa-nav-fg);
+  border: 0 !important;
+  box-shadow: none !important;
+  height: 38px;
+  padding-bottom: 10px;
+}
+[data-skin="nasa-punk"] .titlebar-title {
+  color: var(--nasa-accent-text);
+  letter-spacing: 0.16em;
+  font-weight: 800;
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  text-transform: uppercase;
+}
+[data-skin="nasa-punk"] .titlebar-sub {
+  color: var(--nasa-fg);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.22em;
+  opacity: 0.9;
+}
+[data-skin="nasa-punk"] .titlebar-btn:hover { background: var(--nasa-raise); color: var(--nasa-fg); }
+[data-skin="nasa-punk"] .titlebar-btn-close:hover { background: #e85d04; color: #ffffff; }
+
+[data-theme="light"] .titlebar-controls,
+[data-theme="light"] .titlebar-btn {
+  background: var(--sidebar);
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+}
+[data-theme="light"] .titlebar-btn:hover { background: var(--hover); }
+
+/* 标题栏下方内容区：控制列正下方不得出现顶边线 */
+.app-shell,
+#pages {
+  border-top: 0 !important;
+  box-shadow: none;
+}
+
+/* 页面壳：首页 / 导航 / 列表 / 表单 / 队列 / 对话框 / 空状态 */
+#pages { min-width: 0; min-height: 0; display: grid; overflow: hidden; background: var(--bg); color: var(--text); }
+.page { min-width: 0; min-height: 0; overflow: auto; }
+main.page { overflow: hidden; }
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  gap: 14px;
+  border-bottom: 1px solid var(--line-strong);
+  min-height: 88px;
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.page-body {
+  padding: 24px 28px 48px;
+  max-width: 1320px;
+}
+
+/* 主导航 */
+nav { display: flex; flex-direction: column; gap: 3px; }
+nav .nav {
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  color: var(--sub);
+  padding: 10px 14px;
+  border-radius: 8px;
+  transition: background .15s, color .15s;
+}
+nav .nav:hover { background: var(--nav-hover); color: var(--text); border-color: transparent; }
+nav .nav.active {
+  background: var(--nav-active);
+  border-color: transparent;
+  color: var(--nav-active-fg);
+}
+button.ghost { background: transparent; }
+.side-bottom button + button { margin-top: 6px; }
+
+/* 首页入口 */
+.entry-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 22px 20px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  white-space: normal;
+  text-align: left;
+  min-height: 138px;
+  transition: border-color .2s, background .2s, transform .15s;
+}
+.entry:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: var(--entry-hover);
+  transform: translateY(-2px);
+}
+.entry strong { font-size: 16px; font-weight: 600; color: var(--text); }
+.entry span { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.entry .entry-kicker {
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  font-weight: 500;
+}
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 28px 0 12px;
+  color: var(--label-fg);
+  letter-spacing: .2px;
+}
+.section-title:first-child { margin-top: 8px; }
+
+/* 卡片 / 列表 */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 16px 14px;
+  background: var(--panel);
+  transition: border-color .15s;
+}
+.card:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: .2px;
+}
+.badge.ok { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.badge.warn { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+.badge.bad { color: var(--bad); border-color: var(--bad-line); background: var(--bad-bg); }
+
+.kv {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 4px 10px;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; color: var(--sub); }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+.actions button { font-size: 12px; padding: 7px 12px; }
+.actions input,
+.actions select { font-size: 12px; min-width: 160px; }
+
+.list { display: flex; flex-direction: column; gap: 8px; }
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 14px;
+  background: var(--panel);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  transition: background .15s, border-color .15s;
+}
+.row:hover { background: var(--row-hover); border-color: color-mix(in srgb, var(--accent) 25%, var(--line)); }
+.muted { color: var(--muted); }
+.err { color: var(--bad); }
+
+/* 空状态 */
+.empty-state {
+  border: 1px dashed var(--empty-line);
+  border-radius: 12px;
+  padding: 48px 28px;
+  text-align: center;
+  color: var(--muted);
+  margin: 8px 0;
+  background: var(--empty-bg);
+}
+.empty-state h3 {
+  color: var(--text);
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.empty-state p {
+  font-size: 12px;
+  margin: 0;
+  line-height: 1.7;
+  max-width: 420px;
+  margin-inline: auto;
+}
+.list > p.muted,
+.asset-grid > p.muted,
+.fav-board > p.muted {
+  border: 1px dashed var(--empty-line);
+  border-radius: 12px;
+  padding: 36px 24px;
+  text-align: center;
+  background: var(--empty-bg);
+  margin: 0;
+  line-height: 1.7;
+}
+
+.log {
+  white-space: pre-wrap;
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  max-height: 360px;
+  overflow: auto;
+  font: 11px/1.65 Consolas, "Cascadia Mono", monospace;
+  color: var(--sub);
+}
+
+/* 设置 */
+.settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 12px 18px;
+  align-items: start; /* 卡片高度随内容，避免与同排高卡片被拉齐留下大块空白 */
+}
+.settings fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 0;
+  background: var(--panel);
+  height: auto;
+  align-self: start;
+}
+.settings legend {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 0 6px;
+}
+.setting {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.setting input[type=text],
+.setting input[type=number],
+.setting select {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: inherit;
+  padding: 7px 9px;
+}
+.setting .hint { grid-column: 2 / 4; color: var(--muted); font-size: 11px; }
+.issue {
+  border-radius: 9px;
+  padding: 10px 13px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  border: 1px solid #7a6431;
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+.issue.error { border-color: var(--bad-line); color: var(--bad); background: var(--bad-bg); }
+
+/* 起始页 */
+.start {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 28px 32px;
+  background: var(--bg);
+  z-index: 3;
+}
+.start-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.start-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.dropzone {
+  border: 1.5px dashed var(--drop-line);
+  border-radius: 14px;
+  padding: 40px 28px;
+  text-align: center;
+  color: var(--label-fg);
+  margin: 14px 0 20px;
+  background: var(--deep);
+  transition: background .15s, border-color .15s;
+}
+.dropzone.over { background: var(--drop-over); border-color: var(--accent); }
+.dropzone small { display: block; color: var(--muted); margin-top: 8px; font-size: 11px; }
+.start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.start-grid .wide { grid-column: 1 / 3; }
+.start-grid > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--panel);
+}
+.start-grid h3 {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 10px;
+  font-weight: 500;
+  letter-spacing: .4px;
+}
+.start-grid textarea {
+  width: 100%;
+  background: var(--input);
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px;
+  font: 11px/1.55 Consolas, monospace;
+  margin-bottom: 8px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button {
+  font-size: 11px;
+  padding: 6px 11px;
+  border-radius: 6px;
+}
+#editor-portal { position: relative; }
+
+/* Toast / Modal */
+#toast {
+  position: fixed;
+  right: 22px;
+  bottom: 40px;
+  max-width: 520px;
+  background: var(--accent);
+  color: var(--ink);
+  border: 1px solid var(--toast-line);
+  border-radius: 10px;
+  padding: 11px 16px;
+  font-size: 12px;
+  z-index: 30;
+  box-shadow: 0 8px 28px #0005;
+}
+#toast.error {
+  background: #2a1a17;
+  border-color: var(--bad-line);
+  color: #ffccbc;
+}
+.modal-back {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-back);
+  backdrop-filter: blur(7px);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: 24px;
+}
+.modal {
+  background: var(--modal-bg);
+  border: 1px solid var(--modal-line);
+  border-radius: 14px;
+  padding: 20px 22px;
+  min-width: min(380px, 100%);
+  max-width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: var(--shadow);
+}
+.modal h3 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+/* The viewer owns a two-column layout; the generic dialog width would clip its controls. */
+.modal:has(> .viewer) {
+  width: min(1100px, 100%);
+  max-width: min(1100px, 100%);
+  padding: 0;
+  overflow: hidden;
+}
+.modal > .viewer { width: 100%; }
+.modal label {
+  display: block;
+  font-size: 11px;
+  color: var(--label-fg);
+  margin: 4px 0 4px;
+}
+.modal input,
+.modal select {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: inherit;
+  padding: 9px 11px;
+  margin: 0 0 12px;
+}
+.modal textarea {
+  width: 100%;
+  min-height: 120px;
+  background: var(--input);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: inherit;
+  padding: 10px;
+  margin: 6px 0 12px;
+  line-height: 1.65;
+  resize: vertical;
+}
+.modal .actions { justify-content: flex-end; margin-top: 4px; }
+.modal .muted { font-size: 12px; line-height: 1.65; margin: 0 0 12px; }
+
+/* 运行条 / 队列 */
+.run-bar {
+  grid-area: run;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  align-content: flex-start;
+  margin: 0;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.run-bar .muted,
+.run-bar #run-hint {
+  font-size: 11px;
+  flex: 1 1 14rem;
+  min-width: 10rem;
+  line-height: 1.45;
+  white-space: normal;
+}
+.toolbar .run-bar > button {
+  flex: 0 0 auto;
+}
+.count {
+  background: var(--accent);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.task {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  margin: 0;
+}
+.task .err { color: var(--bad); font-size: 12px; white-space: pre-wrap; }
+.task .meta { font-size: 11px; color: var(--muted); line-height: 1.55; }
+.task progress {
+  width: 160px;
+  height: 6px;
+  accent-color: var(--accent);
+  border-radius: 4px;
+}
+#queue-state {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-line);
+  color: var(--notice-fg);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.notice {
+  padding: 12px 14px;
+  background: var(--notice-bg);
+  border: 1px solid var(--notice-line);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--notice-fg);
+  margin-bottom: 14px;
+  line-height: 1.65;
+}
+
+@media (max-width: 980px) {
+  .entry-row { grid-template-columns: 1fr; }
+  .page-body { padding: 18px 16px 40px; }
+  .page-head { padding: 12px 16px; min-height: 72px; }
+  .settings { grid-template-columns: 1fr; }
+  .setting { grid-template-columns: 1fr; }
+  .setting .hint { grid-column: 1; }
+  .start-grid { grid-template-columns: 1fr; }
+  .start-grid .wide { grid-column: 1; }
+  .task { grid-template-columns: 1fr; gap: 8px; }
+}
+
+
+/* 设置 · 主题切换（紧凑行，卡片贴合内容） */
+.setting-theme {
+  align-items: start;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 2px 0 0;
+}
+.setting-theme .theme-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.setting-theme .hint {
+  grid-column: 2 / 3;
+  margin: 0;
+  line-height: 1.4;
+}
+.theme-option {
+  width: auto;
+  min-width: 108px;
+  height: auto;
+  min-height: 0;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 8px 10px;
+  text-align: left;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.theme-option:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--hover); transform: none; }
+.theme-option.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  box-shadow: 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+.theme-option.active small { color: var(--text); }
+/* 选中态禁止吃掉全局 button.active 的实心强调色填充 */
+button.theme-option.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+  color: var(--text);
+  border-color: var(--accent);
+}
+.theme-swatch { display: flex; gap: 4px; margin: 0; }
+.theme-swatch span {
+  height: 14px; width: 18px; border-radius: 4px;
+  background: #0f130d; border: 1px solid #2a3028;
+}
+.theme-swatch span:nth-child(2) { background: #2c3426; }
+.theme-swatch span:nth-child(3) { background: #d1ed87; border-color: #a7c971; }
+.theme-option-light .theme-swatch span { background: #f3f5ef; border-color: #cfd6c4; }
+.theme-option-light .theme-swatch span:nth-child(2) { background: #ffffff; }
+.theme-option-light .theme-swatch span:nth-child(3) { background: #5a7d28; border-color: #4a6c20; }
+.theme-option-system .theme-swatch span { background: linear-gradient(90deg, #0f130d 50%, #f3f5ef 50%); border-color: #6a7464; }
+.theme-option-system .theme-swatch span:nth-child(2) { background: linear-gradient(90deg, #2c3426 50%, #ffffff 50%); }
+.theme-option-system .theme-swatch span:nth-child(3) { background: linear-gradient(90deg, #d1ed87 50%, #5a7d28 50%); border-color: #8aaa58; }
+.theme-option small { font-size: 11px; color: var(--sub); line-height: 1.2; }
+.theme-option.active small { color: var(--text); font-weight: 600; }
+.settings fieldset:has(.setting-theme) {
+  padding-bottom: 10px;
+}
+/* RV11：白字只用于实色强调底的按钮（primary 与普通 active 按钮）；导航、模式按钮、主题/皮肤卡各用自己的前景 token */
+[data-theme="light"] button.primary,
+[data-theme="light"] button.active:not(.nav):not(.theme-option):not(.mode-buttons button) {
+  color: var(--ink);
+}
+[data-theme="light"] .badge.ok {
+  color: #f4f9e8;
+}
+
+
+/* 皮肤选择卡 */
+.setting-skin { margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.skin-option-default .theme-swatch span { background: #1b1e1c; border-color: #303530; }
+.skin-option-default .theme-swatch span:nth-child(2) { background: #2c3426; }
+.skin-option-default .theme-swatch span:nth-child(3) { background: #d1ed87; border-color: #a7c971; }
+.skin-option-nasa .theme-swatch span { background: #0b1424; border-color: #1e4d8c; }
+.skin-option-nasa .theme-swatch span:nth-child(2) { background: #162238; }
+.skin-option-nasa .theme-swatch span:nth-child(3) { background: #e85d04; border-color: #ffd60a; }
+
+/* NASA 朋克：参考图 — 深海军星空底、粗橙+白、任务章蓝橙黄条、干净飞行UI（仅 data-skin） */
+[data-skin="nasa-punk"] {
+  --accent: #e85d04;
+  --ink: #0b1424;
+  --ok: #ffffff;
+  --warn: #ffd60a;
+  --bad: #ff4d4d;
+  --nav-active: #e85d0422;
+  --primary-hover: #ff7a1a;
+  --count-bg: #e85d04;
+  --count-fg: #ffffff;
+  --toast-bg: #e85d04;
+  --toast-fg: #ffffff;
+  --toast-line: #ffd60a;
+  --selection: #e85d0440;
+  --focus: 2px solid #ffffff;
+  --notice-bg: #122038;
+  --notice-line: #e85d0488;
+  --notice-fg: #ffffff;
+  --hero-surface: #122038;
+  --hero-line: #e85d0466;
+  --mode-active: #1a2e4a;
+  --mode-active-fg: #ffffff;
+  --empty-line: #e85d0455;
+  --radius: 6px;
+  --stripe-blue: #1e4d8c;
+  --stripe-orange: #e85d04;
+  --stripe-yellow: #ffd60a;
+}
+[data-skin="nasa-punk"][data-theme="dark"],
+[data-skin="nasa-punk"]:not([data-theme="light"]) {
+  --bg: #0b1424;
+  --sidebar: #09101c;
+  --panel: #162238;
+  --panel2: #1a2a42;
+  --hover: #243652;
+  --line: #2e4a6a;
+  --line-strong: #e85d0466;
+  --text: #ffffff;
+  --sub: #c8d4e4;
+  --muted: #8fa3bc;
+  --input: #0e1828;
+  --deep: #071018;
+  --status-bg: #122038;
+  --status-fg: #ffffff;
+  --tab-bar: #09101c;
+  --tab-active: #1a2e4a;
+  --mode-track: #0e1828;
+  --entry-hover: #1e3250;
+  --row-hover: #1e3250;
+  --empty-bg: #122038;
+  --form-card: #162238;
+  --form-card-line: #e85d0455;
+  --field-line: #2e4a6a;
+  --field-fg: #ffffff;
+  --label-fg: #ffffff;
+  --foot-bg: #09101c;
+  --foot-fg: #8fa3bc;
+  --sidebar-line: #e85d0466;
+  --divider: #2e4a6a;
+  --modal-bg: #162238;
+  --modal-line: #e85d0488;
+  --scroll-thumb: #e85d0488;
+  --warn-bg: #2a2210;
+  --warn-line: #ffd60a99;
+  --bad-bg: #2a1418;
+  --bad-line: #ff4d4d99;
+  /* RV12：NASA 组件 token（深色） */
+  --nasa-surface: rgba(22, 34, 56, 0.92);
+  --nasa-fg: #ffffff;
+  --nasa-nav-fg: #c8d4e4;
+  --nasa-raise: #1a2e4a;
+  --nasa-btn-bg: #122038;
+  --nasa-track: #0e1828;
+  --nasa-chrome: #0b1424;
+  --nasa-accent-text: #e85d04;
+  --nasa-warn-text: #ffd60a;
+  --nasa-bad-text: #ff4d4d;
+  --nasa-ok-bg: rgba(255,255,255,0.08);
+  --nasa-star: rgba(255,255,255,0.5);
+  --nasa-star-dim: rgba(255,255,255,0.35);
+  --nasa-body-grad: linear-gradient(180deg, #0f1c32 0%, #0b1424 45%, #09101c 100%);
+  --nasa-aside-grad: linear-gradient(180deg, #0d1628 0%, #09101c 100%);
+  --nasa-head-grad: linear-gradient(180deg, rgba(14, 24, 44, 0.92), rgba(11, 20, 36, 0.4));
+  --nav-active-fg: #ffffff;
+}
+[data-skin="nasa-punk"][data-theme="light"] {
+  --accent: #d24f00;
+  --ink: #ffffff;
+  --bg: #eef2f8;
+  --sidebar: #e2e8f2;
+  --panel: #ffffff;
+  --text: #0b1424;
+  --sub: #3a4a60;
+  --muted: #6a7a90;
+  --line: #c5d0e0;
+  --nav-active: #d24f0020;
+  --primary-hover: #b84400;
+  --label-fg: #a63d00;
+  --focus: 2px solid #1e4d8c;
+  /* RV12：NASA-浅色 全部组件 token（与深色成对） */
+  --panel2: #f5f7fb;
+  --hover: #dde5f0;
+  --line-strong: #d24f0055;
+  --input: #ffffff;
+  --deep: #e6ecf4;
+  --status-bg: #e2e8f2;
+  --status-fg: #1c2a40;
+  --tab-bar: #e2e8f2;
+  --tab-active: #ffffff;
+  --mode-track: #e2e8f2;
+  --mode-active: #ffffff;
+  --mode-active-fg: #0b1424;
+  --entry-hover: #f5f8fc;
+  --row-hover: #f2f5fa;
+  --empty-bg: #f5f7fb;
+  --empty-line: #d24f0055;
+  --hero-surface: #fdf3ec;
+  --hero-line: #d24f0055;
+  --form-card: #ffffff;
+  --form-card-line: #d24f0044;
+  --field-line: #c5d0e0;
+  --field-fg: #0b1424;
+  --foot-bg: #e2e8f2;
+  --foot-fg: #4a5a70;
+  --sidebar-line: #d24f0055;
+  --divider: #d0d9e6;
+  --modal-bg: #ffffff;
+  --modal-line: #d24f0066;
+  --modal-back: #0b142466;
+  --scroll-thumb: #d24f0088;
+  --warn-bg: #fff6d6;
+  --warn-line: #c9a400;
+  --bad-bg: #fdecec;
+  --bad-line: #e09a9a;
+  --notice-bg: #fdf3ec;
+  --notice-line: #d24f0066;
+  --notice-fg: #3a2a1c;
+  --selection: #d24f0033;
+  --nasa-surface: #ffffff;
+  --nasa-fg: #0b1424;
+  --nasa-nav-fg: #3a4a60;
+  --nasa-raise: #dbe3ef;
+  --nasa-btn-bg: #ffffff;
+  --nasa-track: #e2e8f2;
+  --nasa-chrome: #e2e8f2;
+  --nasa-accent-text: #a63d00;
+  --nasa-warn-text: #7a5200;
+  --nasa-bad-text: #b3261e;
+  --nasa-ok-bg: #0b14240d;
+  --nasa-star: rgba(30, 77, 140, 0.22);
+  --nasa-star-dim: rgba(30, 77, 140, 0.14);
+  --nasa-body-grad: linear-gradient(180deg, #f6f8fc 0%, #eef2f8 45%, #e6ecf4 100%);
+  --nasa-aside-grad: linear-gradient(180deg, #e9eef6 0%, #dfe6f0 100%);
+  --nasa-head-grad: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(238, 242, 248, 0.4));
+  --nav-active-fg: #0b1424;
+}
+
+/* 深海军星空底（非纯黑） */
+[data-skin="nasa-punk"] body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 18%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 28% 62%, var(--nasa-star-dim), transparent),
+    radial-gradient(1.5px 1.5px at 44% 28%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 58% 78%, var(--nasa-star-dim), transparent),
+    radial-gradient(1.5px 1.5px at 72% 14%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 86% 48%, var(--nasa-star-dim), transparent),
+    radial-gradient(1px 1px at 18% 88%, var(--nasa-star-dim), transparent),
+    radial-gradient(1.5px 1.5px at 92% 72%, var(--nasa-star), transparent),
+    radial-gradient(1px 1px at 36% 42%, var(--nasa-star-dim), transparent),
+    radial-gradient(1px 1px at 64% 56%, var(--nasa-star-dim), transparent),
+    var(--nasa-body-grad);
+  background-attachment: fixed;
+}
+[data-skin="nasa-punk"] #pages,
+[data-skin="nasa-punk"] aside,
+[data-skin="nasa-punk"] .app-shell {
+  background-color: transparent;
+}
+[data-skin="nasa-punk"] aside {
+  border-right: 1px solid var(--line);
+  background: var(--nasa-aside-grad);
+  box-shadow: inset -3px 0 0 var(--stripe-blue), inset -6px 0 0 var(--stripe-orange), inset -9px 0 0 var(--stripe-yellow);
+}
+[data-skin="nasa-punk"] .page-head {
+  border-bottom: 1px solid var(--line);
+  background: var(--nasa-head-grad);
+  position: relative;
+  gap: 12px;
+}
+/* 色条只画在标题文字一侧，不到达右侧 header-actions */
+[data-skin="nasa-punk"] .page-head > div:first-child {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 6px;
+}
+[data-skin="nasa-punk"] .page-head > div:first-child::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--stripe-blue) 0 33%, var(--stripe-orange) 33% 66%, var(--stripe-yellow) 66% 100%);
+  pointer-events: none;
+}
+[data-skin="nasa-punk"] .page-head .header-actions {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  background: transparent;
+  align-self: center;
+}
+
+/* 分区标题：宽字距白/橙，飞行UI */
+[data-skin="nasa-punk"] .eyebrow,
+[data-skin="nasa-punk"] .section-title,
+[data-skin="nasa-punk"] .settings legend,
+[data-skin="nasa-punk"] .entry .entry-kicker,
+[data-skin="nasa-punk"] .page-head .eyebrow {
+  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+[data-skin="nasa-punk"] .eyebrow,
+[data-skin="nasa-punk"] .entry .entry-kicker,
+[data-skin="nasa-punk"] .settings legend {
+  color: var(--nasa-fg);
+}
+[data-skin="nasa-punk"] .section-title {
+  color: var(--nasa-accent-text);
+  border-left: 4px solid #1e4d8c;
+  box-shadow: inset 4px 0 0 #e85d04, inset 8px 0 0 #ffd60a;
+  padding-left: 14px;
+  margin-left: 0;
+}
+[data-skin="nasa-punk"] .hint,
+[data-skin="nasa-punk"] footer,
+[data-skin="nasa-punk"] .muted {
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+[data-skin="nasa-punk"] .brand {
+  color: var(--nasa-fg);
+}
+[data-skin="nasa-punk"] .brand small {
+  color: var(--nasa-fg);
+  letter-spacing: 0.2em;
+  opacity: 0.85;
+}
+
+/* 干净面板：高对比、轻描边 */
+[data-skin="nasa-punk"] .card,
+[data-skin="nasa-punk"] .row,
+[data-skin="nasa-punk"] .entry,
+[data-skin="nasa-punk"] .settings fieldset,
+[data-skin="nasa-punk"] .empty-state,
+[data-skin="nasa-punk"] .task,
+[data-skin="nasa-punk"] .modal,
+[data-skin="nasa-punk"] .node-fields {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--nasa-surface);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04);
+}
+[data-skin="nasa-punk"] .entry:hover,
+[data-skin="nasa-punk"] .card:hover,
+[data-skin="nasa-punk"] .row:hover {
+  border-color: #e85d04;
+  box-shadow: 0 0 0 1px rgba(232, 93, 4, 0.25);
+}
+
+/* 导航选中：橙左边条 + 浅叠色 */
+[data-skin="nasa-punk"] nav .nav {
+  color: var(--nasa-nav-fg);
+  border-radius: 4px;
+}
+[data-skin="nasa-punk"] nav .nav:hover {
+  color: var(--nasa-fg);
+  background: var(--nasa-raise);
+}
+[data-skin="nasa-punk"] nav .nav.active {
+  color: var(--nasa-fg);
+  background: rgba(232, 93, 4, 0.14);
+  border: 1px solid rgba(232, 93, 4, 0.55);
+  border-left: 4px solid #e85d04;
+  border-radius: 0 4px 4px 0;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* 主题/皮肤选中卡：仅描边+浅叠色，文字可读 */
+[data-skin="nasa-punk"] .theme-option.active,
+[data-skin="nasa-punk"] button.theme-option.active {
+  background: rgba(232, 93, 4, 0.12) !important;
+  color: var(--nasa-fg) !important;
+  border: 2px solid #e85d04 !important;
+  box-shadow: 0 0 0 1px rgba(255, 214, 10, 0.45) !important;
+}
+[data-skin="nasa-punk"] .theme-option.active small {
+  color: var(--nasa-fg) !important;
+  font-weight: 700;
+}
+[data-skin="nasa-punk"] button.active:not(.theme-option):not(.primary):not(.nav) {
+  border: 2px solid #e85d04;
+  background: rgba(232, 93, 4, 0.12);
+  color: var(--nasa-fg);
+}
+
+/* 主按钮：粗橙 + 白字 */
+[data-skin="nasa-punk"] button.primary {
+  background: #e85d04;
+  border: 2px solid #ffd60a;
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  box-shadow: none;
+}
+[data-skin="nasa-punk"] button.primary:hover {
+  background: #ff7a1a;
+  transform: none;
+}
+[data-skin="nasa-punk"] button:not(.primary):not(.nav):not(.titlebar-btn):not(.theme-option) {
+  border-radius: 4px;
+  border-color: var(--line);
+  color: var(--nasa-fg);
+  background: var(--nasa-btn-bg);
+}
+[data-skin="nasa-punk"] button:not(.primary):not(.nav):not(.titlebar-btn):not(.theme-option):hover {
+  border-color: #e85d04;
+  color: var(--nasa-fg);
+}
+
+/* 状态徽章：白/橙高对比 */
+[data-skin="nasa-punk"] .badge {
+  border-radius: 3px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 9px;
+  padding: 2px 8px 2px 14px;
+  position: relative;
+}
+[data-skin="nasa-punk"] .badge::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+[data-skin="nasa-punk"] .badge.ok {
+  background: var(--nasa-ok-bg);
+  border: 1px solid var(--nasa-fg);
+  color: var(--nasa-fg);
+}
+[data-skin="nasa-punk"] .badge.warn {
+  background: rgba(232, 93, 4, 0.15);
+  border: 1px solid #e85d04;
+  color: var(--nasa-warn-text);
+}
+[data-skin="nasa-punk"] .badge.bad {
+  background: rgba(255, 77, 77, 0.12);
+  border: 1px solid #ff4d4d;
+  color: var(--nasa-bad-text);
+}
+[data-skin="nasa-punk"] .side-bottom strong {
+  color: var(--nasa-fg);
+}
+[data-skin="nasa-punk"] .side-bottom strong::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 8px;
+  background: #e85d04;
+  box-shadow: 0 0 8px #e85d04;
+  vertical-align: middle;
+}
+[data-skin="nasa-punk"] .count {
+  border-radius: 3px;
+  border: 1px solid #ffd60a;
+  background: #e85d04;
+  color: #ffffff;
+}
+[data-skin="nasa-punk"] #toast:not(.error) {
+  background: #e85d04;
+  color: #ffffff;
+  border: 2px solid #ffd60a;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+[data-skin="nasa-punk"] .tab.active {
+  border-bottom: 3px solid #e85d04;
+  color: var(--nasa-fg);
+}
+[data-skin="nasa-punk"] .mode-buttons {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--nasa-track);
+}
+[data-skin="nasa-punk"] .mode-buttons button.active {
+  background: rgba(232, 93, 4, 0.18);
+  color: var(--nasa-fg);
+  border: 1px solid #e85d04 !important;
+}
+/* 任务章色条装饰：外观 fieldset 顶边 */
+[data-skin="nasa-punk"] .settings fieldset:has(.setting-theme) {
+  border-top: 3px solid transparent;
+  border-image: linear-gradient(90deg, #1e4d8c 0 33%, #e85d04 33% 66%, #ffd60a 66% 100%) 1;
+  padding-top: 14px;
+}
+
+/* 创作页工具条：NASA 皮肤同样不溢出 */
+[data-skin="nasa-punk"] .toolbar {
+  background: transparent;
+  border-bottom-color: var(--line);
+  gap: 10px 12px;
+}
+[data-skin="nasa-punk"] .toolbar .run-bar > button {
+  max-height: none;
+}
+[data-skin="nasa-punk"] #status {
+  background: var(--nasa-btn-bg);
+  border-top-color: var(--line);
+}
+
+/* RV12：NASA-浅色主按钮用更深的橙，白字对比度 ≥ 4.5:1 */
+[data-skin="nasa-punk"][data-theme="light"] button.primary { background: #b84400; border-color: #7a5200; }
+[data-skin="nasa-punk"][data-theme="light"] button.primary:hover { background: #9c3a00; }

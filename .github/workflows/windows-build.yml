@@ -1,0 +1,68 @@
+name: Windows build
+
+# B03：在 Windows runner 上实际构建便携包与 NSIS 安装包（未签名），并上传产物与校验清单。
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['package.json', 'package-lock.json', 'desktop/**', 'shared/**', 'tools/build-win.cjs', 'tools/release-assets.cjs', 'tools/publish-release.cjs', 'tests/release-assets.test.cjs', 'tests/publish-release.test.cjs', '.github/workflows/windows-build.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Smoke-check packaged native modules
+        shell: pwsh
+        run: |
+          $unpacked = Get-ChildItem dist -Directory | Where-Object Name -like 'win-unpacked*' | Select-Object -First 1
+          if (-not $unpacked) { throw 'win-unpacked 不存在' }
+          Get-ChildItem "$($unpacked.FullName)\resources\app.asar.unpacked\node_modules\better-sqlite3\build\Release\*.node"
+      - name: Run packaged self-test (--yz-smoke)
+        shell: pwsh
+        run: |
+          $unpacked = Get-ChildItem dist -Directory | Where-Object Name -like 'win-unpacked*' | Select-Object -First 1
+          $exe = Get-ChildItem $unpacked.FullName -Filter *.exe | Where-Object Name -notlike 'Uninstall*' | Select-Object -First 1
+          $out = Join-Path $env:RUNNER_TEMP 'yz-smoke.json'
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--yz-smoke=$out" -WindowStyle Hidden -PassThru -Wait
+          if (-not (Test-Path $out)) { throw "自检没有写出结果（退出码 $($p.ExitCode)）" }
+          Get-Content $out
+          $r = Get-Content $out -Raw | ConvertFrom-Json
+          if (-not $r.ok) { throw '打包自检失败' }
+          $sql = $r.checks | Where-Object name -eq 'sqlite'
+          if ($sql.detail.driver -ne 'better-sqlite3') { throw "打包版应使用 better-sqlite3，实际：$($sql.detail.driver)" }
+          Copy-Item $out dist/smoke-result.json
+      - name: Business init check (isolated data root)
+        shell: pwsh
+        run: |
+          $unpacked = Get-ChildItem dist -Directory | Where-Object Name -like 'win-unpacked*' | Select-Object -First 1
+          $exe = Get-ChildItem $unpacked.FullName -Filter *.exe | Where-Object Name -notlike 'Uninstall*' | Select-Object -First 1
+          $root = Join-Path $env:RUNNER_TEMP 'yz-init-data'; New-Item -ItemType Directory -Force $root | Out-Null
+          $out = Join-Path $env:RUNNER_TEMP 'yz-init.json'
+          $env:YINGZUO_DATA_ROOT = $root; $env:YZ_INIT_CHECK = $out
+          $p = Start-Process -FilePath $exe.FullName -WindowStyle Hidden -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw '业务初始化检查超时' }
+          if (-not (Test-Path $out)) { throw "业务初始化没有写出结果（退出码 $($p.ExitCode)）" }
+          Get-Content $out
+          $r = Get-Content $out -Raw | ConvertFrom-Json
+          if (-not $r.ok) { throw '业务初始化检查失败' }
+          Copy-Item $out dist/init-result.json
+      - name: Validate and stage the exact release payload
+        run: node tools/release-assets.cjs stage dist dist/release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yingzuo-windows
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 14
