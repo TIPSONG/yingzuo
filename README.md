@@ -1,5 +1,7 @@
 # 映作 · Yingzuo
 
+贡献与 PR 规则请见 [CONTRIBUTING.md](./CONTRIBUTING.md)。欢迎公开审阅；合并由维护者决定。
+
 面向 Windows 的本地 AI 绘图桌面应用，将服务启停、多工作流标签、节点编辑、参数表单、任务队列和作品管理放在一个窗口中。绘图由本机 ComfyUI 执行，提示词润色可连接 LM Studio。
 
 > **当前版本：0.1.0-alpha.1，开发分支 `feat/grovebot-impl`。**
