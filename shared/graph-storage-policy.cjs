@@ -61,7 +61,46 @@ function findSecretWidgets(graph, {objectInfo = null, knownValues = new Set(), u
   return hits;
 }
 const secretName = value => `node-secret:${crypto.createHash('sha256').update(value).digest('hex').slice(0, 16)}`;
+// 部分扩展把 widget 的整个值复制到 properties / extra。只匹配字符串值本身；
+// 节点类型、端口、连线、对象键和普通文本里的片段不参与替换。
+function metadataMirrors(graph, widgets, known, items) {
+  const values = new Set(known), references = new Set();
+  for (const hit of widgets) {
+    if (SF.isPlaceholder(hit.value)) references.add(hit.value.slice(SF.PLACEHOLDER_PREFIX.length));
+    else values.add(hit.value);
+  }
+  for (const [name, item] of Object.entries(items)) if (item?.confirmedNodeSecret === true) references.add(name);
+  for (const value of known) references.delete(secretName(value));
+  const hits = [];
+  if (!values.size && !references.size) return hits;
+  function visit(value, path, context) {
+    if (typeof value === 'string') {
+      if (!value || SF.isPlaceholder(value)) return;
+      if (values.has(value) || (references.size && value.length <= 4096 && references.has(secretName(value)))) hits.push({...context, path: [...path], value});
+    } else if (value && typeof value === 'object') {
+      for (const [key, child] of Object.entries(value)) {
+        path.push(key); visit(child, path, context); path.pop();
+      }
+    }
+  }
+  function inspect(part, path, scope) {
+    visit(part?.extra, [...path, 'extra'], {scope, nodeId: '-', type: 'workflow', name: 'extra'});
+    for (const [i, node] of (part?.nodes ?? []).entries()) {
+      visit(node?.properties, [...path, 'nodes', i, 'properties'], {scope, nodeId: String(node?.id), type: String(node?.type ?? ''), name: 'properties'});
+    }
+  }
+  inspect(graph, [], 'root');
+  for (const [i, sg] of (graph?.definitions?.subgraphs ?? []).entries()) inspect(sg, ['definitions', 'subgraphs', i], `subgraph:${sg.id}`);
+  return hits;
+}
+// 历史报告、错误和导出清单只需要节点/字段；元数据键由扩展自行命名，勿公开路径。
+const fieldInfo = ({value, path, ...field}) => field;
 function setAt(graph, hit, v) {
+  if (hit.path) {
+    const parent = hit.path.slice(0, -1).reduce((obj, key) => obj[key], graph);
+    parent[hit.path.at(-1)] = v;
+    return;
+  }
   for (const {scope, node} of nodesOf(graph)) if (scope === hit.scope && String(node.id) === hit.nodeId) node.widgets_values[hit.key] = v;
 }
 /**
@@ -74,18 +113,24 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
     try { if (!credentials?.available?.()) return out; for (const [name, item] of Object.entries(credentials.read().items ?? {})) if (name.startsWith('node-secret:') && item.confirmedNodeSecret === true) { const v = credentials.get(name); if (v) out.add(v); } } catch { /* 读取失败时只用其他依据 */ }
     return out;
   }
+  function findFields(graph, info, uncertain) {
+    const known = knownValues();
+    const widgets = findSecretWidgets(graph, {objectInfo: info, knownValues: known, uncertain});
+    const mirrors = metadataMirrors(graph, widgets, known, credentials?.read?.()?.items ?? {});
+    return {widgets, mirrors};
+  }
   /** 内部保存：返回磁盘副本（不改原对象）。 */
   function secureForStorage(graph) { return secureWithValues(graph).graph; }
   /** RV03：同 secureForStorage，另返回 明文→凭据名 映射，供任务快照的其他字段（表单值、参数等）一并替换。 */
   function secureWithValues(graph) {
     const values = new Map();
     if (!graph || typeof graph !== 'object') return {graph, values};
-    const known = knownValues();
     const uncertain = [];
-    const hits = findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: known, uncertain}).filter(h => !SF.isPlaceholder(h.value));
+    const {widgets, mirrors} = findFields(graph, objectInfo(), uncertain);
+    const hits = [...widgets.filter(h => !SF.isPlaceholder(h.value)), ...mirrors];
     assertSafeExport({uncertain});
     if (!hits.length) return {graph, values};
-    if (!credentials?.available?.()) throw Object.assign(new Error('图中含敏感输入（如 API Key），但系统加密存储不可用；为避免明文写入磁盘，未保存。修改仍保留在当前窗口。'), {code: 'CREDENTIAL_UNAVAILABLE', fields: hits.map(({value, ...h}) => h)});
+    if (!credentials?.available?.()) throw Object.assign(new Error('图中含敏感输入（如 API Key），但系统加密存储不可用；为避免明文写入磁盘，未保存。修改仍保留在当前窗口。'), {code: 'CREDENTIAL_UNAVAILABLE', fields: hits.map(fieldInfo)});
     const out = structuredClone(graph);
     const items = credentials.read?.()?.items ?? {};
     for (const h of hits) { const name = secretName(h.value); if (!items[name]?.confirmedNodeSecret) { credentials.set(name, h.value, {confirmedNodeSecret: true}); items[name] = {confirmedNodeSecret: true}; } setAt(out, h, SF.PLACEHOLDER_PREFIX + name); values.set(h.value, name); }
@@ -115,13 +160,14 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
       }
     }
     const uncertain = [];
-    const hits = findSecretWidgets(out, {objectInfo: info, knownValues: knownValues(), uncertain});
+    const {widgets: hits, mirrors} = findFields(out, info, uncertain);
     assertSafeExport({uncertain});
     const refill = [];
     // 只有明确的字段/凭据证据才清空；位置不明的输入在写盘前阻止整个导出。
     for (const h of hits) {
       setAt(out, h, ''); refill.push({scope: h.scope, nodeId: h.nodeId, type: h.type, field: h.name});
     }
+    for (const h of mirrors) setAt(out, h, '');
     // 其余位置残留的占位（本机凭据标识）也清空
     const walk = v => (typeof v === 'string' ? (SF.isPlaceholder(v) ? '' : v) : Array.isArray(v) ? v.map(walk) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)])) : v);
     const seen = new Set();
@@ -139,7 +185,11 @@ function createGraphStoragePolicy({credentials, objectInfo = () => null} = {}) {
     return {graph: walk(graph), missing};
   }
   /** 检查（迁移记录用）：返回仍含明文敏感值的位置，不含值本身。 */
-  function scan(graph) { const uncertain = []; const hits = findSecretWidgets(graph, {objectInfo: objectInfo(), knownValues: knownValues(), uncertain}).filter(h => !SF.isPlaceholder(h.value)).map(({value, ...h}) => h); return [...hits, ...uncertain]; }
+  function scan(graph) {
+    const uncertain = [];
+    const {widgets, mirrors} = findFields(graph, objectInfo(), uncertain);
+    return [...widgets.filter(h => !SF.isPlaceholder(h.value)), ...mirrors].map(fieldInfo).concat(uncertain);
+  }
   return {secureForStorage, secureWithValues, stripForExport, resolveInMemory, scan, knownValues, getObjectInfo: objectInfo};
 }
 function assertSafeExport(result) {

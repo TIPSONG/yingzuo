@@ -17,7 +17,7 @@ function setup({modalAnswers, form = {fields: null}, enhanceResult = {state: 'su
     tasks: {
       preview: tabId => { calls.push(['preview', tabId]); return ok({tabId, title: tabId === 'A' ? 'A图' : 'B图', revision: 5, bindings: {enhancer: {nodeId: '3'}, prompt: {value: '原文'}, seed: {}, references: []}}); },
       enhance: (tabId, opts) => { calls.push(['enhance', tabId, opts]); return ok({id: 'e1'}); },
-      enhanceResult: () => ok(enhanceResult),
+      enhanceResult: () => ok(tasksList.length ? enhanceResult : {state: 'queued'}),
       run: (tabId, opts) => { calls.push(['run', tabId, opts]); return runImpl ? runImpl(tabId, opts) : ok({id: 't1'}); },
       form: tabId => { calls.push(['form', tabId]); return ok({tabId, revision: 7, ...form}); },
       runBatch: (tabId, spec) => { calls.push(['runBatch', tabId, spec]); return ok({tasks: []}); },
@@ -31,10 +31,10 @@ function setup({modalAnswers, form = {fields: null}, enhanceResult = {state: 'su
       call: async (p, okMsg) => { const r = await p; if (!r.ok) throw Object.assign(new Error(r.error.message), {handled: true, code: r.error.code}); return r.data; },
       modal: async () => { const a = answers.shift(); return typeof a === 'function' ? a() : a; }}},
     document: {querySelector: q, addEventListener() {}}, localStorage: {getItem: () => null, setItem() {}},
-    setInterval: () => 0, setTimeout, clearTimeout, current: {activeId: 'A', connected: true, tabs: [{id: 'A', title: 'A图'}, {id: 'B', title: 'B图'}]},
+    setInterval: () => 0, setTimeout, clearTimeout, flushParameterEdit: async () => true, current: {activeId: 'A', connected: true, tabs: [{id: 'A', title: 'A图'}, {id: 'B', title: 'B图'}]},
   };
   vm.runInNewContext(`var current = this.current;\n${source}`, ctx);
-  return {q, calls, ctx, finish: () => { tasksList.push({id: 'e1', state: 'succeeded'}); subscriber({type: 'tasks.changed', data: {}}); }};
+  return {q, calls, ctx, finish: () => { const task = {id: 'e1', state: 'succeeded', timestamps: {createdAt: new Date().toISOString()}}; tasksList.push(task); subscriber({type: 'tasks.changed', resourceId: task.id, data: task}); }};
 }
 
 test('等待润色期间切到 B：采用结果仍提交到 A，且带原 revision', async () => {

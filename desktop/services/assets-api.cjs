@@ -80,7 +80,11 @@ function createAssetsMethods({electron, layout, configRepo, db: givenDb = null, 
     'assets.exportShare': async id => { const f = fileOf(id); const s = f.files.shareSupportFor(f.path); if (!s.supported) throw new AppError(CODES.UNSUPPORTED, s.reason); return f.files.exportShare(f.path, await pickDir('导出分享副本到…')); },
     'assets.favorite': id => fav().add(pathOf(id), {assetId: id}),
     'assets.unfavorite': favoriteId => fav().remove(favoriteId),
-    'assets.favorites': (q = {}) => fav().list(q),
+    'assets.favorites': (q = {}) => {
+      const page = fav().list(q);
+      if (q.layout) page.layout = arrangeAlbum(page.items.filter(i => !i.broken), q.layout);
+      return page;
+    },
     'assets.favoriteLayout': (opts = {}) => arrangeAlbum(fav().list({limit: 500}).items.filter(i => !i.broken), opts),
   };
   Object.defineProperty(methods, 'dispose', {enumerable: false, value: () => { index?.unwatch(); if (ownDb) db?.close(); }});

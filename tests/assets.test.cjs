@@ -246,6 +246,10 @@ test('assets.* API：方法齐全并能端到端运行', async t => {
   const fav = await m['assets.favorite'](item.id);
   assert.equal((await m['assets.favorites']()).items.length, 1);
   assert.equal((await m['assets.favoriteLayout']({width: 800})).cells.length, 1);
+  const page = await m['assets.favorites']({offset: 0, limit: 1, layout: {width: 800}});
+  assert.deepEqual(page.layout.cells.map(c => c.id), page.items.map(f => f.id));
+  const pastEnd = await m['assets.favorites']({offset: 1, limit: 1, layout: {width: 800}});
+  assert.equal(pastEnd.total, 1); assert.deepEqual(pastEnd.layout.cells, []);
   await m['assets.unfavorite'](fav.id);
   assert.equal((await m['assets.previewPrefix'](PROMPT, {mode: 'date', now: 0})).changed.length, 1);
   await assert.rejects(m['assets.openLocation']('nope'), e => e.code === 'NOT_FOUND');

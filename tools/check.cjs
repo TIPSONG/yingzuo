@@ -9,7 +9,11 @@ const walk = dir => fs.readdirSync(dir, {withFileTypes: true}).flatMap(e => e.na
 const files = walk(root);
 for (const file of files.filter(f => /\.(c?js|mjs)$/.test(f))) {
   const r = spawnSync(process.execPath, ['--check', file], {encoding: 'utf8'});
-  if (r.status !== 0) problems.push(`语法错误 ${path.relative(root, file)}：${r.stderr.split('\n').slice(0, 4).join(' ')}`);
+  if (r.error) {
+    problems.push(`无法启动语法检查（${path.relative(root, file)}）：${r.error.message}`);
+    break;
+  }
+  if (r.status !== 0) problems.push(`语法检查失败 ${path.relative(root, file)}：${r.stderr?.trim().split('\n').slice(0, 4).join(' ') || r.signal || r.status}`);
 }
 for (const file of files.filter(f => f.endsWith('.json') && !f.includes(`${path.sep}fixtures${path.sep}`))) {
   try { JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { problems.push(`JSON 无效 ${path.relative(root, file)}：${e.message}`); }

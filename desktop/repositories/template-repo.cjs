@@ -14,6 +14,16 @@ const cleanName = (s, max = 80) => String(s ?? '').replace(/[\u0000-\u001f]/g, '
 const cleanTags = tags => [...new Set((Array.isArray(tags) ? tags : []).map(t => cleanName(t, 30)).filter(Boolean))].slice(0, 20);
 const cleanFolder = f => cleanName(f, 120).split('/').map(s => s.trim()).filter(s => s && s !== '.' && s !== '..').join('/');
 
+// 来源只用于展示。签名参数、账号信息和片段只随原始下载请求使用。
+function cleanSource(source) {
+  if (!source.startsWith('url:')) return source;
+  try {
+    const u = new URL(source.slice(4));
+    if (u.protocol === 'https:' || u.protocol === 'http:') return `url:${u.origin}${u.pathname}`;
+  } catch { /* 旧记录可能不是合法地址 */ }
+  return 'url:';
+}
+
 class TemplateRepository {
   constructor(db, dir, {now = () => new Date().toISOString()} = {}) { this.db = db; this.dir = dir; this.now = now; fs.mkdirSync(dir, {recursive: true}); }
   _blob(kind, value) {
@@ -34,9 +44,10 @@ class TemplateRepository {
   create({name, graph, formSchema = null, folder = '', tags = [], source, license = null, author = null, note = '导入'}) {
     if (!graph || !Array.isArray(graph.nodes)) throw new AppError(CODES.INVALID_ARGUMENT, '模板必须是 ComfyUI UI 格式工作流（含 nodes）。');
     const id = `tpl_${crypto.randomUUID()}`, at = this.now();
+    source = cleanSource(String(source ?? 'local'));
     this.db.transaction(() => {
-      this.db.run('INSERT INTO templates (id, name, folder, tags, favorite, current_version, source, license, author, created_at, updated_at) VALUES (?,?,?,?,0,NULL,?,?,?,?,?)', id, cleanName(name) || '未命名模板', cleanFolder(folder), JSON.stringify(cleanTags(tags)), String(source ?? 'local'), license, author, at, at);
-      this.saveVersion(id, {graph, formSchema, note, source: String(source ?? 'local')});
+      this.db.run('INSERT INTO templates (id, name, folder, tags, favorite, current_version, source, license, author, created_at, updated_at) VALUES (?,?,?,?,0,NULL,?,?,?,?,?)', id, cleanName(name) || '未命名模板', cleanFolder(folder), JSON.stringify(cleanTags(tags)), source, license, author, at, at);
+      this.saveVersion(id, {graph, formSchema, note, source});
     });
     return this.get(id);
   }
@@ -70,7 +81,7 @@ class TemplateRepository {
     const f = safeForm ? this._blob('forms', safeForm) : null;
     const versionId = `tv_${crypto.randomUUID()}`, at = this.now();
     this.db.transaction(() => {
-      this.db.run('INSERT INTO template_versions (version_id, template_id, parent_id, graph_ref, graph_hash, form_schema_ref, source, note, saved_at) VALUES (?,?,?,?,?,?,?,?,?)', versionId, templateId, t.current_version, g.ref, g.hash, f ? `${f.ref}#${f.hash}` : null, source, note ? cleanName(note, 200) : null, at);
+      this.db.run('INSERT INTO template_versions (version_id, template_id, parent_id, graph_ref, graph_hash, form_schema_ref, source, note, saved_at) VALUES (?,?,?,?,?,?,?,?,?)', versionId, templateId, t.current_version, g.ref, g.hash, f ? `${f.ref}#${f.hash}` : null, cleanSource(String(source)), note ? cleanName(note, 200) : null, at);
       this.db.run('UPDATE templates SET current_version=?, updated_at=? WHERE id=?', versionId, at, templateId);
     });
     return this.version(versionId);
@@ -104,4 +115,4 @@ class TemplateRepository {
   /** 只删除模板记录到回收（版本文件保留，可由维护清理）。 */
   findBySource(source) { return this._row(this.db.get('SELECT * FROM templates WHERE source = ?', source)); }
 }
-module.exports = {TemplateRepository};
+module.exports = {TemplateRepository, cleanSource};

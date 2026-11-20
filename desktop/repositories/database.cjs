@@ -96,19 +96,24 @@ class Database {
   _assertWritable(sql) { if (this.readonly && !/^\s*(select|pragma)/i.test(sql)) throw new AppError(CODES.READ_ONLY, '数据库处于只读恢复模式，未写入。'); }
   /** 同步事务；嵌套时使用 SAVEPOINT。 */
   transaction(fn) {
+    const outer = this.depth === 0;
     const name = `sp${this.depth}`;
-    if (this.depth === 0) this.exec('BEGIN IMMEDIATE'); else this.exec(`SAVEPOINT ${name}`);
+    this.exec(outer ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${name}`);
     this.depth++;
     try {
       const result = fn(this);
       if (result && typeof result.then === 'function') throw new Error('事务函数必须是同步函数。');
-      this.depth--;
-      if (this.depth === 0) this.exec('COMMIT'); else this.exec(`RELEASE ${name}`);
+      this.exec(outer ? 'COMMIT' : `RELEASE ${name}`);
       return result;
     } catch (error) {
-      this.depth--;
-      if (this.depth === 0) this.exec('ROLLBACK'); else { this.exec(`ROLLBACK TO ${name}`); this.exec(`RELEASE ${name}`); }
+      // SQLite may already have rolled back the transaction after an I/O error.
+      if ((this.db.inTransaction ?? this.db.isTransaction) !== false) {
+        if (outer) this.exec('ROLLBACK');
+        else { this.exec(`ROLLBACK TO ${name}`); this.exec(`RELEASE ${name}`); }
+      }
       throw error;
+    } finally {
+      this.depth--;
     }
   }
   get schemaVersion() { return this.get('PRAGMA user_version').user_version; }

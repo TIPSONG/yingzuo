@@ -34,6 +34,25 @@ const until = async (m, id, states) => { for (let i = 0; i < 2000; i++) { const 
 const body = n => crypto.randomBytes(n);
 const sha = b => crypto.createHash('sha256').update(b).digest('hex');
 
+test('发现大小不符后保留原下载计划，点击重试继续验证，来源恢复后可下载', async t => {
+  const st = {body: Buffer.from('wrong size'), requests: []};
+  const url = await server(t, st);
+  const {d, m} = setup(t, url);
+  const destination = path.join(d, 'planned.bin');
+  const {id} = m.add({source: 'url', fileId: 'planned', urlRef: {url}, destination, totalBytes: 2});
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) m.resume(id);
+    const done = await until(m, id, ['completed', 'failed']);
+    assert.equal(done.state, 'failed');
+    assert.equal(done.totalBytes, 2);
+    assert.ok(!fs.existsSync(destination));
+  }
+  st.body = Buffer.from('ok');
+  m.resume(id);
+  assert.equal((await until(m, id, ['completed', 'failed'])).state, 'completed');
+  assert.deepEqual(fs.readFileSync(destination), st.body);
+});
+
 test('O05：流式下载、sha256 校验、原子完成；令牌不写入数据库', async t => {
   const st = {body: body(300000), requests: []}; const url = await server(t, st);
   const {d, db, m} = setup(t, url);

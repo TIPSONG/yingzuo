@@ -27,7 +27,11 @@ async function fixture(t,initial=workspace(),options={}) {
   t.after(async()=>{for(const stop of stopServices.reverse())await stop();await fixturePool?.close();for(const db of openedDbs){try{db.close();}catch{}}fs.rmSync(root,{recursive:true,force:true});});
   fs.mkdirSync(path.join(root,'desktop'),{recursive:true});
   fs.mkdirSync(path.join(root,'.local','data'),{recursive:true});
-  if(options.objectInfo)fs.writeFileSync(path.join(root,'.local','data','object-info-cache.json'),JSON.stringify({data:options.objectInfo}));
+  if(options.objectInfo){
+    const comfy=require('../desktop/repositories/config-repo.cjs').defaults().comfy;
+    const environment=require('../desktop/services/comfy-environment.cjs').comfyEnvironment(comfy.url,comfy.root);
+    fs.writeFileSync(path.join(root,'.local','data','object-info-cache.json'),JSON.stringify({environment,data:options.objectInfo}));
+  }
   const file=path.join(root,'.local','data','workspace.json');
   // 测试关闭行为时不缩到托盘（mock 中也没有 Tray）。
   fs.writeFileSync(path.join(root,'.local','data','config.json'),JSON.stringify({version:1,tray:{closeToTray:false,showNotifications:false},lmstudio:{cli:''},updates:{checkFrequency:'manual'}}));

@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {AppError, CODES} = require('../../core/errors.cjs');
 const {validateSegment} = require('../../core/paths.cjs');
+const {writeFileAtomic} = require('../../core/fs-atomic.cjs');
+const {readLimitedBody} = require('./limited-body.cjs');
 const {createProviders} = require('./providers.cjs');
 const {DownloadManager} = require('./downloader.cjs');
 const ImportPipeline = require('../../../shared/import-pipeline.cjs');
@@ -88,24 +90,28 @@ function createOnlineService({db, configRepo, layout, credentials, fetchImpl, ev
     let u; try { u = new URL(String(link)); } catch { throw new AppError(CODES.INVALID_ARGUMENT, '链接无效。'); }
     if (u.protocol !== 'https:') throw new AppError(CODES.FORBIDDEN, '只接受 https 链接。');
     const hf = providers.byId.huggingface.parseLink(u.href);
-    let fetchUrl = u.href, meta = {source: `url:${u.href}`, license: null, author: null, revision: null};
+    let fetchUrl = u.href, headers = {}, meta = {source: `url:${u.origin}${u.pathname}`, license: null, author: null, revision: null};
     if (hf?.path) {
       const d = await providers.byId.huggingface.detail(hf.repo, {revision: hf.revision});
-      fetchUrl = (await providers.byId.huggingface.resolveDownload({...hf, revision: d.revision})).url;
+      const download = await providers.byId.huggingface.resolveDownload({...hf, revision: d.revision});
+      fetchUrl = download.url;
+      headers = download.headers;
       meta = {source: `huggingface:${hf.repo}@${d.revision}/${hf.path}`, license: d.license, author: d.author, revision: d.revision};
     } else if (/^github\.com$/.test(u.hostname) && u.pathname.includes('/blob/')) {
       fetchUrl = `https://raw.githubusercontent.com${u.pathname.replace('/blob/', '/')}`;
       const [owner, , , rev] = u.pathname.split('/').filter(Boolean);
       meta = {source: `github:${u.pathname}`, license: null, author: owner, revision: rev};
+    } else if (hf && u.origin === new URL(providers.byId.huggingface.base).origin) {
+      headers = providers.byId.huggingface.authHeaders();
     }
-    return importFromUrl(fetchUrl, meta, {name: decodeURIComponent(path.basename(u.pathname)), headers: hf ? providers.byId.huggingface.authHeaders() : {}});
+    return importFromUrl(fetchUrl, meta, {name: decodeURIComponent(path.basename(u.pathname)), headers});
   };
   async function importFromUrl(fetchUrl, meta, {name, headers = {}, folder = '在线导入', tags = ['在线']} = {}) {
     const res = await fetchImpl(fetchUrl, {signal: AbortSignal.timeout(30000), headers});
     if (!res.ok) throw new AppError(CODES.SERVICE_UNAVAILABLE, `下载模板失败：HTTP ${res.status}`);
-    const len = Number(res.headers.get('content-length'));
-    if (len > ImportPipeline.MAX_BYTES) throw new AppError(CODES.INVALID_ARGUMENT, '模板文件过大。');
-    const text = await res.text();
+    const bytes = await readLimitedBody(res, ImportPipeline.MAX_BYTES);
+    if (!bytes) throw new AppError(CODES.INVALID_ARGUMENT, '模板文件过大。');
+    const text = new TextDecoder().decode(bytes);
     let info; try { info = ImportPipeline.analyze(text, {name}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
     if (info.format !== 'ui') throw new AppError(CODES.INVALID_ARGUMENT, '这是 API 格式工作流，没有界面信息；请下载后在创作页导入。');
     // 模板仓库统一保护凭据；原文下载缓存无人读取，不能绕过安全保存政策另存明文。
@@ -118,22 +124,40 @@ function createOnlineService({db, configRepo, layout, credentials, fetchImpl, ev
   const sourceOf = id => { const s = sources().find(x => x.id === id); if (!s) throw new AppError(CODES.INVALID_ARGUMENT, '未知模板源。'); return s; };
   const cacheDir = () => { const d = path.join(layout.root, 'downloads', 'online-templates'); fs.mkdirSync(d, {recursive: true}); return d; };
   const indexMem = new Map();
+  const pendingIndexes = new Map();
   async function loadIndex(src, {refresh = false} = {}) {
+    if (pendingIndexes.has(src.id)) return pendingIndexes.get(src.id);
     const file = path.join(cacheDir(), `index-${src.id}.json`);
     const mem = indexMem.get(src.id);
-    if (!refresh && mem && Date.now() - mem.at < INDEX_TTL) return mem;
-    if (!refresh && fs.existsSync(file) && Date.now() - fs.statSync(file).mtimeMs < INDEX_TTL) { try { const v = {at: fs.statSync(file).mtimeMs, items: parseIndex(JSON.parse(fs.readFileSync(file, 'utf8')), src), cached: true}; indexMem.set(src.id, v); return v; } catch { /* 缓存损坏则重新下载 */ } }
-    let raw;
+    function readCache() {
+      try {
+        const stat = fs.statSync(file);
+        if (stat.size > (20 << 20)) return null;
+        return {at: stat.mtimeMs, items: parseIndex(JSON.parse(fs.readFileSync(file, 'utf8')), src), cached: true};
+      } catch { return null; }
+    }
+    const cached = mem ?? readCache();
+    if (!refresh && cached && Date.now() - cached.at < INDEX_TTL) { indexMem.set(src.id, cached); return cached; }
+    const pending = fetchIndex(src, file, cached).finally(() => pendingIndexes.delete(src.id));
+    pendingIndexes.set(src.id, pending);
+    return pending;
+  }
+  async function fetchIndex(src, file, cached) {
+    let items;
     try {
       const res = await fetchImpl(src.indexUrl, {signal: AbortSignal.timeout(30000)});
       if (!res.ok) throw new AppError(CODES.SERVICE_UNAVAILABLE, `读取模板源失败：HTTP ${res.status}`);
-      const text = await res.text(); if (text.length > 20 << 20) throw new AppError(CODES.INVALID_ARGUMENT, '模板索引过大。');
-      raw = JSON.parse(text); fs.writeFileSync(`${file}.tmp`, text); fs.renameSync(`${file}.tmp`, file);
+      const bytes = await readLimitedBody(res, 20 << 20);
+      if (!bytes) throw new AppError(CODES.INVALID_ARGUMENT, '模板索引过大。');
+      const text = new TextDecoder().decode(bytes);
+      items = parseIndex(JSON.parse(text), src);
+      writeFileAtomic(file, text);
     } catch (e) {
-      if (fs.existsSync(file)) { const v = {at: fs.statSync(file).mtimeMs, items: parseIndex(JSON.parse(fs.readFileSync(file, 'utf8')), src), cached: true, stale: true, error: e.message}; indexMem.set(src.id, v); return v; }
+      if (cached) { const v = {...cached, cached: true, stale: true, error: e instanceof SyntaxError ? '模板索引不是有效 JSON。' : e.message}; indexMem.set(src.id, v); return v; }
+      if (e instanceof SyntaxError) throw new AppError(CODES.INVALID_ARGUMENT, '模板索引不是有效 JSON。');
       throw e instanceof AppError ? e : new AppError(CODES.NETWORK, `读取模板源失败：${e.message}`);
     }
-    const v = {at: Date.now(), items: parseIndex(raw, src), cached: false}; indexMem.set(src.id, v); return v;
+    const v = {at: Date.now(), items, cached: false}; indexMem.set(src.id, v); return v;
   }
   methods['templates.onlineSources'] = async () => sources().map(({id, name, homepage}) => ({id, name, homepage}));
   methods['templates.browseOnline'] = async (sourceId, {query = '', category = null, offset = 0, limit = 24, refresh = false} = {}) => {
@@ -151,8 +175,9 @@ function createOnlineService({db, configRepo, layout, credentials, fetchImpl, ev
     const file = path.join(cacheDir(), 'thumbs', `${src.id}-${name}.${ext}`);
     if (!fs.existsSync(file)) {
       const res = await fetchImpl(it.thumbnailUrl, {signal: AbortSignal.timeout(20000)}); if (!res.ok) return {dataUrl: null};
-      const buf = Buffer.from(await res.arrayBuffer()); if (buf.length > 3 << 20) return {dataUrl: null};
-      fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(`${file}.tmp`, buf); fs.renameSync(`${file}.tmp`, file);
+      const buf = await readLimitedBody(res, 3 << 20);
+      if (!buf) return {dataUrl: null};
+      writeFileAtomic(file, buf);
     }
     return {dataUrl: `data:${mime};base64,${fs.readFileSync(file).toString('base64')}`};
   };

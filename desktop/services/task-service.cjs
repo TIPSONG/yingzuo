@@ -5,6 +5,8 @@ const {secureSnapshot} = require('./snapshot-secrets.cjs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {AppError, CODES} = require('../core/errors.cjs');
+const {writeJsonAtomic} = require('../core/fs-atomic.cjs');
+const {comfyEnvironment} = require('./comfy-environment.cjs');
 const {TaskRepository, SnapshotStore} = require('../repositories/task-repo.cjs');
 const {QueueService} = require('./queue-service.cjs');
 const {ComfyHttpClient, ComfySocket} = require('../adapters/comfy-http.cjs');
@@ -85,16 +87,42 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
     return clientCache;
   };
   // RV02：object_info 落盘缓存。首次保存/离线时用上次连接得到的节点定义识别敏感字段，不要求先运行一次任务。
-  const objectInfoFile = layout.root ? require('node:path').join(layout.root, 'object-info-cache.json') : null;
-  let objectInfo = null, objectInfoAt = 0;
-  try { if (objectInfoFile && fs.existsSync(objectInfoFile)) { const c = JSON.parse(fs.readFileSync(objectInfoFile, 'utf8')); if (c && typeof c.data === 'object') objectInfo = c.data; } } catch (e) { logger?.warn('object_info 缓存读取失败', {error: e.message}); }
-  async function getObjectInfo() {
-    if (objectInfo && objectInfoAt && Date.now() - objectInfoAt < 60000) return objectInfo;
+  const objectInfoFile = layout.root ? path.join(layout.root, 'object-info-cache.json') : null;
+  const validInfo = data => data !== null && typeof data === 'object' && !Array.isArray(data);
+  let infoState = null;
+  function currentInfoState() {
+    const comfy = configRepo.config.comfy;
+    const environment = comfyEnvironment(comfy?.url, comfy?.root);
+    const matches = other => other?.comfyUrl === environment.comfyUrl && other.comfyRoot === environment.comfyRoot;
+    if (matches(infoState?.environment)) return infoState;
+    infoState = {environment, data: null, fetchedAt: 0, pending: null};
     try {
-      objectInfo = await client().objectInfo(); objectInfoAt = Date.now();
-      if (objectInfoFile) { try { const tmp = `${objectInfoFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify({savedAt: new Date().toISOString(), data: objectInfo})); fs.renameSync(tmp, objectInfoFile); } catch (e) { logger?.warn('object_info 缓存写入失败', {error: e.message}); } }
-    } catch (e) { logger?.warn('object_info 获取失败', {error: e.message}); }
-    return objectInfo;
+      if (objectInfoFile && fs.existsSync(objectInfoFile)) {
+        const saved = JSON.parse(fs.readFileSync(objectInfoFile, 'utf8'));
+        if (matches(saved?.environment) && validInfo(saved.data)) infoState.data = saved.data;
+      }
+    } catch (e) { logger?.warn('object_info 缓存读取失败', {error: e.message}); }
+    return infoState;
+  }
+  const cachedObjectInfo = () => currentInfoState().data;
+  async function refreshObjectInfo(state) {
+    let data = null;
+    try { data = await client().objectInfo(); } catch (e) { logger?.warn('object_info 获取失败', {error: e.message}); }
+    if (state !== currentInfoState()) throw new AppError(CODES.CONFLICT, 'ComfyUI 环境已切换，请重新读取节点定义。');
+    if (validInfo(data)) {
+      state.data = data; state.fetchedAt = Date.now();
+      if (objectInfoFile) {
+        try { writeJsonAtomic(objectInfoFile, {environment: state.environment, savedAt: new Date().toISOString(), data}); }
+        catch (e) { logger?.warn('object_info 缓存写入失败', {error: e.message}); }
+      }
+    }
+    return state.data;
+  }
+  function getObjectInfo() {
+    const state = currentInfoState();
+    if (state.data && state.fetchedAt && Date.now() - state.fetchedAt < 60000) return Promise.resolve(state.data);
+    state.pending ??= refreshObjectInfo(state).finally(() => { state.pending = null; });
+    return state.pending;
   }
   const queue = new QueueService({
     tasks, client, gpuLock: locks.gpu, events, logger, clientId,
@@ -114,7 +142,7 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
     if (m === 'none') return {prompt, prefix: null};
     // R20：目录用稳定工作流身份；SaveImageAdvanced 等按 object_info 确认前缀字段
     const dir = prefixDir({mode: m, workflowId: workflowIdOf(c), workflowName: c.title});
-    const r = planSavePrefix(prompt, {dir, objectInfo});
+    const r = planSavePrefix(prompt, {dir, objectInfo: cachedObjectInfo()});
     return {prompt: r.prompt, prefix: {dir, changed: r.changed, untouched: r.untouched}};
   }
   let socket = null;
@@ -182,7 +210,7 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       if (!form || form.versionId !== snapshot.form.versionId) throw new AppError(CODES.INVALID_STATE, '任务的历史表单版本不可用，无法安全保存重试快照。');
       snapshot = {...snapshot, form: {...snapshot.form, fields: form.fields}};
     }
-    return secureSnapshot(snapshot, {policy: graphPolicy, credentials, objectInfo});
+    return secureSnapshot(snapshot, {policy: graphPolicy, credentials, objectInfo: cachedObjectInfo()});
   };
   tasks.secure = redactSnapshot;
   const resolveSecrets = prompt => SF.resolveSecrets(prompt, async name => credentials?.get(name) ?? null).catch(e => { throw new AppError(CODES.CREDENTIAL_UNAVAILABLE, e.message, {details: {missing: e.missing}}); });
@@ -391,6 +419,7 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       let target = filePath;
       if (!target) { const r = await dialog.showSaveDialog(getWindow(), {title: '导出图与参考素材', defaultPath: `${t.title}.yingzuo.json`, filters: [{name: '映作图包', extensions: ['json']}]}); if (r.canceled || !r.filePath) return {cancelled: true}; target = r.filePath; }
       // C01：导出政策移除敏感值；C08：读取素材、base64、JSON 与写盘在 worker 中进行，这里只传路径
+      const objectInfo = cachedObjectInfo();
       const ex = assertSafeExport(editor.exportCopy ? editor.exportCopy(t.graph) : createGraphStoragePolicy({credentials, objectInfo: () => objectInfo}).stripForExport(t.graph));
       const relations = relationsOf(tabId).map(({missing, ...r}) => ({...r, file: missing ? null : refs.pathOf(r.refId)}));
       return filePool().run('packBuild', {target, title: t.title, graph: ex.graph, exportedGraph: ex.graph, refill: ex.refill ?? [], template: t.templateId ? {templateId: t.templateId, versionId: form?.versionId ?? t.templateVersionId ?? null, formSchema: sanitizeFields(form?.fields ?? null, {objectInfo})} : null, relations});
@@ -406,7 +435,7 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
       let tabId = null;
       try {
         let pkg;
-        try { pkg = await filePool().run('packParse', {file, stageDir, objectInfo: objectInfo ?? null}); }
+        try { pkg = await filePool().run('packParse', {file, stageDir, objectInfo: cachedObjectInfo()}); }
         catch (e) { throw new AppError(CODES[e.code] ? e.code : CODES.INVALID_ARGUMENT, e.message); }
         const formSchema = Array.isArray(pkg.template?.formSchema) && pkg.template.formSchema.length ? pkg.template.formSchema : null;
         const formErrors = formSchema ? F.validateSchema(formSchema) : [];
@@ -469,6 +498,6 @@ function createTaskService({graphPolicy = null, credentials = null, db, layout, 
     /** S05：模板/草稿等持久化 UI 图前调用——敏感值转入系统加密存储，图中只留占位。 */
     redactGraph: (graph, apiPrompt) => redactSnapshot({uiGraph: graph, apiPrompt}).uiGraph,
   };
-  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, cachedObjectInfo: () => objectInfo, warmObjectInfo: () => getObjectInfo(), setTemplateRepo: r => { templateRepo = r; }, setFormProvider: f => { formProvider = f; }};
+  return {tasks, queue, refs, methods, hooks, submissions, secrets, start, stop, compile, connectSocket, cachedObjectInfo, warmObjectInfo: getObjectInfo, setTemplateRepo: r => { templateRepo = r; }, setFormProvider: f => { formProvider = f; }};
 }
 module.exports = {createTaskService, ReferenceStore, uploadReferences};

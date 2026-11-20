@@ -121,8 +121,8 @@ $('#duplicate').addEventListener('click',()=>{const from=current.activeId;run(as
 $('#preview').addEventListener('click',()=>run(()=>api.showPreview(),'当前是 A 测界面，点击“创作工作区”返回真实编辑器。',false));
 $('#editor-home').addEventListener('click',()=>run(()=>api.showEditor(),'已返回桌面创作工作区。'));
 $('#refresh-fields').addEventListener('click',()=>run(()=>api.snapshot(),'已从真实画布读取参数。').then(loadFormPanel));
-$('#fields').addEventListener('change',async event=>{
- const input=event.target.closest('[data-field]');if(!input)return;
+let fieldWrite = null;
+async function applyField(input){
  const ref=fieldRefs[Number(input.dataset.field)];if(!ref||busy)return;
  const originTabId=current.activeId, originVersion=contextVersion;
  const value=ref.type==='boolean'?input.checked:ref.type==='number'?Number(input.value):input.value;
@@ -137,7 +137,18 @@ $('#fields').addEventListener('change',async event=>{
  return run(()=>api.applyParameters([{nodeId:ref.nodeId,graphId:ref.graphId,widgetName:ref.widgetName,value}],originTabId,tabRevision),
   '参数已同步到真实画布，草稿已保存。',true,
   ()=>current.activeId===originTabId&&current.connected&&contextVersion===originVersion);
+}
+$('#fields').addEventListener('change',event=>{
+ const input=event.target.closest('[data-field]');if(!input)return;
+ const write=applyField(input);
+ fieldWrite=write;
+ return write.finally(()=>{if(fieldWrite===write)fieldWrite=null;});
 });
+async function flushParameterEdit(){
+ // Keyboard submission keeps focus in the input. Blur commits its native change event before compiling.
+ document.activeElement?.closest('#fields [data-field]')?.blur();
+ return fieldWrite ? !!(await fieldWrite) : !busy;
+}
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();run(()=>api.save(),'当前工作区已保存。',false);}});
 new ResizeObserver(reportBounds).observe($('#editor-portal'));
 api.onStatus(data=>{accept({ok:true,state:data,...(Object.hasOwn(data,'snapshot')?{snapshot:data.snapshot}:{})},false);if(data.error)status(data.error,true);else if(data.message)status(data.message);});

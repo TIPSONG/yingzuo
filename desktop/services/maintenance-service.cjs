@@ -1,5 +1,6 @@
 'use strict';
 const {TrashStore} = require('../maintenance/trash-store.cjs');
+const {restoreFavorite} = require('./favorites.cjs');
 const {sharedPool} = require('../core/worker-pool.cjs');
 const appBackup = require('../maintenance/app-backup.cjs');
 const {migrateStoredGraphs} = require('../maintenance/secret-migration.cjs');
@@ -318,8 +319,8 @@ function createMaintenanceService({db, layout, configRepo, locks, events, logger
     // ----- R14：回收区（只管理本应用登记条目；永久清理需确认并逐项再核对） -----
     'trash.list': async () => { const items = trash.list(); return {items, bytes: items.reduce((n, e) => n + e.bytes, 0)}; },
     'trash.restore': async id => {
-      const entry = trash.list().find(e => e.id === id);
-      if (!entry) throw new AppError(CODES.NOT_FOUND, '回收条目不存在。');
+      const entry = trash.restorable(id);
+      if (entry.kind === 'favorite') return restoreFavorite({db, trash, entry, hashFile});
       if (entry.kind !== 'plugin') return trash.restore(id);
       // 恢复插件同样会修改 ComfyUI 环境，必须复用安装/移除的锁、队列和服务保护。
       const nodes = path.join(comfyRoot(), 'custom_nodes');

@@ -46,7 +46,7 @@ test('RR01：位数不一致时阻止保存，不再将普通模型名称猜成�
 });
 test('RV02：离线首次保存——task-service 读取落盘的 object_info 缓存', t => {
   const d = tmp(t);
-  fs.writeFileSync(path.join(d, 'object-info-cache.json'), JSON.stringify({savedAt: 'x', data: info}));
+  fs.writeFileSync(path.join(d, 'object-info-cache.json'), JSON.stringify({environment: {comfyUrl: 'http://127.0.0.1:1', comfyRoot: ''}, savedAt: 'x', data: info}));
   const {Database} = require('../desktop/repositories/database.cjs');
   const db = Database.open(path.join(d, 'y.sqlite'));
   try {

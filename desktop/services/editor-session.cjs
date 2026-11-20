@@ -182,7 +182,7 @@ async function connect() {
       comfyView.webContents.on('before-input-event',(event,input)=>{
         const r=shortcutFor(input); if(!r)return;
         event.preventDefault();
-        if(r==='run'){notify({shortcut:'run'});return;}
+        if(r==='run'){if(!input.isAutoRepeat&&!input.isComposing&&!overlay)notify({shortcut:'run'});return;}
         const wc=comfyView.webContents; const z=r==='reset'?1:Math.min(2,Math.max(0.5,Math.round((wc.getZoomFactor()+(r==='in'?0.1:-0.1))*10)/10));
         wc.setZoomFactor(z); notify({message:`编辑器缩放 ${Math.round(z*100)}%`});
       });

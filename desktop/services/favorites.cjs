@@ -8,10 +8,18 @@ const {AppError, CODES} = require('../core/errors.cjs');
 const {sha256File} = require('../core/fs-atomic.cjs');
 const {detectFormat} = require('../core/image-meta.cjs');
 const {imageSize, idFor} = require('./asset-index.cjs');
+const {TrashStore} = require('../maintenance/trash-store.cjs');
+
+const extension = {png: '.png', jpeg: '.jpg', webp: '.webp', gif: '.gif'};
+function imageHeader(file) {
+  const fd = fs.openSync(file, 'r'), buf = Buffer.alloc(65536);
+  try { return buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, 0)); } finally { fs.closeSync(fd); }
+}
+const insertFavorite = 'INSERT INTO favorites (id, asset_id, source_path, stored_path, content_hash, width, height, created_at) VALUES (?,?,?,?,?,?,?,?)';
 
 class FavoritesBoard {
   constructor({db, favoritesDir, trashDir, trashStore = null, pool = null, now = () => new Date().toISOString()}) {
-    this.db = db; this.dir = favoritesDir; this.trash = trashDir; this.trashStore = trashStore; this.pool = pool; this.now = now;
+    this.db = db; this.dir = favoritesDir; this.trashStore = trashStore ?? new TrashStore({trashDir}); this.pool = pool; this.now = now;
   }
   async add(sourcePath, {assetId = null} = {}) {
     if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) throw new AppError(CODES.INVALID_PATH, `路径无效：${sourcePath}`);
@@ -25,7 +33,7 @@ class FavoritesBoard {
     const dup = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
     const repairing = !!dup && this.view(dup).broken;
     if (dup && !repairing) return {...this.view(dup), duplicate: true};
-    const ext = {png: '.png', jpeg: '.jpg', webp: '.webp', gif: '.gif'}[format];
+    const ext = extension[format];
     const month = this.now().slice(0, 7);
     const stored = path.join(this.dir, month, `${hash.slice(0, 16)}${ext}`);
     fs.mkdirSync(path.dirname(stored), {recursive: true});
@@ -41,8 +49,7 @@ class FavoritesBoard {
     }
     const concurrent = this.db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
     if (concurrent && !this.view(concurrent).broken) return {...this.view(concurrent), duplicate: !repairing, ...(repairing ? {repaired: true} : {})};
-    const buf = Buffer.alloc(65536); { const fd = fs.openSync(stored, 'r'); try { const n = fs.readSync(fd, buf, 0, buf.length, 0); buf.fill(0, n); } finally { fs.closeSync(fd); } } // 只读文件头
-    const dim = imageSize(buf) ?? {};
+    const dim = imageSize(imageHeader(stored)) ?? {};
     // 副本丢失时保留收藏身份，并按当前目录配置重建；失效登记不能阻止再次收藏。
     if (concurrent) {
       this.db.run('UPDATE favorites SET asset_id = ?, source_path = ?, stored_path = ?, width = ?, height = ? WHERE id = ?',
@@ -50,7 +57,7 @@ class FavoritesBoard {
       return {...this.view(this.db.get('SELECT * FROM favorites WHERE id = ?', concurrent.id)), duplicate: false, repaired: true};
     }
     const id = crypto.randomUUID();
-    this.db.run('INSERT INTO favorites (id, asset_id, source_path, stored_path, content_hash, width, height, created_at) VALUES (?,?,?,?,?,?,?,?)',
+    this.db.run(insertFavorite,
       id, assetId ?? idFor(sourcePath), path.resolve(sourcePath), stored, hash, dim.width ?? null, dim.height ?? null, this.now());
     return {...this.view(this.db.get('SELECT * FROM favorites WHERE id = ?', id)), duplicate: false};
   }
@@ -58,15 +65,13 @@ class FavoritesBoard {
     const row = this.db.get('SELECT * FROM favorites WHERE id = ?', id);
     if (!row) throw new AppError(CODES.NOT_FOUND, '收藏不存在。');
     let trashed = null;
-    if (fs.existsSync(row.stored_path) && path.resolve(row.stored_path) !== path.resolve(row.source_path)) {
-      if (this.trashStore) trashed = this.trashStore.move(row.stored_path, {kind: 'favorite', note: row.source_path}).stored; // R14：登记到回收区
-      else {
-        trashed = path.join(this.trash, 'favorites', `${Date.now()}-${path.basename(row.stored_path)}`);
-        fs.mkdirSync(path.dirname(trashed), {recursive: true});
-        fs.renameSync(row.stored_path, trashed);
+    this.db.transaction(() => {
+      this.db.run('DELETE FROM favorites WHERE id = ?', id);
+      if (fs.existsSync(row.stored_path) && path.resolve(row.stored_path) !== path.resolve(row.source_path)) {
+        trashed = this.trashStore.move(row.stored_path, {kind: 'favorite', note: row.source_path,
+          favorite: {id: row.id, assetId: row.asset_id, hash: row.content_hash, createdAt: row.created_at}}).stored;
       }
-    }
-    this.db.run('DELETE FROM favorites WHERE id = ?', id);
+    });
     return {removed: id, sourceKept: row.source_path, trashed};
   }
   view(r) {
@@ -80,6 +85,39 @@ class FavoritesBoard {
     return {total, items};
   }
   isFavorite(sourcePath) { return !!this.db.get('SELECT 1 AS x FROM favorites WHERE source_path = ?', path.resolve(sourcePath)); }
+}
+
+async function restoreFavorite({db, trash, entry, hashFile = sha256File}) {
+  const saved = entry.favorite;
+  // Earlier registries stored only the source path. Their trash ID gives the rebuilt record a stable ID on retry.
+  const id = saved?.id ?? entry.id.slice(3);
+  if (!fs.existsSync(entry.stored)) {
+    // restorable() has matched the published file's identity. Only finish the same board record.
+    const active = db.get('SELECT * FROM favorites WHERE id = ?', id);
+    if (!active || active.stored_path !== entry.origin || active.source_path !== entry.note || (saved && saved.hash !== active.content_hash)) {
+      throw new AppError(CODES.CONFLICT, '收藏记录已变更，已保留回收登记。');
+    }
+    return trash.restore(entry.id);
+  }
+  if (!path.isAbsolute(entry.note ?? '') || !fs.lstatSync(entry.stored).isFile()) throw new AppError(CODES.INVALID_PATH, '收藏回收记录缺少有效的图片或来源。');
+  const hash = await hashFile(entry.stored);
+  // Hashing yields to other IPC requests. Recheck availability and conflicts before changing the board.
+  entry = trash.restorable(entry.id);
+  const head = imageHeader(entry.stored), ext = extension[detectFormat(head)];
+  if (!ext || path.basename(entry.origin) !== hash.slice(0, 16) + ext || (saved && hash !== saved.hash)) {
+    throw new AppError(CODES.INTEGRITY, '收藏副本校验失败，文件已保留在回收区。');
+  }
+  const dims = imageSize(head) ?? {};
+  const existing = db.get('SELECT * FROM favorites WHERE content_hash = ?', hash);
+  if (existing && (existing.id !== id || existing.stored_path !== entry.origin)) throw new AppError(CODES.CONFLICT, '这张图片已经重新收藏，请保留现有收藏或先取消收藏。');
+  // Commit the board record first. After a process interruption a retry can finish publishing its copy.
+  if (!existing) db.run(insertFavorite, id, saved?.assetId ?? idFor(entry.note), entry.note, entry.origin, hash,
+    dims.width ?? null, dims.height ?? null, saved?.createdAt ?? new Date(entry.at).toISOString());
+  try { return trash.restore(entry.id); }
+  catch (error) {
+    if (!existing && !fs.existsSync(entry.origin)) db.run('DELETE FROM favorites WHERE id = ?', id);
+    throw error;
+  }
 }
 /** 相册自动排列：等高行（justified）布局，缺尺寸按 1:1。 */
 function arrangeAlbum(items, {width = 1200, rowHeight = 220, gap = 8} = {}) {
@@ -99,4 +137,4 @@ function arrangeAlbum(items, {width = 1200, rowHeight = 220, gap = 8} = {}) {
   flush(true);
   return {width, height: rows.length ? rows.at(-1).y + rows.at(-1).height : 0, cells: rows.flatMap(r => r.items)};
 }
-module.exports = {FavoritesBoard, arrangeAlbum};
+module.exports = {FavoritesBoard, arrangeAlbum, restoreFavorite};

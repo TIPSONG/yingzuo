@@ -95,8 +95,9 @@
     </section>
     <section id="page-assets" class="page" hidden aria-label="作品与收藏">
       <header class="page-head"><div><span class="eyebrow">GALLERY</span><h1>作品与收藏</h1></div><div class="header-actions"><button id="as-scan">扫描输出目录</button><button id="as-open-output">打开输出目录</button><button id="as-open-fav">打开收藏目录</button></div></header>
-      <div class="page-body"><div class="actions"><button id="as-tab-all" class="primary">全部作品</button><button id="as-tab-fav">收藏板</button><input id="as-q" placeholder="按文件名搜索"><span id="as-count" class="muted"></span></div>
-        <div id="as-grid" class="asset-grid"></div><div id="as-board" class="fav-board" hidden></div><div class="actions"><button id="as-more" hidden>加载更多</button></div></div>
+      <div class="page-body"><div class="actions"><button id="as-tab-all" class="primary" aria-pressed="true">全部作品</button><button id="as-tab-fav" aria-pressed="false">收藏板</button><input id="as-q" type="search" placeholder="搜索文件名或生成信息" aria-label="搜索作品文件名或生成信息"><span id="as-count" class="muted" role="status"></span></div>
+        <div id="as-grid" class="asset-grid"></div><div id="as-board" class="fav-board" hidden></div>
+        <div class="actions"><button id="as-more" hidden>加载更多</button><button id="as-fav-prev" hidden>上一页收藏</button><button id="as-fav-next" hidden>下一页收藏</button></div></div>
     </section>
     <section id="page-resources" class="page" hidden aria-label="资源与维护">
       <header class="page-head"><div><span class="eyebrow">RESOURCES</span><h1>资源与维护</h1></div><div class="header-actions"><button id="rs-scan" class="primary">扫描本地模型</button><button id="rs-refs">引用诊断</button></div></header>

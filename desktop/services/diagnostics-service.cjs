@@ -7,14 +7,24 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {AppError, CODES} = require('../core/errors.cjs');
 const {writeJsonAtomic} = require('../core/fs-atomic.cjs');
+const {comfyEnvironment} = require('./comfy-environment.cjs');
 const Compat = require('../../compatibility.js');
 
 const FOLDER_ROLE = {diffusion_models: 'diffusion', unet: 'diffusion', text_encoders: 'encoder', clip: 'encoder', vae: 'vae', loras: 'lora', checkpoints: 'checkpoint'};
 const ext = name => (String(name).split('.').pop() || '').toLowerCase();
 
-async function collectCatalog({client, fetchImpl, lmUrl, cacheFile, now = () => new Date().toISOString()}) {
+function catalogEnvironment(comfyUrl, comfyRoot, lmUrl) {
+  return {...comfyEnvironment(comfyUrl, comfyRoot), lmUrl: String(lmUrl ?? '').replace(/\/+$/, '')};
+}
+async function collectCatalog({client, fetchImpl, lmUrl, cacheFile, environment = catalogEnvironment(client.base, '', lmUrl), assertCurrent = () => {}, now = () => new Date().toISOString()}) {
   let cache = null;
   try { cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch { /* 没有缓存 */ }
+  const sameComfy = cache?.environment?.comfyUrl === environment.comfyUrl && cache.environment.comfyRoot === environment.comfyRoot;
+  const sameLm = cache?.environment?.lmUrl === environment.lmUrl;
+  function unavailable(source, error, sameEnvironment) {
+    const collectedAt = sameEnvironment ? cache.sources?.[source]?.collectedAt ?? null : null;
+    return {ok: false, error: error.message, cached: !!collectedAt, collectedAt};
+  }
   const sources = {};
   const out = {nodeTypes: [], plugins: [], models: []};
   // 1. object_info
@@ -26,8 +36,8 @@ async function collectCatalog({client, fetchImpl, lmUrl, cacheFile, now = () => 
     out.plugins = [...plugins].map(([name, types]) => ({name, nodeCount: types.length, version: null}));
     sources.objectInfo = {ok: true, collectedAt: now(), count: out.nodeTypes.length};
   } catch (e) {
-    sources.objectInfo = {ok: false, error: e.message, cached: !!cache?.nodeTypes, collectedAt: cache?.sources?.objectInfo?.collectedAt ?? null};
-    if (cache) { out.nodeTypes = cache.nodeTypes ?? []; out.plugins = cache.plugins ?? []; }
+    sources.objectInfo = unavailable('objectInfo', e, sameComfy);
+    if (sources.objectInfo.cached) { out.nodeTypes = cache.nodeTypes ?? []; out.plugins = cache.plugins ?? []; }
   }
   // 2. 模型目录
   try {
@@ -39,8 +49,8 @@ async function collectCatalog({client, fetchImpl, lmUrl, cacheFile, now = () => 
     out.models.push(...models);
     sources.models = {ok: true, collectedAt: now(), count: models.length};
   } catch (e) {
-    sources.models = {ok: false, error: e.message, cached: !!cache, collectedAt: cache?.sources?.models?.collectedAt ?? null};
-    if (cache) out.models.push(...(cache.models ?? []).filter(m => m.role !== 'language'));
+    sources.models = unavailable('models', e, sameComfy);
+    if (sources.models.cached) out.models.push(...(cache.models ?? []).filter(m => m.role !== 'language').map(m => ({...m, evidence: 'ComfyUI /models 缓存清单'})));
   }
   // 3. LM Studio
   try {
@@ -51,22 +61,24 @@ async function collectCatalog({client, fetchImpl, lmUrl, cacheFile, now = () => 
     out.models.push(...lm);
     sources.lmstudio = {ok: true, collectedAt: now(), count: lm.length};
   } catch (e) {
-    sources.lmstudio = {ok: false, error: e.message, cached: !!cache, collectedAt: cache?.sources?.lmstudio?.collectedAt ?? null};
-    if (cache) out.models.push(...(cache.models ?? []).filter(m => m.role === 'language'));
+    sources.lmstudio = unavailable('lmstudio', e, sameLm);
+    if (sources.lmstudio.cached) out.models.push(...(cache.models ?? []).filter(m => m.role === 'language').map(m => ({...m, evidence: 'LM Studio /v1/models 缓存清单'})));
   }
-  const catalog = {...out, sources, checkedAt: now(), runtimeChecked: Object.values(sources).some(s => s.ok)};
-  if (catalog.runtimeChecked) {
-    // 只用成功的来源更新缓存，失败的来源保留旧缓存
-    const merged = {...catalog, sources: Object.fromEntries(Object.entries(sources).map(([k, s]) => [k, s.ok ? s : (cache?.sources?.[k] ?? s)]))};
-    writeJsonAtomic(cacheFile, merged);
-  }
+  const catalog = {...out, environment, sources, checkedAt: now(), runtimeChecked: Object.values(sources).some(s => s.ok)};
+  assertCurrent();
+  if (catalog.runtimeChecked) writeJsonAtomic(cacheFile, catalog);
   return catalog;
 }
 
 function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout, dialog, getWindow}) {
   const cacheFile = path.join(layout.root, 'diagnostics-cache.json');
   const undo = new Map(); // tabId → [{before, revisionAfter, change}]
-  let lastCatalog = null;
+  let lastCatalog = null, pending = null;
+  const currentEnvironment = () => catalogEnvironment(configRepo.config.comfy?.url, configRepo.config.comfy?.root, configRepo.config.lmstudio.url);
+  const keyOf = environment => JSON.stringify(environment);
+  function assertEnvironment(key) {
+    if (keyOf(currentEnvironment()) !== key) throw new AppError(CODES.CONFLICT, '诊断环境已切换，请重新诊断后再修复。');
+  }
   // Keep graph and revision in the same editor turn. Network catalog collection
   // may finish after the user has edited the tab again.
   const tabGraph = tabId => editor.enqueue(async () => {
@@ -74,8 +86,21 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
     return {...t, revision: editor.workspace?.tabs?.find(x => x.id === t.tabId)?.revision ?? null};
   });
   async function catalog(refresh = false) {
-    if (!lastCatalog || refresh) lastCatalog = await collectCatalog({client: client(), fetchImpl, lmUrl: configRepo.config.lmstudio.url, cacheFile});
-    return lastCatalog;
+    const environment = currentEnvironment(), key = keyOf(environment);
+    if (pending?.key === key) return pending.result;
+    if (!refresh && lastCatalog && keyOf(lastCatalog.environment) === key && !pending) return lastCatalog;
+    const request = {key};
+    pending = request;
+    try {
+      request.result = collectCatalog({client: client(), fetchImpl, lmUrl: environment.lmUrl, cacheFile, environment, assertCurrent() {
+        assertEnvironment(key);
+        if (pending !== request) throw new AppError(CODES.CONFLICT, '诊断环境已切换，请重新采集清单。');
+      }});
+      const collected = await request.result;
+      assertEnvironment(key);
+      if (pending === request) lastCatalog = collected;
+      return collected;
+    } finally { if (pending === request) pending = null; }
   }
   async function analyse(tabId, refresh) {
     const [t, cat] = [await tabGraph(tabId), await catalog(refresh)];
@@ -93,7 +118,10 @@ function createDiagnosticsService({editor, client, fetchImpl, configRepo, layout
       let plan, next;
       try { plan = Compat.plan(t.graph, cat, issueKey, candidateId); next = Compat.patch(t.graph, plan.path, plan.before, plan.after); }
       catch (e) { throw new AppError(CODES.CONFLICT, e.message); }
-      const r = await editor.enqueue(() => editor.commands.replaceGraph(t.tabId, next, t.revision));
+      const r = await editor.enqueue(() => {
+        assertEnvironment(keyOf(cat.environment));
+        return editor.commands.replaceGraph(t.tabId, next, t.revision);
+      });
       const prior = undo.get(t.tabId) ?? [];
       // A user edit between fixes is a history boundary: undoing through it
       // would restore an older whole graph and discard that edit.

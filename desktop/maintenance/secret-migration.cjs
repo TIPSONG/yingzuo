@@ -9,6 +9,7 @@ const SF = require('../../shared/secret-fields.cjs');
 const {sanitizeFields, scanForm, scanNamedSecrets} = require('../../shared/form-secrets.cjs');
 const {secureSnapshot, scanSnapshot} = require('../services/snapshot-secrets.cjs');
 const {SnapshotStore} = require('../repositories/task-repo.cjs');
+const {cleanSource} = require('../repositories/template-repo.cjs');
 
 function migrateStoredGraphs({db, layout, repo, policy, credentials, persistDrafts = null, now = () => new Date().toISOString()}) {
   const canSecure = !!credentials?.available?.();
@@ -100,6 +101,25 @@ function migrateStoredGraphs({db, layout, repo, policy, credentials, persistDraf
         note(kind, id, hits, true);
       } catch { problem(kind, id, 'MIGRATION_FAILED', hits); }
     }
+  }
+
+  // 旧版把整条在线链接同时写入模板及版本。签名参数不得随数据库备份或迁移报告传播。
+  if (db) {
+    try {
+      const changed = [];
+      for (const table of ['templates', 'template_versions']) {
+        for (const {id, source} of db.all(`SELECT rowid AS id, source FROM ${table} WHERE source GLOB 'url:*'`)) {
+          const safe = cleanSource(source);
+          if (safe !== source) changed.push({table, id, safe});
+        }
+      }
+      if (changed.length) {
+        db.transaction(() => {
+          for (const {table, id, safe} of changed) db.run(`UPDATE ${table} SET source=? WHERE rowid=?`, safe, id);
+        });
+        note('template-source', 'database', [{field: 'source'}], true);
+      }
+    } catch { problem('template-source', 'database', 'MIGRATION_FAILED'); }
   }
 
   // 同一模板版本的图和表单一起预检、更新；表单默认值可以直接清除，不要求系统加密可用。

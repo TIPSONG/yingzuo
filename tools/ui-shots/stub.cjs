@@ -35,12 +35,19 @@ function installFixture(fx, opts) {
     'settings.removeCredential': async n => { fx['settings.get'].credentials.configured[n] = false; return fx['settings.get'].credentials; },
     'assets.get': id => asset(id),
     'assets.thumbnail': id => ({dataUrl: asset(id).fixtureImage}),
-    'assets.favoriteLayout': ({width, gap = 8, rowHeight = 220}) => {
-      const items = fx['assets.favorites'].items; let x = 0, y = 0;
-      const cells = items.map(f => { const w = Math.min(width, rowHeight * f.width / f.height); if (x && x + w > width) { x = 0; y += rowHeight + gap; } const c = {id: f.id, x, y, width: w, height: rowHeight}; x += w + gap; return c; });
-      return {cells, height: cells.length ? y + rowHeight : 220};
+    'assets.favorites': ({offset = 0, limit = 100, layout} = {}) => {
+      const all = fx['assets.favorites'].items, items = all.slice(offset, offset + limit);
+      const page = {items, total: all.length};
+      if (layout) page.layout = favoriteLayout(items, layout);
+      return page;
     },
+    'assets.favoriteLayout': options => favoriteLayout(fx['assets.favorites'].items, options),
   };
+  function favoriteLayout(items, {width, gap = 8, rowHeight = 220}) {
+    let x = 0, y = 0;
+    const cells = items.filter(f => !f.broken).map(f => { const w = Math.min(width, rowHeight * f.width / f.height); if (x && x + w > width) { x = 0; y += rowHeight + gap; } const c = {id: f.id, x, y, width: w, height: rowHeight}; x += w + gap; return c; });
+    return {cells, height: cells.length ? y + rowHeight : 0};
+  }
   async function invoke(key, args) {
     state.calls.push([key, clone(args)]); state.pending++;
     try {

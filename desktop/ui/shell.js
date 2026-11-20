@@ -4,7 +4,7 @@
 const desk = window.yingzuoDesktop, yz = window.yingzuo;
 const q = s => document.querySelector(s), qa = s => [...document.querySelectorAll(s)];
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-let page = 'home', startOpen = false, modalOpen = false, settings = null, lastSequence = 0, servicesBusy = false;
+let page = 'home', startOpen = false, modalCount = 0, settings = null, lastSequence = 0, servicesBusy = false;
 function toast(message, error = false) { const t = q('#toast'); t.textContent = message; t.classList.toggle('error', error); t.hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.hidden = true; }, error ? 9000 : 4000); }
 async function call(promise, okMessage) {
   const r = await promise;
@@ -39,7 +39,8 @@ try {
 } catch { /* 预加载不可用时忽略（静态预览） */ }
 
 // 原生 ComfyUI 视图是窗口层级之上的视图：离开创作页或打开弹窗时必须隐藏（E10）。
-function syncOverlay() { desk.setOverlay(page !== 'create' || startOpen || modalOpen); if (typeof reportBounds === 'function') reportBounds(); }
+function createOverlayOpen() { return page !== 'create' || startOpen || modalCount > 0; }
+function syncOverlay() { desk.setOverlay(createOverlayOpen()); if (typeof reportBounds === 'function') reportBounds(); }
 function showPage(next) {
   page = next;
   for (const p of qa('.page')) p.hidden = p.id !== `page-${next}`;
@@ -167,10 +168,10 @@ window.addEventListener('dragover', e => e.preventDefault()); window.addEventLis
 /* ---------- 弹窗（重命名、确认） ---------- */
 function modal(html, onReady) {
   return new Promise(resolve => {
-    modalOpen = true; syncOverlay();
+    modalCount++; syncOverlay();
     const back = document.createElement('div'); back.className = 'modal-back'; back.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
     document.body.append(back);
-    const done = v => { back.remove(); modalOpen = false; syncOverlay(); resolve(v); };
+    const done = v => { if (!back.isConnected) return; back.remove(); modalCount--; syncOverlay(); resolve(v); };
     onReady(back, done);
   });
 }
@@ -249,7 +250,7 @@ function renderSettings() {
   // A late read/save can replace the visible form while the user is typing.
   // Draft values alone do not preserve focus or a pending selection replacement.
   const active = document.activeElement;
-  const focusedField = page === 'settings' && !modalOpen && active?.matches('#settings-form [data-key]')
+  const focusedField = page === 'settings' && !modalCount && active?.matches('#settings-form [data-key]')
     ? {key: active.dataset.key, start: active.selectionStart, end: active.selectionEnd, direction: active.selectionDirection, scrollLeft: active.scrollLeft}
     : null;
   const c = displaySettingsConfig();
@@ -284,7 +285,7 @@ function renderSettings() {
   renderCredentials();
   // Only restore focus lost by this synchronous replacement. A late response
   // must never take focus from another page, dialog, or explicitly focused UI.
-  if (focusedField && page === 'settings' && !modalOpen && document.activeElement === document.body) {
+  if (focusedField && page === 'settings' && !modalCount && document.activeElement === document.body) {
     const replacement = qa('#settings-form [data-key]').find(el => el.dataset.key === focusedField.key);
     replacement?.focus({preventScroll: true});
     if (replacement && focusedField.start != null && focusedField.end != null) {
@@ -422,7 +423,7 @@ yz.events.subscribe(event => {
   if (event.type === 'services.comfy' && event.data.phase === 'failed') toast(`ComfyUI 启动失败：${event.data.error}`, true);
 });
 yz.maintenance.info().then(r => { if (r.ok) lastSequence = r.data.sequence; });
-window.yzShell = {toast, call, swallow, modal, esc, showPage, get page() { return page; }};
+window.yzShell = {toast, call, swallow, modal, esc, showPage, get page() { return page; }, get createOverlayOpen() { return createOverlayOpen(); }};
 loadSettings();
 showPage('home');
 })();

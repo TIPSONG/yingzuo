@@ -6,11 +6,16 @@ const q = s => document.querySelector(s);
 const {esc, toast, call, swallow, modal} = S;
 const confirmModal = (title, text) => modal(`<h3>${esc(title)}</h3><p>${esc(text)}</p><div class="actions"><button data-x="no">返回</button><button data-x="yes" class="primary">继续</button></div>`, (back, done) => back.addEventListener('click', e => { const button = e.target.closest('[data-x]'); if (button) done(button.dataset.x === 'yes'); }));
 const STATE = {draft: '草稿', queued: '排队中', preparing: '准备中', submitting: '提交中', submitted: '已提交', running: '运行中', reconciling: '核对中', succeeded: '已完成', failed: '失败', cancelled: '已取消', paused: '已暂停', unknown: '状态未知'};
-let tasks = [], queueState = {}, refreshTimer = null;
+let tasks = [], queueState = {}, refreshTimer = null, refreshing = false, refreshAgain = false;
 const waiters = new Map(); // taskId → resolve（等待终态）
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'unknown']);
 
 function canRun() { return typeof current === 'object' && current && current.activeId && current.connected; }
+async function tabForSubmission() {
+  const tabId = current.activeId;
+  if (!await flushParameterEdit() || current.activeId !== tabId || S.createOverlayOpen || !canRun()) return null;
+  return tabId;
+}
 function syncRunBar() {
   const ok = canRun();
   for (const id of ['#run-task', '#run-batch', '#run-enhance', '#run-refs']) q(id).disabled = !ok;
@@ -30,7 +35,8 @@ async function loadRefs(tabId) {
 }
 const saveRefs = (tabId, refs) => call(yz.tasks.setRefs(tabId, refs.map(({missing, ...r}) => r)));
 q('#run-refs').addEventListener('click', async () => {
-  const tabId = current.activeId; // PR11-R09：先固定发起标签，之后不再读取 current
+  const tabId = await tabForSubmission();
+  if (!tabId) return;
   let preview;
   try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
   const slots = (preview.bindings.references ?? []).filter(r => r && !r.readonly);
@@ -64,11 +70,19 @@ async function runFor(origin, options = {}) {
     if (!e.handled) swallow(e); return null;
   }
 }
-function runCurrent(options = {}) { return runFor({tabId: current.activeId, revision: null}, options); }
+async function runCurrent(options = {}) {
+  const tabId = await tabForSubmission();
+  if (!tabId) return;
+  return runFor({tabId, revision: null}, options);
+}
 q('#run-task').addEventListener('click', () => runCurrent()); // S07：按钮与 Ctrl+Enter 同一入口；表单参数已在左侧面板写入画布
 // E10：焦点在原生 ComfyUI 视图时，主进程转发 Ctrl+Enter
-window.yingzuoDesktop?.onStatus?.(d => { if (d?.shortcut === 'run' && S.page === 'create') { if (canRun()) runCurrent(); else toast('请先连接 ComfyUI 并打开工作流。', true); } });
-document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && S.page === 'create' && canRun()) { e.preventDefault(); runCurrent(); } });
+window.yingzuoDesktop?.onStatus?.(d => { if (d?.shortcut === 'run' && !S.createOverlayOpen) { if (canRun()) runCurrent(); else toast('请先连接 ComfyUI 并打开工作流。', true); } });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.altKey || e.isComposing || S.createOverlayOpen || !canRun()) return;
+  e.preventDefault();
+  if (!e.repeat) runCurrent();
+});
 
 /* ---------- S08：图包与关闭归档 ---------- */
 const missingNote = d => (d.missing?.length ? `；${d.missing.length} 张参考图缺失：${d.missing.join('、')}` : '');
@@ -82,7 +96,8 @@ q('#closed-list')?.addEventListener('click', async () => {
 
 /* ---------- Q10 批量 ---------- */
 q('#run-batch').addEventListener('click', async () => {
-  const tabId = current.activeId;
+  const tabId = await tabForSubmission();
+  if (!tabId) return;
   let preview;
   try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
   const origin = {tabId, revision: preview.revision, title: preview.title};
@@ -110,9 +125,19 @@ q('#run-batch').addEventListener('click', async () => {
 });
 
 /* ---------- Q08 仅润色 ---------- */
-function waitTerminal(id) { return new Promise(resolve => { const t = tasks.find(x => x.id === id); if (t && TERMINAL.has(t.state)) resolve(t); else waiters.set(id, resolve); }); }
+async function waitEnhanceResult(id) {
+  // Subscribe before reading: the job can finish before its enqueue reply, or fall outside the latest queue page.
+  const changed = new Promise(resolve => waiters.set(id, resolve));
+  try {
+    const result = await call(yz.tasks.enhanceResult(id));
+    if (TERMINAL.has(result.state)) return result;
+    await changed;
+    return await call(yz.tasks.enhanceResult(id));
+  } finally { waiters.delete(id); }
+}
 q('#run-enhance').addEventListener('click', async () => {
-  const tabId = current.activeId;
+  const tabId = await tabForSubmission();
+  if (!tabId) return;
   let preview;
   try { preview = await call(yz.tasks.preview(tabId)); } catch (e) { swallow(e); return; }
   if (!preview.bindings.enhancer) { toast('此工作流没有 Gemma 润色节点。', true); return; }
@@ -127,9 +152,8 @@ q('#run-enhance').addEventListener('click', async () => {
     try { task = await call(yz.tasks.enhance(origin.tabId, {text, rerun: text === lastText, expectedRevision: origin.revision})); } catch (e) { if (await confirmStale(origin, e)) { origin.revision = null; continue; } return; }
     lastText = text;
     toast('润色任务已加入队列…'); scheduleRefresh();
-    await waitTerminal(task.id);
     let result;
-    try { result = await call(yz.tasks.enhanceResult(task.id)); } catch (e) { swallow(e); return; }
+    try { result = await waitEnhanceResult(task.id); } catch (e) { swallow(e); return; }
     const choice = await modal(`<h3>润色结果</h3>${result.text ? `<label>可编辑</label><textarea id="e-out">${esc(result.text)}</textarea>` : `<p class="err">${esc(result.error?.message ?? STATE[result.state])}</p>`}<p class="muted">原文：${esc(result.original ?? text)}</p>
       <div class="actions"><button data-x="no">保留原文</button><button data-x="retry">重新润色</button>${result.text ? '<button data-x="adopt" class="primary">采用并生成</button>' : ''}</div>`, (back, done) => back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (x) done({action: x.dataset.x, text: back.querySelector('#e-out')?.value}); }));
     if (choice.action === 'retry') continue;
@@ -160,16 +184,22 @@ function renderQueue() {
     ].join('');
     const outs = (t.outputs ?? []).filter(o => o.kind === 'image').length;
     return `<div class="task"><span class="badge ${t.state === 'succeeded' ? 'ok' : t.state === 'failed' || t.state === 'unknown' ? 'bad' : 'warn'}">${STATE[t.state] ?? t.state}</span>
-      <div><div>${t.kind === 'enhance' ? '润色 · ' : ''}${esc(t.workflowId)} <span class="meta">#${t.seq} · ${esc(new Date(t.createdAt).toLocaleString())}${t.retryOf ? ' · 重试' : ''}${t.groupId ? ' · 批量' : ''}${outs ? ` · ${outs} 张图` : ''}</span></div>${prog}${t.state === 'unknown' ? '<div class="err">提交后与 ComfyUI 失去联系，无法确认是否已执行。不会自动重发；可重新核对或放弃。</div>' : ''}<div class="err">${esc(describeError(t))}</div></div>
+      <div><div>${t.kind === 'enhance' ? '润色 · ' : ''}${esc(t.workflowId)} <span class="meta">#${t.seq} · ${esc(new Date(t.timestamps.createdAt).toLocaleString())}${t.retryOf ? ' · 重试' : ''}${t.groupId ? ' · 批量' : ''}${outs ? ` · ${outs} 张图` : ''}</span></div>${prog}${t.state === 'unknown' ? '<div class="err">提交后与 ComfyUI 失去联系，无法确认是否已执行。不会自动重发；可重新核对或放弃。</div>' : ''}<div class="err">${esc(describeError(t))}</div></div>
       <div class="actions">${btns}</div></div>`;
   }).join('') : '<div class="empty-state"><h3>还没有任务</h3><p>在创作页打开工作流并点击「运行」后，任务会出现在这里。</p></div>';
 }
 async function refresh() {
+  if (refreshing) { refreshAgain = true; return; }
+  refreshing = true;
   try { const r = await call(yz.tasks.list({limit: 200})); tasks = r.tasks; queueState = r.queue; renderQueue(); syncRunBar(); }
   catch (e) { /* 数据库不可用时 call 已提示 */ }
-  for (const [id, resolve] of waiters) { const t = tasks.find(x => x.id === id); if (t && TERMINAL.has(t.state)) { waiters.delete(id); resolve(t); } }
+  finally { refreshing = false; if (refreshAgain) { refreshAgain = false; scheduleRefresh(); } }
+  for (const t of tasks) if (TERMINAL.has(t.state)) waiters.get(t.id)?.();
 }
-function scheduleRefresh() { clearTimeout(refreshTimer); refreshTimer = setTimeout(refresh, 150); }
+function scheduleRefresh() {
+  if (refreshTimer !== null) return;
+  refreshTimer = setTimeout(() => { refreshTimer = null; refresh(); }, 150);
+}
 q('#queue-list').addEventListener('click', async e => {
   const c = e.target.closest('[data-cancel]'), r = e.target.closest('[data-retry]'), k = e.target.closest('[data-recheck]');
   try {
@@ -192,6 +222,7 @@ q('#queue-resume').addEventListener('click', () => call(yz.tasks.resume(), '已�
 q('#queue-refresh').addEventListener('click', refresh);
 yz.events.subscribe(event => {
   if (event.type === 'tasks.changed' || event.type === 'tasks.progress') {
+    if (event.type === 'tasks.changed' && TERMINAL.has(event.data?.state)) waiters.get(event.resourceId)?.();
     if (event.type === 'tasks.changed' && event.data?.state === 'failed') toast(`任务失败：${event.data.error?.message ?? ''}`, true);
     scheduleRefresh();
   }

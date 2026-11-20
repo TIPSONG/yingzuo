@@ -115,7 +115,7 @@ class DownloadManager {
     d = this._update(id, {state: 'downloading', error: null});
     const {url, headers = {}} = await this.resolve(d.urlRef); // O06：每次重新解析（签名 URL 可能过期）
     let have = fs.existsSync(d.tempPath) ? fs.statSync(d.tempPath).size : 0;
-    const req = {...headers};
+    const req = {'accept-encoding': 'identity', ...headers};
     // R15：只有存在可靠来源身份（强 ETag 或 Last-Modified）时才续传；弱 ETag 不能用于 If-Range；否则从零重下。
     const validator = resumeValidator(d);
     if (have > 0 && !validator) { this.logger?.info('download restart: no reliable validator', {id}); fs.rmSync(d.tempPath, {force: true}); have = 0; }
@@ -130,26 +130,28 @@ class DownloadManager {
       if (res.status === 416) { have = 0; fs.rmSync(d.tempPath, {force: true}); throw new AppError(CODES.CONFLICT, '续传位置无效，已清除临时文件重新下载。', {retryable: true}); }
       if (!res.ok) throw new AppError(CODES.SERVICE_UNAVAILABLE, `下载失败：HTTP ${res.status}`);
       const etag = res.headers.get('etag'), lastModified = res.headers.get('last-modified');
-      let append = false;
+      let append = false, responseTotal = null;
       if (res.status === 206) {
         const m = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec((res.headers.get('content-range') ?? '').trim());
         const restart = msg => { fs.rmSync(d.tempPath, {force: true}); return new AppError(CODES.CONFLICT, `${msg}已清除临时文件，将从头重新下载。`, {retryable: true}); };
         if (have === 0 || !m || Number(m[1]) !== have) throw restart('服务器返回的续传范围不一致，');
         const end = Number(m[2]), total = m[3] === '*' ? null : Number(m[3]);
-        if (end < have || (total != null && end !== total - 1) || (total != null && d.totalBytes && total !== d.totalBytes)) throw restart('续传范围与文件总大小不符，');
+        if (end < have || (total != null && end !== total - 1) || (total != null && d.totalBytes != null && total !== d.totalBytes)) throw restart('续传范围与文件总大小不符，');
         if (d.etag && !isWeak(d.etag)) { if (!sameEtag(d.etag, etag)) throw restart('来源 ETag 已变化，'); }
         else if (d.lastModified && lastModified !== d.lastModified) throw restart('来源修改时间无法确认一致，');
         append = true;
-        if (m[3] !== '*') this._update(id, {totalBytes: Number(m[3])});
+        responseTotal = total;
       } else {
         // 200：源已变化（If-Range 不匹配）或不支持 Range → 从头下载
         if (have > 0) this.logger?.info('download restart from 0', {id, reason: d.etag && etag && d.etag !== etag ? 'etag changed' : 'no range'});
         have = 0;
-        const len = Number(res.headers.get('content-length'));
-        if (Number.isFinite(len) && len > 0) this._update(id, {totalBytes: len});
+        const len = res.headers.get('content-length');
+        const encoding = res.headers.get('content-encoding');
+        if ((!encoding || encoding === 'identity') && len !== null && /^\d+$/.test(len) && Number.isSafeInteger(Number(len))) responseTotal = Number(len);
       }
-      if (d.totalBytes && this.get(id).totalBytes && d.totalBytes !== this.get(id).totalBytes) throw Object.assign(new AppError(CODES.CONFLICT, '来源文件大小与计划不一致，已停止。'), {retryable: false});
-      this._update(id, {etag, lastModified, receivedBytes: have});
+      if (d.totalBytes != null && responseTotal != null && d.totalBytes !== responseTotal) throw Object.assign(new AppError(CODES.CONFLICT, '来源文件大小与计划不一致，已停止。'), {retryable: false});
+      const total = d.totalBytes ?? responseTotal;
+      this._update(id, {etag, lastModified, receivedBytes: have, totalBytes: total});
       const hash = await hashFile(d.tempPath, append ? have : 0);
       let received = have, lastEmit = 0;
       const meter = new Transform({transform: (chunk, _e, cb) => {
@@ -160,8 +162,7 @@ class DownloadManager {
       fs.mkdirSync(path.dirname(d.tempPath), {recursive: true});
       await pipeline(Readable.fromWeb(res.body), meter, fs.createWriteStream(d.tempPath, {flags: append ? 'a' : 'w'}), {signal: controller.signal});
       this._update(id, {state: 'verifying', receivedBytes: received});
-      const total = this.get(id).totalBytes;
-      if (total && received !== total) throw new AppError(CODES.CONFLICT, `下载大小不符：收到 ${received}，应为 ${total}。`);
+      if (total != null && received !== total) throw new AppError(CODES.CONFLICT, `下载大小不符：收到 ${received}，应为 ${total}。`);
       const digest = hash.digest('hex');
       if (d.expectedHash && digest !== d.expectedHash) { fs.rmSync(d.tempPath, {force: true}); throw Object.assign(new AppError(CODES.CORRUPT_DATA, 'sha256 校验失败，文件已删除。'), {retryable: false}); }
       if (fs.existsSync(d.destination)) throw Object.assign(new AppError(CODES.CONFLICT, '目标位置在下载期间出现了同名文件，未覆盖。临时文件已保留。'), {retryable: false});
@@ -170,7 +171,7 @@ class DownloadManager {
       try { published = await publishNewFile(d.tempPath, d.destination); }
       catch (error) { if (error.code === 'EEXIST') throw Object.assign(new AppError(CODES.CONFLICT, '目标位置在下载期间出现了同名文件，未覆盖。临时文件已保留。'), {retryable: false}); if (error.code === 'SOURCE_CHANGED') error.retryable = false; throw error; }
       this._update(id, {state: 'completed', verification: {sha256: digest, matchedExpected: !!d.expectedHash, bytes: received, tempRetained: published.tempRetained}});
-    } finally { clearInterval(timer); off?.(); }
+    } finally { controller.abort(); clearInterval(timer); off?.(); }
   }
 }
 module.exports = {DownloadManager, ACTIVE, resumeValidator, sameEtag};

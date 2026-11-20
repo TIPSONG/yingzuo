@@ -25,10 +25,12 @@ async function fixture(t) {
       if (key === 'watch') return async () => ({ok: true, data: {watching: []}});
       if (key === 'favorites') return async (...args) => {
         const r = await api[key](...args);
-        if (window.brokenFavorite) r.data.items = r.data.items.map(i => ({...i, broken: true, storedMissing: true}));
+        if (window.brokenFavorite) {
+          r.data.items = r.data.items.map(i => ({...i, broken: true, storedMissing: true}));
+          r.data.layout = {cells: [], height: 0};
+        }
         return r;
       };
-      if (key === 'favoriteLayout') return async (...args) => window.brokenFavorite ? {ok: true, data: {cells: [], height: 0}} : api[key](...args);
       if (key === 'unfavorite') return async id => { window.removedFavorite = id; return {ok: true, data: {removed: id}}; };
       return api[key];
     }})});

@@ -220,14 +220,13 @@ class QueueService {
   /** R12/D08：返回的 Promise 即 ready；恢复期间 pump 等待。存量后端任务独立跟踪到终态，不依赖新任务或“继续”。 */
   recoverOnStartup() {
     // 同步阶段：只暂停此刻已存在的未提交任务（恢复期间新建的任务保持排队，等 ready 后提交）
-    let pending = 0;
     for (;;) {
       const before = this.tasks.list({states: ['queued', 'preparing'], limit: 1000});
       if (!before.length) break;
-      for (const t of before) { this.tasks.transition(t.id, 'paused', {reason: '应用重启：未提交任务暂停，等待继续'}); pending++; }
+      for (const t of before) this.tasks.transition(t.id, 'paused', {reason: '应用重启：未提交任务暂停，等待继续'});
     }
     const stale = this.tasks.list({states: ['submitting', 'submitted', 'running', 'reconciling'], limit: 100});
-    if (pending) this.paused = true;
+    if (this.tasks.list({states: ['paused'], limit: 1}).length) this.paused = true;
     this.ready = (async () => {
       for (const t of stale) {
         if (this.tasks.get(t.id).state !== 'reconciling') this.tasks.transition(t.id, 'reconciling', {reason: '应用重启，核对后端状态'});

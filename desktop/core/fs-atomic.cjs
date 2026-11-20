@@ -9,9 +9,11 @@ function writeFileAtomic(file, data, {mode} = {}) {
   fs.mkdirSync(path.dirname(file), {recursive: true});
   const temp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   const fd = fs.openSync(temp, 'w', mode);
-  try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); }
-  finally { fs.closeSync(fd); }
-  try { fs.renameSync(temp, file); }
+  try {
+    try { fs.writeFileSync(fd, data); fs.fsyncSync(fd); }
+    finally { fs.closeSync(fd); }
+    fs.renameSync(temp, file);
+  }
   catch (error) { try { fs.rmSync(temp, {force: true}); } catch { /* 忽略 */ } throw error; }
 }
 function writeJsonAtomic(file, value) { writeFileAtomic(file, JSON.stringify(value, null, 2) + '\n'); }
