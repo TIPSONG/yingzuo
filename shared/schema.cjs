@@ -100,7 +100,7 @@ const schemas = {
 };
 
 /* ---------- IPC 信封（第 5.2 节） ---------- */
-const API_GROUPS = ['services', 'workspace', 'tasks', 'assets', 'templates', 'resources', 'downloads', 'maintenance', 'settings'];
+const API_GROUPS = ['services', 'workspace', 'tasks', 'assets', 'templates', 'resources', 'downloads', 'maintenance', 'settings', 'trash', 'mcp'];
 const METHOD = t.string({min: 3, max: 80, pattern: /^[a-z]+\.[a-zA-Z]+$/});
 const commandSchema = t.object({requestId: ID, method: METHOD, args: t.array(t.any(), {max: 8}), expectedRevision: t.int({min: 0, optional: true})});
 function validateCommand(message) {

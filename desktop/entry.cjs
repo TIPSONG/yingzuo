@@ -6,7 +6,15 @@ const {smokeTarget, runSmoke} = require('./smoke.cjs');
 const target = smokeTarget(process.argv);
 if (target) {
   const {app} = require('electron');
-  app.whenReady().then(() => runSmoke(target, {app})).then(ok => app.exit(ok ? 0 : 1), () => app.exit(1));
+  const fs = require('node:fs');
+  const profile = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'yz-smoke-profile-'));
+  app.setPath('userData', profile);
+  app.setPath('sessionData', profile);
+  const finish = code => {
+    try { fs.rmSync(profile, {recursive: true, force: true}); } catch { /* Chromium may hold profile files until exit on Windows. */ }
+    app.exit(code);
+  };
+  app.whenReady().then(() => runSmoke(target, {app, safeStorage: require('electron').safeStorage})).then(ok => finish(ok ? 0 : 1), () => finish(1));
 } else {
   const {app} = require('electron');
   // 与 main.cjs 一致的开发期 userData（锁按 userData 计算）

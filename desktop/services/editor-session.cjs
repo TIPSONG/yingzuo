@@ -22,14 +22,14 @@ let workspace, startupError = null;
 try { workspace = Store.readWorkspace(paths.workspace); }
 catch (error) { startupError = error.message; workspace = Store.emptyWorkspace(); }
 let comfyView, previewView, bounds, currentView = 'editor', loadedId = null, connected = false;
-let overlay = false;
+let overlay = false, compilingBackground = false;
 let connecting = null, lastSnapshot = null, capabilities = null, autosaveQueued = false, quitting = false;
 let editorGeneration = 0, editorCrashed = false, recoveryPending = false, pendingForeignGraph = null, foreignRecoveryPath = null;
 let persistedWorkspace = JSON.stringify(workspace);
 let commandTail = Promise.resolve();
 const enqueue = operation => { const task = commandTail.then(operation); commandTail = task.catch(()=>{}); return task; };
 const active = () => workspace.tabs.find(tab => tab.id === workspace.activeId);
-const expectedName = () => active() ? `yingzuo-${active().id}` : undefined;
+const expectedName = (tab = active()) => tab ? `yingzuo-${tab.id}` : undefined;
 const currentSnapshot = () => connected && loadedId === workspace.activeId ? lastSnapshot : null;
 const state = () => ({tabs:workspace.tabs.map(({id,title,templateId,templateVersionId,mode,revision})=>({id,title,templateId,templateVersionId:templateVersionId??null,mode,revision})), activeId:workspace.activeId, connected, transportConnected:connected && (currentSnapshot()?.connected??capabilities?.connected??false), currentView, capabilities, recoveryPending, startupError, savedPath:paths.workspace, comfyUrl:currentComfyUrl()?.href ?? null});
 const notify = data => { if (window && !window.isDestroyed()) window.webContents.send('yingzuo:p0-status', {...state(),snapshot:currentSnapshot(),...data}); };
@@ -51,7 +51,7 @@ function layout() {
   const rect = Store.validateBounds(bounds,window.getContentSize());
   const hasArea = rect.width > 0 && rect.height > 0;
   comfyView?.setBounds(rect); previewView?.setBounds(rect);
-  comfyView?.setVisible(hasArea && !overlay && currentView === 'editor' && (recoveryPending || connected && !!active() && active().mode !== 'parameters'));
+  comfyView?.setVisible(hasArea && !overlay && !compilingBackground && currentView === 'editor' && (recoveryPending || connected && !!active() && active().mode !== 'parameters'));
   previewView?.setVisible(hasArea && !overlay && currentView === 'preview');
 }
 function disconnectEditor() {
@@ -134,12 +134,11 @@ async function recoverForeignGraph() {
     throw new Error(`恢复副本尚未保存：${error.message}。已暂停重新连接与退出，避免覆盖该图；请修复保存位置后重试，也可在原生画布中手动导出。`);
   }
 }
-async function capture() {
+async function capture(tab = active()) {
   if(recoveryPending){await recoverForeignGraph();return null;}
-  const tab = active();
   if (!tab || !connected || loadedId !== tab.id) return null;
   let snapshot;
-  try { snapshot = await execute(Bridge.snapshotSource({expectedName:expectedName()})); }
+  try { snapshot = await execute(Bridge.snapshotSource({expectedName:expectedName(tab)})); }
   catch(error) {
     if(error.code==='WORKFLOW_CHANGED') {
       // An unarchived native graph must survive failed disk writes. Keep its
@@ -201,7 +200,7 @@ async function connect() {
     }
     if (readinessError) throw readinessError;
     connected = true; loadedId = null;
-    if (active()) {await loadActive();persist();}
+    if (active()) {await loadTab(active());persist();}
     layout(); notify({message:'真实 ComfyUI 已连接。'});
     return {state:state(),snapshot:currentSnapshot()};
   })();
@@ -209,19 +208,18 @@ async function connect() {
   catch (error) { workspace=before;disconnectEditor();throw new Error(`连接未完成：${error.message}。P0 不自动启动服务，可使用现有启动脚本。`); }
   finally { connecting=null; }
 }
-async function loadActive() {
-  const tab = active();
+async function loadTab(tab) {
   loadedId=null;lastSnapshot=null;
   if (!tab) {layout();return;}
   const result = await execute(Bridge.loadGraphSource({graph:tab.graph,name:`yingzuo-${tab.id}`,workflowPath:tab.workflowPath,documentId:tab.documentId,viewport:tab.viewport??undefined}));
   if (tab.mode === 'app') {
-    try {await execute(Bridge.setModeSource('app',expectedName()));}
+    try {await execute(Bridge.setModeSource('app',expectedName(tab)));}
     catch (error) {
       if (error.code !== 'APP_NOT_CONFIGURED') throw error;
-      await execute(Bridge.setModeSource('graph',expectedName()));
+      await execute(Bridge.setModeSource('graph',expectedName(tab)));
       tab.mode='parameters';
     }
-  } else await execute(Bridge.setModeSource('graph',expectedName()));
+  } else await execute(Bridge.setModeSource('graph',expectedName(tab)));
   keepSnapshot(result,tab);loadedId=tab.id;
   layout();
 }
@@ -236,7 +234,7 @@ async function changeWorkspace(change, showEditor=false) {
     if(showEditor)currentView='editor';
     if(workspace.activeId!==before.activeId) {
       lastSnapshot=null;loadedId=null;
-      if(connected){changedEditor=true;await loadActive();}
+      if(connected){changedEditor=true;await loadTab(active());}
     }
     persist();layout();
   } catch(error) {
@@ -250,7 +248,12 @@ async function changeWorkspace(change, showEditor=false) {
 async function activate(id) {
   const target = workspace.tabs.find(tab=>tab.id===id);
   if (!target) throw new Error('找不到该工作副本。');
-  if (workspace.activeId === id) {currentView='editor';const snapshot=await capture();layout();return {state:state(),snapshot};}
+  if (workspace.activeId === id) {
+    const snapshot = await capture(), previousView = currentView;
+    currentView='editor';layout();
+    if (previousView !== currentView) notify({});
+    return {state:state(),snapshot};
+  }
   const result=await changeWorkspace(()=>{workspace.activeId=id;},true);
   notify({message:`已切换：${target.title}`});
   return result;
@@ -370,26 +373,60 @@ const commands = {
     await capture();tab.title=Store.safeName(title);persist();notify({});
     return {state:state(),snapshot:currentSnapshot()};
   },
-  // E09：编译指定标签。后台标签先切换过去编译，再切回原标签；编译结果与当时的 UI 图、修订号一起返回。
+  // 后台编译借用原生画布，但工作台的活动标签、预览和落盘选择始终属于用户。
   compileTab: async tabId=>{
     const id=tabId??workspace.activeId;const tab=workspace.tabs.find(t=>t.id===id);
     if(!tab)throw new Error('请先打开工作流。');
     if(!connected)throw new Error('ComfyUI 编辑器未连接，无法编译。');
-    const previous=workspace.activeId;
-    if(previous!==id)await activate(id);
-    try{
+    const previous = active();
+    const background = previous?.id !== id;
+    if (background) {
       await capture();
-      const result=await execute(Bridge.compileSource({expectedName:expectedName()}));
+      persist();
+      compilingBackground = true;
+      layout();
+    }
+    let compiled;
+    try{
+      if (background) {
+        try { await loadTab(tab); }
+        catch (error) { disconnectEditor(); throw error; }
+      }
+      await capture(tab);
+      const result=await execute(Bridge.compileSource({expectedName:expectedName(tab)}));
       if(!result?.ok)throw Object.assign(new Error(result?.error?.message??result?.message??'编译失败。'),{code:result?.error?.code??result?.code});
-      return {tabId:id,title:tab.title,templateId:tab.templateId??null,templateVersionId:tab.templateVersionId??null,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
-    }finally{if(previous&&previous!==id&&workspace.tabs.some(t=>t.id===previous))await activate(previous).catch(()=>{});}
+      compiled = {tabId:id,title:tab.title,templateId:tab.templateId??null,templateVersionId:tab.templateVersionId??null,revision:tab.revision??0,uiGraph:result.workflow,apiPrompt:result.prompt};
+    } finally {
+      if (background) {
+        try {
+          if (connected) {
+            // 先核对借用画布的身份，意外的 ComfyUI 内部切图仍走正常的恢复路径。
+            await capture(tab);
+            if (!connected) throw new Error('ComfyUI 编辑器已断开，无法恢复原画布。');
+            await loadTab(previous);
+            persist();
+          }
+        } catch (error) {
+          disconnectEditor();
+          throw error;
+        } finally {
+          compilingBackground = false;
+          layout();
+          if (!connected) notify({error:'后台编译后无法确认原画布，草稿已保留。请重新连接 ComfyUI。'});
+        }
+      }
+    }
+    if (!connected || loadedId !== workspace.activeId) throw new Error('ComfyUI 编辑器连接已改变，请重新连接后再提交。');
+    return compiled;
   },
   // T01：从模板仓库打开（模板 ID 与工作副本 ID 分离；已打开同一模板时切换过去）。
   // S07：标签固定模板版本；打开同一模板的其他版本时另开标签，旧图不会配上新表单。
   openGraph: async (title,graph,templateId,versionId=null)=>{
     const existing=templateId?workspace.tabs.find(t=>t.templateId===templateId&&(!versionId||(t.templateVersionId??null)===versionId)):null;
     if(existing)return activate(existing.id);
-    return newTab(title,Store.validateGraph(graph),templateId??null,versionId);
+    const result = await newTab(title,Store.validateGraph(graph),templateId??null,versionId);
+    notify({});
+    return result;
   },
   /** S08：从关闭归档或图包打开为新标签（不与已打开的同模板标签合并）。 */
   reopenArchived: async (title,graph,templateId=null,versionId=null)=>newTab(title,Store.validateGraph(graph),templateId,versionId),
@@ -405,7 +442,7 @@ const commands = {
     const before=structuredClone(tab.graph),beforeRev=tab.revision;
     Store.setGraph(tab,structuredClone(graph));
     let changedEditor=false;
-    try{persist();if(tab.id===workspace.activeId&&connected){changedEditor=true;lastSnapshot=null;loadedId=null;await loadActive();}layout();}
+    try{persist();if(tab.id===workspace.activeId&&connected){changedEditor=true;lastSnapshot=null;loadedId=null;await loadTab(tab);}layout();}
     catch(error){tab.graph=before;tab.revision=beforeRev;if(changedEditor)disconnectEditor();try{persist();}catch{}layout();throw error;}
     notify({});return {state:state(),revision:tab.revision};
   },

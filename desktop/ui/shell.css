@@ -428,6 +428,9 @@ button.ghost { background: transparent; }
   padding: 7px 9px;
 }
 .setting .hint { grid-column: 2 / 4; color: var(--muted); font-size: 11px; }
+.setting [data-key="mcp.enabled"] { justify-self: start; accent-color: var(--accent); }
+#mcp-connection { margin-top: 12px; border-top: 1px solid var(--line); }
+#mcp-connection [data-mcp-state] { overflow-wrap: anywhere; font-size: 12px; }
 .issue {
   border-radius: 9px;
   padding: 10px 13px;
@@ -498,6 +501,7 @@ button.ghost { background: transparent; }
 /* Toast / Modal */
 #toast {
   position: fixed;
+  pointer-events: none;
   right: 22px;
   bottom: 40px;
   max-width: 520px;
@@ -939,6 +943,7 @@ button.theme-option.active {
   position: relative;
   gap: 12px;
 }
+[data-skin="nasa-punk"] #page-settings .page-head { position: sticky; background-color: var(--bg); }
 /* 色条只画在标题文字一侧，不到达右侧 header-actions */
 [data-skin="nasa-punk"] .page-head > div:first-child {
   position: relative;

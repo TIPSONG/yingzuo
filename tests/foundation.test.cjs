@@ -186,6 +186,19 @@ test('配置：默认值、问题清单、补丁白名单、损坏文件隔离�
   assert.equal(themeRepo.update({ui: {skin: 'nasa-punk'}}).config.ui.skin, 'nasa-punk');
   assert.ok(validate({...defaults('linux'), ui: {startPage: 'home', theme: 'dark', skin: 'neon'}}).some(i => i.field === 'ui.skin'));
 });
+test('旧设置默认关闭本地 MCP，监听端口与开关经校验后持久化', t => {
+  const file = path.join(tmp(t), 'config.json');
+  const old = defaults('linux');
+  delete old.mcp;
+  fs.writeFileSync(file, JSON.stringify(old));
+  const repo = new ConfigRepository(file, {platform: 'linux'});
+  assert.deepEqual(repo.load().config.mcp, {enabled: false, port: 17742});
+  for (const port of [0, -5, 1.5, 65536]) assert.throws(() => repo.update({mcp: {port}}), /mcp.port/);
+  assert.throws(() => repo.update({mcp: {enabled: 'true'}}), /类型/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), old);
+  repo.update({mcp: {enabled: true, port: 17743}});
+  assert.deepEqual(new ConfigRepository(file).load().config.mcp, {enabled: true, port: 17743});
+});
 for (const driver of ['better-sqlite3', 'node:sqlite']) {
   test(`SQLite（${driver}）：迁移、事务回滚、嵌套保存点、一致性备份、未来版本拒绝`, t => {
     const d = tmp(t), file = path.join(d, 'y.sqlite');

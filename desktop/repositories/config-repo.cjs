@@ -22,6 +22,7 @@ function defaults(platform = process.platform) {
       inputDir: '',       // 空表示 <root>/input
     },
     lmstudio: {url: 'http://127.0.0.1:1234/v1', cli: win ? '%USERPROFILE%\\.lmstudio\\bin\\lms.exe' : '', manageServer: true},
+    mcp: {enabled: false, port: 17742},
     gemma: {patchFile: win ? 'D:\\agent\\qwen-deployment\\lmstudio-local.patch' : '', contextLength: 8192, maxReferenceImages: 2},
     paths: {templates: '', favorites: '', downloads: '', backups: '', extraOutputDirs: []},
     defaults: {templateId: 'text'},
@@ -51,6 +52,8 @@ function validate(config, {exists = p => fs.existsSync(p)} = {}) {
   const add = (field, message, severity = 'error') => issues.push({field, message, severity});
   const e1 = checkLocalUrl(config.comfy?.url, {pathname: '/'}); if (e1) add('comfy.url', e1);
   const e2 = checkLocalUrl(config.lmstudio?.url); if (e2) add('lmstudio.url', e2);
+  if (typeof config.mcp?.enabled !== 'boolean') add('mcp.enabled', '本地 AI 接口开关必须是布尔值。');
+  if (!Number.isInteger(config.mcp?.port) || config.mcp.port < 1 || config.mcp.port > 65535) add('mcp.port', 'MCP 端口应为 1–65535 的整数。');
   if (!config.comfy?.root) add('comfy.root', '尚未设置 ComfyUI 目录；仍可连接已运行的服务。', 'warning');
   else if (!exists(config.comfy.root)) add('comfy.root', `目录不存在：${config.comfy.root}`, 'warning');
   if (config.comfy?.python && !exists(config.comfy.python)) add('comfy.python', `Python 不存在：${config.comfy.python}；无法按需启动 ComfyUI。`, 'warning');

@@ -34,7 +34,7 @@ async function fixture(t,initial=workspace(),options={}) {
   }
   const file=path.join(root,'.local','data','workspace.json');
   // 测试关闭行为时不缩到托盘（mock 中也没有 Tray）。
-  fs.writeFileSync(path.join(root,'.local','data','config.json'),JSON.stringify({version:1,tray:{closeToTray:false,showNotifications:false},lmstudio:{cli:''},updates:{checkFrequency:'manual'}}));
+  fs.writeFileSync(path.join(root,'.local','data','config.json'),JSON.stringify({version:1,tray:{closeToTray:false,showNotifications:false},lmstudio:{cli:''},updates:{checkFrequency:'manual'},...options.config}));
   if(options.rawWorkspace!==undefined)fs.writeFileSync(file,options.rawWorkspace);
   else if(initial)Store.writeWorkspace(file,initial);
   const comfyRoot=path.join(root,'comfy');
@@ -88,14 +88,14 @@ async function fixture(t,initial=workspace(),options={}) {
   const protocol=()=>({handlers:new Map(),handle(name,fn){this.handlers.set(name,fn);},isProtocolHandled(name){return this.handlers.has(name);},registerSchemesAsPrivileged(){}});
   const app=new EventEmitter();Object.assign(app,{isPackaged:false,getVersion:()=>'test',getPath:()=>root,setName(){},setPath(){},requestSingleInstanceLock:()=>true,whenReady:()=>Promise.resolve(),quit(){state.quit++;}});
   const handlers=new Map(),ipcMain=new EventEmitter();ipcMain.handle=(name,handler)=>handlers.set(name,handler);
-  const electron={app,BrowserWindow:Window,WebContentsView:View,ipcMain,protocol:protocol(),net:{fetch:async url=>({url})},dialog:{
+  const electron={app,BrowserWindow:Window,WebContentsView:View,ipcMain,protocol:protocol(),net:{fetch:async url=>({url})},clipboard:{writeText(text){state.clipboard=text;}},dialog:{
     showOpenDialog:async()=>state.openResults.shift()||{canceled:true,filePaths:[]},
     showSaveDialog:async()=>state.saveResults.shift()||{canceled:true},
     showErrorBox:(title,message)=>state.errors.push({title,message}),
     showMessageBox:async()=>({response:2})
   },shell:{openPath:async()=>''},safeStorage:options.safeStorage??{isEncryptionAvailable:()=>false},session:{fromPartition(name){if(!state.partitions.has(name)){const ses=new EventEmitter();Object.assign(ses,{protocol:protocol(),setPermissionRequestHandler(fn){this.permissionRequest=fn;},setPermissionCheckHandler(fn){this.permissionCheck=fn;}});state.partitions.set(name,ses);}return state.partitions.get(name);}}};
   const bridge={};
-  for(const [name,op] of Object.entries({getCapabilitiesSource:'capabilities',loadGraphSource:'load',snapshotSource:'snapshot',applyParametersSource:'parameters'}))bridge[name]=(payload={})=>JSON.stringify({op,payload});
+  for(const [name,op] of Object.entries({getCapabilitiesSource:'capabilities',loadGraphSource:'load',snapshotSource:'snapshot',applyParametersSource:'parameters',compileSource:'compile'}))bridge[name]=(payload={})=>JSON.stringify({op,payload});
   bridge.setModeSource=(mode,expectedName)=>JSON.stringify({op:'mode',payload:{mode,expectedName}});
   const store={...Store,writeWorkspace(target,data,opts){state.writeCount++;if(state.writeHook)state.writeHook(target,data,state.writeCount);return Store.writeWorkspace(target,data,opts);}};
   const desktopDir=path.join(__dirname,'..','desktop');
@@ -106,6 +106,7 @@ async function fixture(t,initial=workspace(),options={}) {
   const realApi=require(path.join(desktopDir,'services','api.cjs'));
   const realPool=require(path.join(desktopDir,'core','worker-pool.cjs'));
   const mocks={
+    './services/mcp-access.cjs':{createMcpAccess(args){const service=require('../desktop/services/mcp-access.cjs').createMcpAccess(args);stopServices.push(()=>service.close());return service;}},
     './repositories/database.cjs':dbMock,
     './services/task-service.cjs':{...realTasks,createTaskService(args){const service=realTasks.createTaskService({...args,WebSocketImpl:null});stopServices.push(()=>service.stop());return service;}},
     './services/update-check.cjs':{...realUpdates,createUpdateService(args){const service=realUpdates.createUpdateService(args);stopServices.push(()=>service.stopSchedule());return service;}},
@@ -121,11 +122,12 @@ async function fixture(t,initial=workspace(),options={}) {
     },
   };
   const requireMock=name=>mocks[name]??(name==='electron'?electron:name==='./workspace-store.cjs'?store:name==='./comfy-bridge-source.cjs'?bridge:name.startsWith('./')?require(path.join(desktopDir,name)):require(name));
-  vm.runInNewContext(source,{require:requireMock,__dirname:path.join(root,'desktop'),URL,Response,AbortSignal,structuredClone,fetch:async url=>state.fetchHook?state.fetchHook(url):({ok:true,json:async()=>({system:{},devices:[]})}),setTimeout(fn,ms){const id={};state.timers.set(id,{fn,ms});if(ms===500)queueMicrotask(()=>{if(state.timers.delete(id))fn();});return id;},clearTimeout:id=>state.timers.delete(id),setInterval(fn){state.intervals.push(fn);return {unref(){}};}},{filename:'desktop/main.cjs'});
+  vm.runInNewContext(source,{require:requireMock,__dirname:path.join(root,'desktop'),URL,Response,AbortSignal,structuredClone,fetch:async (url,init)=>state.fetchHook?state.fetchHook(url,init):({ok:true,json:async()=>({system:{},devices:[]})}),setTimeout(fn,ms){const id={};state.timers.set(id,{fn,ms});if(ms===500)queueMicrotask(()=>{if(state.timers.delete(id))fn();});return id;},clearTimeout:id=>state.timers.delete(id),setInterval(fn){state.intervals.push(fn);return {unref(){}};}},{filename:'desktop/main.cjs'});
   await tick();
   assert.equal(state.errors.length,0,'mock application starts successfully');
   state.window=state.windows[0];
   state.send=(method,...args)=>handlers.get('yingzuo:p0')({sender:state.window.webContents,senderFrame:state.window.webContents.mainFrame},{method,args}).then(plain);
+  state.api=(method,...args)=>handlers.get('yingzuo:api')({sender:state.window.webContents,senderFrame:state.window.webContents.mainFrame},{method,args,requestId:'fixture'}).then(plain);
   state.rawSend=(event,message)=>handlers.get('yingzuo:p0')(event,message).then(plain);
   state.bounds=value=>ipcMain.emit('yingzuo:p0-bounds',{sender:state.window.webContents,senderFrame:state.window.webContents.mainFrame},value);
   state.read=()=>Store.readWorkspace(file);
@@ -138,6 +140,102 @@ async function connected(t,initial=workspace(tab('a'),tab('b'))) {
   const f=await fixture(t,initial);f.bounds({x:200,y:80,width:1200,height:800});
   assert.equal((await f.send('connect')).ok,true);return f;
 }
+
+test('损坏的 MCP 配置允许启动桌面并在设置中修复', async t => {
+  const f = await fixture(t, workspace(), {config: {mcp: null}});
+  assert.equal((await f.api('mcp.status')).data.running, false);
+  assert.equal((await f.api('settings.update', {mcp: {enabled: false, port: 17742}})).ok, true);
+  assert.equal((await f.api('mcp.status')).data.port, 17742);
+});
+
+test('桌面设置生成的配置可供独立 MCP 客户端提交任务并读取其预览', {timeout: 30000}, async t => {
+  const {Client, StreamableHTTPClientTransport} = require('@modelcontextprotocol/client');
+  const {info, prompt, safeStorage} = require('./review-helpers.cjs');
+  const net = require('node:net');
+  const f = await fixture(t, workspace(tab('a', '原草稿')), {safeStorage: safeStorage()});
+  const api = async (name, ...args) => {
+    const result = await f.api(name, ...args);
+    assert.equal(result.ok, true, result.error?.message);
+    return result.data;
+  };
+  assert.equal((await api('mcp.status')).running, false);
+  assert.equal((await f.api('mcp.copyConfig')).ok, false);
+  assert.ok(Array.isArray((await api('trash.list')).items));
+
+  const addr = net.createServer();
+  await new Promise((resolve, reject) => addr.once('error', reject).listen(0, '127.0.0.1', resolve));
+  const {port} = addr.address();
+  const setMcp = enabled => api('settings.update', {mcp: {enabled, port}});
+  try {
+    await setMcp(true);
+    assert.match((await api('mcp.status')).error, /端口/);
+  } finally { await new Promise(resolve => addr.close(resolve)); }
+  const output = path.join(f.root, 'output'); fs.mkdirSync(output);
+  await api('settings.update', {mcp: {enabled: true, port}, comfy: {outputDir: output}});
+  assert.equal((await api('mcp.status')).running, true);
+  await api('mcp.copyConfig');
+  const connection = JSON.parse(f.clipboard).mcpServers.yingzuo;
+  assert.ok(connection.headers.Authorization.startsWith('Bearer '));
+  const client = new Client({name: 'desktop-integration-test', version: '1.0.0'});
+  t.after(() => client.close());
+  await client.connect(new StreamableHTTPClientTransport(new URL(connection.url), {requestInit: {headers: connection.headers}}));
+  const {tools} = await client.listTools();
+  assert.ok(tools.some(tool => tool.name === 'get_result_preview'));
+  const invoke = async (name, args = {}) => {
+    const r = await client.callTool({name, arguments: args});
+    assert.ok(!r.isError, r.content[0]?.text);
+    return JSON.parse(r.content[0].text);
+  };
+  assert.deepEqual((await invoke('list_templates')).templates, []);
+  assert.equal((await invoke('list_workflows')).activeTabId, 'a');
+  const history = {}, submitted = [];
+  f.fetchHook = async (url, init) => {
+    const route = new URL(url).pathname;
+    if (route === '/object_info') return Response.json(info);
+    if (route === '/system_stats') return Response.json({system: {}, devices: []});
+    if (route === '/queue') return Response.json({queue_running: [], queue_pending: []});
+    if (route === '/prompt') {
+      const body = JSON.parse(init.body);
+      submitted.push(body.prompt);
+      fs.copyFileSync(path.join(__dirname, '../assets/icon-256.png'), path.join(output, 'sample.png'));
+      history[body.prompt_id] = {prompt: [0, body.prompt_id, body.prompt, body.extra_data], outputs: {12: {images: [{filename: 'sample.png', type: 'output'}]}}, status: {completed: true, status_str: 'success'}};
+      return Response.json({prompt_id: body.prompt_id, number: 1, node_errors: {}});
+    }
+    if (route.startsWith('/history/')) return Response.json(history);
+    return new Response(null, {status: 404});
+  };
+  f.bridgeHook = (op, payload, next) => op === 'compile' ? {ok: true, workflow: f.nativeGraph, prompt: prompt()} : next(op, payload);
+  const connected = await f.send('connect');
+  assert.equal(connected.ok, true, connected.error);
+  const wf = await invoke('get_workflow', {tabId: 'a'});
+  const {taskId} = await invoke('run_workflow', {tabId: 'a', expectedRevision: wf.revision, prompt: '一只橘猫'});
+  let task;
+  for (let n = 0; n < 150; n++) {
+    task = await invoke('get_task', {taskId});
+    if (task.outputs.length || ['failed', 'cancelled', 'unknown'].includes(task.state)) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.equal(task.state, 'succeeded');
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0][3].inputs.prompt, '一只橘猫');
+  assert.equal(task.outputs[0]?.name, 'sample.png');
+  const preview = await client.callTool({name: 'get_result_preview', arguments: {taskId, assetId: task.outputs[0].assetId}});
+  assert.equal(preview.content[0].mimeType, 'image/webp', preview.content[0]?.text);
+  assert.equal(Buffer.from(preview.content[0].data, 'base64').toString('ascii', 8, 12), 'WEBP');
+  assert.equal(f.nativeGraph.nodes[0].widgets_values[0], '原草稿');
+  await api('mcp.rotateToken');
+  // Rotation closes the previous keep-alive sockets. Probe the new listener
+  // with a fresh TCP connection, as a reconnecting client would.
+  const revokedStatus = await new Promise((resolve, reject) => {
+    require('node:http').get(connection.url, {headers: connection.headers, agent: false}, res => {
+      res.resume();
+      resolve(res.statusCode);
+    }).on('error', reject);
+  });
+  assert.equal(revokedStatus, 401);
+  await setMcp(false);
+  assert.equal((await api('mcp.status')).running, false);
+});
 
 test('startup restores drafts without connecting and rejects untrusted IPC senders',async t=>{
   const f=await fixture(t,workspace(tab('a','saved prompt')));
@@ -309,9 +407,15 @@ test('B03：打包自检在临时目录运行并写出结果', async () => {
   assert.equal(smokeTarget(['x', '--yz-smoke=C:\\t\\r.json']), 'C:\\t\\r.json');
   assert.equal(smokeTarget(['x']), null);
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yz-sm-')), 'r.json');
-  await runSmoke(out, {app: {getVersion: () => '0.0.0-test'}});
+  let encrypted = false, decrypted = false;
+  const safeStorage = {isEncryptionAvailable: () => true,
+    encryptString(value) { encrypted = true; return Buffer.from(value).reverse(); },
+    decryptString(bytes) { decrypted = true; return Buffer.from(bytes).reverse().toString(); }};
+  await runSmoke(out, {app: {getVersion: () => '0.0.0-test'}, safeStorage});
   const r = JSON.parse(fs.readFileSync(out, 'utf8'));
-  for (const name of ['versions', 'sqlite', 'modules', 'workbench']) assert.equal(r.checks.find(c => c.name === name).ok, true, JSON.stringify(r.checks));
+  for (const name of ['versions', 'sqlite', 'modules', 'workbench', 'mcp']) assert.equal(r.checks.find(c => c.name === name).ok, true, JSON.stringify(r.checks));
+  assert.ok(encrypted && decrypted);
+  assert.equal(r.checks.find(c => c.name === 'mcp').detail.credentialRoundTrip, true);
   fs.rmSync(path.dirname(out), {recursive: true, force: true});
 });
 
@@ -370,4 +474,99 @@ test('C06：独立副本保留模板与固定表单版本绑定',async t=>{
   const r=await f.send('duplicateTab');assert.equal(r.ok,true);
   const copy=r.state.tabs.find(x=>x.id===r.state.activeId);assert.notEqual(copy.id,'a');
   assert.equal(copy.templateId,'tpl_1');assert.equal(copy.templateVersionId,'ver_1');
+});
+
+test('远程打开新模板后桌面收到新标签；再次打开同版本复用标签', async t => {
+  const f = await connected(t);
+  const file = path.join(f.root, 'template.json');
+  fs.writeFileSync(file, JSON.stringify(graph('saved template')));
+  f.openResults.push({canceled: false, filePaths: [file]});
+  const imported = await f.api('templates.import');
+  const templateId = imported.data.imported[0].id;
+  f.statuses.length = 0;
+  const opened = await f.api('templates.open', templateId);
+  assert.equal(opened.ok, true, opened.error?.message);
+  const id = opened.data.state.activeId;
+  const announced = f.statuses.at(-1);
+  assert.equal(announced.activeId, id);
+  assert.ok(announced.tabs.some(t => t.id === id && t.templateId === templateId));
+  assert.equal(announced.snapshot.graph.nodes[0].widgets_values[0], 'saved template');
+  await f.send('showPreview');
+  const existing = await f.api('templates.open', templateId);
+  assert.equal(existing.data.state.activeId, id);
+  assert.equal(existing.data.state.tabs.length, opened.data.state.tabs.length);
+  assert.equal(f.statuses.at(-1).currentView, 'editor');
+});
+
+test('后台编译保留用户活动标签和预览，且不向桌面发布临时画布', async t => {
+  const f = await connected(t);
+  f.nativeGraph = graph('unsaved on A');
+  await f.send('showPreview');
+  f.statuses.length = 0;
+  const preview = f.views.find(v => v !== f.editor());
+  f.bridgeHook = (op, payload, next) => {
+    if (op !== 'compile') return next(op, payload);
+    assert.equal(payload.expectedName, 'yingzuo-b');
+    assert.equal(f.nativeName, 'yingzuo-b');
+    assert.equal(f.read().activeId, 'a');
+    assert.equal(f.editor().visible, false);
+    assert.equal(preview.visible, true);
+    return {ok: true, workflow: f.nativeGraph, prompt: {}};
+  };
+  const compiled = await f.send('compileTab', 'b');
+  assert.equal(compiled.ok, true, compiled.error);
+  assert.equal(compiled.tabId, 'b');
+  assert.equal(compiled.uiGraph.nodes[0].widgets_values[0], 'b');
+  const {state} = await f.send('boot');
+  assert.equal(state.activeId, 'a');
+  assert.equal(state.currentView, 'preview');
+  assert.equal(preview.visible, true);
+  assert.equal(f.nativeGraph.nodes[0].widgets_values[0], 'unsaved on A');
+  assert.equal(f.statuses.some(s => s.activeId === 'b'), false);
+});
+
+test('后台编译不能恢复原画布时拒绝运行，并能重新连接回原标签', async t => {
+  const f = await connected(t);
+  f.nativeGraph = graph('keep A edit');
+  let compiled = false;
+  f.bridgeHook = (op, payload, next) => {
+    if (op === 'compile') { compiled = true; return {ok: true, workflow: f.nativeGraph, prompt: {}}; }
+    if (op === 'load' && payload.name === 'yingzuo-a') return {ok: false, error: {message: 'failed restoring A'}};
+    return next(op, payload);
+  };
+  const failed = await f.api('tasks.run', 'b');
+  assert.ok(compiled);
+  assert.equal(failed.ok, false);
+  assert.match(failed.error.message, /failed restoring A/);
+  const status = f.statuses.at(-1);
+  assert.equal(status.activeId, 'a');
+  assert.equal(status.connected, false);
+  assert.equal(status.snapshot, null);
+  assert.equal(f.editor().visible, false);
+  assert.equal(f.read().activeId, 'a');
+  f.bridgeHook = null;
+  assert.equal((await f.send('connect')).ok, true);
+  assert.equal(f.nativeName, 'yingzuo-a');
+  assert.equal(f.nativeGraph.nodes[0].widgets_values[0], 'keep A edit');
+});
+
+test('后台编译已取得结果但恢复结束时断连，旧结果不能提交', async t => {
+  const f = await connected(t);
+  let compiled = false, disconnected = false;
+  f.bridgeHook = (op, payload, next) => {
+    if (op !== 'compile') return next(op, payload);
+    compiled = true;
+    return {ok: true, workflow: f.nativeGraph, prompt: {}};
+  };
+  f.writeHook = () => {
+    if (compiled && !disconnected && f.nativeName === 'yingzuo-a') {
+      disconnected = true;
+      f.editor().webContents.emit('render-process-gone');
+    }
+  };
+  const result = await f.send('compileTab', 'b');
+  assert.ok(disconnected);
+  assert.equal(result.ok, false);
+  assert.equal(result.state.connected, false);
+  assert.equal(result.state.activeId, 'a');
 });

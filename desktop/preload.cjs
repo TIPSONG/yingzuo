@@ -20,6 +20,7 @@ api.onStatus = callback => {
   return () => ipcRenderer.removeListener('yingzuo:p0-status', listener);
 };
 const GROUPS = {
+  mcp: ['status','copyConfig','rotateToken'],
   services: ['status','startComfy','stopComfy','freeComfyMemory','startLmServer','stopLmServer','logs'],
   settings: ['get','update','pickPath','setCredential','removeCredential'],
   tasks: ['preview','form','applyFormField','run','previewBatch','runBatch','enhance','enhanceResult','list','get','cancel','retry','recheck','pause','resume','pickReference','refs','setRefs','copyRefs','exportPackage','importPackage','closedList','reopenClosed'],

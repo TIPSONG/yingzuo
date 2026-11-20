@@ -19,6 +19,10 @@
         "url": "http://127.0.0.1:1234/v1",
         "cli": ""
       },
+      "mcp": {
+        "enabled": false,
+        "port": 17742
+      },
       "gemma": {
         "patchFile": "",
         "contextLength": 8192

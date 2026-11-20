@@ -204,6 +204,7 @@ const FIELDS = [
   ['外观', [['ui.theme', '界面主题', 'theme', '深色为默认；「跟随系统」随操作系统外观变化'], ['ui.skin', '界面皮肤', 'skin', '皮肤叠在明暗模式之上；NASA 朋克偏深色科技感']]],
   ['ComfyUI', [['comfy.root', '安装目录', 'path'], ['comfy.python', 'Python', 'file', '按需启动用；通常是 .venv\\Scripts\\python.exe'], ['comfy.url', '地址', 'text', '仅本机 http 地址'], ['comfy.extraArgs', '附加启动参数', 'list', '每项以空格分隔；--listen/--port 由地址决定'], ['comfy.startTimeoutSec', '启动超时（秒）', 'int'], ['comfy.workflowsDir', '工作流目录', 'path', '留空 = <安装目录>\\user\\default\\workflows'], ['comfy.outputDir', '输出目录', 'path', '留空 = <安装目录>\\output'], ['comfy.inputDir', '输入目录', 'path', '留空 = <安装目录>\\input']]],
   ['LM Studio / Gemma', [['lmstudio.url', 'API 地址', 'text'], ['lmstudio.cli', 'lms CLI', 'file'], ['gemma.patchFile', 'Gemma 本地补丁', 'file', '仅登记位置，更新插件时据此保留补丁']]],
+  ['本地 AI 接口（MCP）', [['mcp.enabled', '允许本机 AI 调用映作', 'bool', '保存设置后生效。连接的 AI 可以查看工作流、提交绘图并查询结果。'], ['mcp.port', '服务端口', 'port'], [null, null, 'mcpStatus']]],
   ['目录', [['paths.templates', '模板', 'fixed', '模板固定保存在数据目录的 templates 下（仓库、缩略图、导入导出与备份都使用此位置）；暂不支持改到其他目录'], ['paths.favorites', '收藏', 'path'], ['paths.downloads', '下载', 'path'], ['paths.backups', '备份', 'path']]],
   ['行为', [['tray.closeToTray', '关闭窗口时缩到托盘', 'bool'], ['downloads.concurrency', '下载并发', 'int'], ['queue.maxBatch', '批量上限', 'int'], ['defaults.templateId', '默认模板', 'select:text,edit,gemma-text,gemma-edit,prompt'], ['updates.checkFrequency', '更新检查', 'select:manual,daily,weekly'], ['updates.channel', '更新渠道', 'select:stable,beta']]],
 ];
@@ -256,6 +257,7 @@ function renderSettings() {
   const c = displaySettingsConfig();
   q('#settings-issues').innerHTML = (settings.loadError ? `<div class="issue error">配置文件读取失败，已用默认值启动（原文件已另存）：${esc(settings.loadError)}</div>` : '') + settings.issues.map(i => `<div class="issue ${i.severity}">${esc(i.field)}：${esc(i.message)}</div>`).join('');
   q('#settings-form').innerHTML = FIELDS.map(([legend, items]) => `<fieldset><legend>${esc(legend)}</legend>${items.map(([key, label, type, hint]) => {
+    if (type === 'mcpStatus') return '<div id="mcp-connection"><p role="status" class="muted" data-mcp-state>正在读取服务状态…</p><div class="actions"><button type="button" data-mcp-copy disabled>复制客户端配置</button><button type="button" data-mcp-rotate disabled>更换连接密钥…</button></div></div>';
     const v = getPath(c, key); let input;
     if (type === 'theme') {
       const cur = v === 'light' || v === 'system' ? v : 'dark';
@@ -274,6 +276,7 @@ function renderSettings() {
       return `<div class="setting"><span>${esc(label)}</span><span class="muted">${esc(loc || '数据目录\\templates')}</span>${loc ? '<button type="button" data-open-loc="templates">打开</button>' : '<span></span>'}${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>`;
     }
     if (type === 'bool') input = `<input type="checkbox" data-key="${key}" data-type="bool" ${v ? 'checked' : ''}>`;
+    else if (type === 'port') input = `<input type="number" data-key="${key}" data-type="port" min="1" max="65535" step="1" required value="${esc(v)}">`;
     else if (type === 'int') input = `<input type="number" data-key="${key}" data-type="int" value="${esc(v)}">`;
     else if (type === 'list') input = `<input type="text" data-key="${key}" data-type="list" value="${esc((v || []).join(' '))}">`;
     else if (type.startsWith('select:')) input = `<select data-key="${key}" data-type="text">${type.slice(7).split(',').map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
@@ -283,6 +286,7 @@ function renderSettings() {
   }).join('')}</fieldset>`).join('') + `<fieldset><legend>数据位置</legend>${Object.entries(settings.locations).map(([k, v]) => `<div class="setting"><span>${esc(k)}</span><span class="muted">${esc(v || '未配置')}</span>${v ? `<button type="button" data-open-loc="${k}">打开</button>` : '<span></span>'}</div>`).join('')}</fieldset>`;
   restoreDraft();
   renderCredentials();
+  if (page === 'settings') refreshMcpStatus();
   // Only restore focus lost by this synchronous replacement. A late response
   // must never take focus from another page, dialog, or explicitly focused UI.
   if (focusedField && page === 'settings' && !modalCount && document.activeElement === document.body) {
@@ -298,6 +302,21 @@ function renderSettings() {
 function renderCredentials() {
   const cred = settings.credentials;
   q('#credentials').innerHTML = cred.available ? ['huggingface', 'civitai'].map(n => `<div class="row"><span>${n === 'huggingface' ? 'Hugging Face 令牌' : 'Civitai API Key'}：${cred.configured[n] ? '已保存（系统加密）' : '未设置'}</span><span><input type="password" data-cred="${n}" placeholder="粘贴后保存" class="w220"> <button data-cred-save="${n}">保存</button> ${cred.configured[n] ? `<button data-cred-remove="${n}">删除</button>` : ''}</span></div>`).join('') : '<div class="issue error">系统加密存储不可用，为避免明文保存，映作不会保存在线来源凭据。公开资源仍可下载。</div>';
+}
+function showMcpStatus(panel, state) {
+  const line = panel.querySelector('[data-mcp-state]');
+  line.className = state.error ? 'err' : 'muted';
+  line.textContent = state.error || (state.running ? `运行中 · ${state.url}` : state.enabled ? '服务尚未启动。' : '服务已关闭。');
+  for (const button of panel.querySelectorAll('button')) button.disabled = !state.running;
+}
+async function refreshMcpStatus() {
+  const panel = q('#mcp-connection');
+  try {
+    const result = await yz.mcp.status();
+    if (panel.isConnected) showMcpStatus(panel, result?.ok ? result.data : {error: result?.error?.message || '读取 MCP 服务状态失败。'});
+  } catch (e) {
+    if (panel.isConnected) showMcpStatus(panel, {error: e.message});
+  }
 }
 /* RR07：每次编辑有独立版本。响应只能确认其提交的版本，不清除等待期间产生的新输入。
  * 设置写入和读取串行执行，避免连续保存、外观与目录选择的完整配置响应乱序覆盖。 */
@@ -369,7 +388,7 @@ function collectPatch() {
   const patch = {};
   for (const el of qa('#settings-form [data-key]')) {
     const [g, k] = el.dataset.key.split('.'); const t = el.dataset.type;
-    const value = t === 'bool' ? el.checked : t === 'int' ? Number.parseInt(el.value, 10) : t === 'list' ? el.value.split(/\s+/).filter(Boolean) : el.value.trim();
+    const value = t === 'bool' ? el.checked : t === 'port' ? el.valueAsNumber : t === 'int' ? Number.parseInt(el.value, 10) : t === 'list' ? el.value.split(/\s+/).filter(Boolean) : el.value.trim();
     (patch[g] ??= {})[k] = value;
   }
   return patch;
@@ -386,6 +405,24 @@ q('#settings-save').addEventListener('click', async () => {
 });
 q('#settings-reload').addEventListener('click', () => { settingsDraft.clear(); loadSettings(); }); // RV13：显式重新加载才丢弃草稿
 q('#settings-form').addEventListener('click', async e => {
+  const mcpAction = e.target.closest('[data-mcp-copy], [data-mcp-rotate]');
+  if (mcpAction) {
+    const rotate = mcpAction.hasAttribute('data-mcp-rotate');
+    if (rotate && !await confirmModal('更换 MCP 连接密钥？', '旧配置会立即失效。更换后请重新复制配置到已连接的 AI 客户端。')) return;
+    const panel = mcpAction.closest('#mcp-connection');
+    for (const button of panel.querySelectorAll('button')) button.disabled = true;
+    try {
+      await queueSettingsOperation(async () => {
+        if (rotate) {
+          const status = await call(yz.mcp.rotateToken());
+          if (status.running) toast('连接密钥已更换，请复制新配置。');
+          else toast(status.error || 'MCP 服务尚未启动，请检查设置。', true);
+        } else await call(yz.mcp.copyConfig(), '已复制含连接密钥的配置，可粘贴到客户端的 mcp.json。');
+      });
+    } catch (err) { swallow(err); }
+    finally { if (panel.isConnected) await refreshMcpStatus(); }
+    return;
+  }
   const themeBtn = e.target.closest('[data-theme-set]');
   if (themeBtn) {
     const raw = themeBtn.dataset.themeSet;

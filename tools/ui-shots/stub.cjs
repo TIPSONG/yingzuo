@@ -12,7 +12,19 @@ function installFixture(fx, opts) {
   const favoriteAssets = new Map(fx['assets.favorites'].items.map(f => [f.id, {...fx['assets.list'].items.find(a => a.id === f.assetId), id: `favorite:${f.id}`, favoriteId: f.id, path: f.storedPath}]));
   if (opts.favoriteSourcesMissing) { const ids = new Set(fx['assets.favorites'].items.map(f => f.assetId)); fx['assets.list'].items = fx['assets.list'].items.filter(a => !ids.has(a.id)); for (const f of fx['assets.favorites'].items) f.sourceMissing = true; }
   const asset = id => { const a = id.startsWith('favorite:') ? favoriteAssets.get(id.slice(9)) : fx['assets.list'].items.find(a => a.id === id); if (!a) throw new Error(`Unknown fixture asset: ${id}`); return a; };
+  function mcpState() {
+    const {enabled, port} = fx['settings.get'].config.mcp;
+    const error = enabled && port === opts.mcpOccupiedPort ? `端口 ${port} 已被占用。` : null;
+    const running = enabled && !error;
+    return {enabled, port, running, url: running ? `http://127.0.0.1:${port}/mcp` : null, error};
+  }
   const handlers = {
+    'mcp.status': mcpState,
+    'mcp.copyConfig': () => ({copied: true}),
+    'mcp.rotateToken': () => {
+      if (opts.mcpPortTakenOnRotate) opts.mcpOccupiedPort = fx['settings.get'].config.mcp.port;
+      return mcpState();
+    },
     'settings.get': async () => {
       if (opts.pauseSettingsGets?.includes(++settingsReads)) {
         await new Promise(resolve => { state.resumeSettingsGet = resolve; });

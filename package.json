@@ -19,11 +19,14 @@
   },
   "devDependencies": {
     "@electron/rebuild": "4.2.1",
+    "@modelcontextprotocol/client": "2.4.0",
     "electron": "44.4.3",
     "electron-builder": "26.15.3",
     "puppeteer-core": "25.14.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "better-sqlite3": "12.11.1",
     "sharp": "0.34.5"
   },

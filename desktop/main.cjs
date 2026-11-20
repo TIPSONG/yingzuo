@@ -27,6 +27,7 @@ const {createOnlineService} = require('./services/online/online-service.cjs');
 const {createDependencyService} = require('./services/online/dependency-plan.cjs');
 const {createUpdateService} = require('./services/update-check.cjs');
 const {CredentialStore} = require('./core/credentials.cjs');
+const {createMcpAccess} = require('./services/mcp-access.cjs');
 const ROOT = path.resolve(__dirname, '..');
 const LEGACY_LOCAL = path.join(ROOT, '.local');
 const WORKBENCH = 'yingzuo://app/desktop/workbench.html';
@@ -98,8 +99,19 @@ try {
 const diagnostics = createDiagnosticsService({editor, client: () => new ComfyHttpClient(configRepo.config.comfy.url, {fetchImpl: fetch}), fetchImpl: fetch, configRepo, layout, dialog, getWindow: () => window});
 const dependencies = onlineService ? createDependencyService({editor, diagnostics, online: onlineService, configRepo, layout}) : null;
 const updates = onlineService ? createUpdateService({app, configRepo, layout, fetchImpl: fetch, online: onlineService, electron, events, logger}) : null;
-const api = createApi({taskService, credentials, extraMethods: {...updates?.methods, ...templateService?.methods, ...diagnostics.methods, ...onlineService?.methods, ...dependencies?.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
+const api = createApi({db: appDb, taskService, credentials, extraMethods: {...updates?.methods, ...templateService?.methods, ...diagnostics.methods, ...onlineService?.methods, ...dependencies?.methods}, electron, app, layout, dataRoot, configRepo, logger, events, locks, editor, migration, getWindow: () => window, fetch, root: ROOT, comfyUrlProvider});
 if (appDb) { const m = createMaintenanceService({db: appDb, credentials, layout, configRepo, locks, events, logger, comfy: api.comfy, taskService, templateRepo: templateService?.repo, editor, fetchImpl: fetch}); Object.assign(api.methods, m.methods); api.setStartGate(m.gate); /* S02/C03：恢复阻断期间不启动服务；在环境锁内检查 */ m.recoverModelMoves().then(r => { if (r.length) logger.info('模型移动启动核对', {results: r}); }, e => logger.warn('模型移动启动核对失败', {error: e.message})); }
+
+const mcpAccess = createMcpAccess({
+  configRepo, clipboard: electron.clipboard, isQuitting: () => !!quitInProgress || editor.quitting,
+  credentials: new CredentialStore(path.join(layout.root, 'mcp-credentials.json'), electron.safeStorage, new Set(['access'])),
+  createServer: options => require('./services/mcp-server.cjs').createMcpServer(options),
+  getTools() {
+    if (!taskService || !templateService || appDb?.readonly) throw new AppError(CODES.SERVICE_UNAVAILABLE, '任务数据库不可用，请先恢复映作数据库。');
+    return require('./services/mcp-tools.cjs').createMcpTools({editor, taskService, templateService, assetsMethods: api.methods, getOutputRoot: () => configRepo.derived(layout).output});
+  },
+});
+Object.assign(api.methods, mcpAccess.methods);
 
 function assertSender(event) {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== WORKBENCH) throw new Error('拒绝未知页面请求。');
@@ -130,7 +142,12 @@ function refreshTrayMenu(status = api.lastServiceSummary?.()) {
     {label: '退出映作', click: () => requestQuit()},
   ]));
 }
-events.subscribe(event => { if (event.type === 'settings.changed') taskService?.connectSocket(); });
+events.subscribe(event => {
+  if (event.type === 'settings.changed') {
+    taskService?.connectSocket();
+    mcpAccess.sync().catch(() => logger.warn('MCP 设置更新失败'));
+  }
+});
 events.subscribe(event => { if (event.type === 'services.status') refreshTrayMenu(event.data.summary); });
 
 // ---------- 退出（S07） ----------
@@ -151,6 +168,7 @@ async function requestQuit() {
       dialog.showErrorBox('草稿尚未保存',`${error.message}\n窗口已保留，请重试保存或导出工作流后再退出。`);
     },
     finalize: async () => {
+      await mcpAccess.close();
       taskService?.stop(); updates?.stopSchedule();
       await require('./core/worker-pool.cjs').closeShared().catch(e => logger.warn('worker shutdown failed', {error: e.message}));
       explicitQuit = true;
@@ -171,6 +189,7 @@ else {
     editor.setGraphPolicy(graphPolicy); /* C01：系统加密存储在 ready 之后可用 */
     if (appDb) { try { const rep = require('./maintenance/secret-migration.cjs').migrateStoredGraphs({db: appDb, layout, repo: templateService?.repo, policy: graphPolicy, credentials, persistDrafts: () => editor.persist()}); if (rep.migrated.length || rep.pending.length) logger.info('已保存图的敏感字段迁移/检查', {migrated: rep.migrated.length, pending: rep.pending.length}); } catch (e) { logger.warn('敏感字段迁移检查失败', {error: e.message}); } }
     taskService?.start();
+    await mcpAccess.sync();
     onlineService?.start(); updates?.startSchedule();
     window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     window.webContents.on('will-navigate',(event,url)=>{if((event.url??url)!==WORKBENCH)event.preventDefault();});

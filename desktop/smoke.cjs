@@ -5,7 +5,44 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 function smokeTarget(argv) { const a = argv.find(x => x.startsWith('--yz-smoke=')); return a ? a.slice('--yz-smoke='.length) : null; }
-async function runSmoke(target, {app}) {
+async function smokeMcp(tmp, safeStorage) {
+  const {createMcpServer} = require('./services/mcp-server.cjs');
+  const {CredentialStore} = require('./core/credentials.cjs');
+  const file = path.join(tmp, 'mcp-credentials.json');
+  const store = () => new CredentialStore(file, safeStorage, new Set(['access']));
+  const generated = require('node:crypto').randomBytes(32).toString('base64url');
+  let token;
+  try {
+    store().set('access', generated);
+    token = store().get('access');
+    if (token !== generated || fs.readFileSync(file, 'utf8').includes(generated)) throw new Error();
+  } catch { throw new Error('MCP 令牌加密保存或重新读取失败。'); }
+  const service = createMcpServer({token, tools: {
+    tools: [{name: 'smoke', description: 'Isolated package check', inputSchema: {type: 'object', properties: {}}}],
+    call: async () => ({content: []}),
+  }});
+  try {
+    const url = await service.start();
+    const protocol = '2026-07-28';
+    const meta = {'io.modelcontextprotocol/protocolVersion': protocol,
+      'io.modelcontextprotocol/clientInfo': {name: 'packaged-smoke', version: '1'}, 'io.modelcontextprotocol/clientCapabilities': {}};
+    const rpc = async (method, id) => {
+      const res = await fetch(url, {method: 'POST', signal: AbortSignal.timeout(5000),
+        headers: {authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream', 'content-type': 'application/json',
+          'mcp-method': method, 'mcp-protocol-version': protocol}, body: JSON.stringify({jsonrpc: '2.0', id, method, params: {_meta: meta}})});
+      if (!res.ok) throw new Error(`MCP ${method} HTTP ${res.status}`);
+      const reply = await res.json();
+      if (reply.id !== id || !reply.result) throw new Error(`MCP ${method} response invalid`);
+      return reply.result;
+    };
+    const info = await rpc('server/discover', 1);
+    const list = await rpc('tools/list', 2);
+    const server = info._meta?.['io.modelcontextprotocol/serverInfo']?.name;
+    if (server !== 'yingzuo' || !info.supportedVersions?.includes(protocol) || !list.tools?.some(tool => tool.name === 'smoke')) throw new Error('MCP discovery failed');
+    return {server, protocol, tools: list.tools.length, credentialRoundTrip: true};
+  } finally { await service.stop(); }
+}
+async function runSmoke(target, {app, safeStorage}) {
   const checks = [];
   const step = async (name, fn) => { try { checks.push({name, ok: true, detail: await fn()}); } catch (e) { checks.push({name, ok: false, detail: e.message}); } };
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'yz-smoke-'));
@@ -28,6 +65,7 @@ async function runSmoke(target, {app}) {
     } finally { await pool.close(); }
   });
   await step('modules', () => { for (const m of ['./services/api.cjs', './services/task-service.cjs', './services/maintenance-service.cjs', './services/assets-api.cjs', './services/online/online-service.cjs']) require(m); return 'ok'; });
+  await step('mcp', () => smokeMcp(tmp, safeStorage));
   await step('workbench', () => { for (const f of ['workbench.html', 'workbench.js', 'preload.cjs']) if (!fs.existsSync(path.join(__dirname, f))) throw new Error(`缺少 ${f}`); return 'ok'; });
   try { fs.rmSync(tmp, {recursive: true, force: true}); } catch { /* 忽略 */ }
   const ok = checks.every(c => c.ok);

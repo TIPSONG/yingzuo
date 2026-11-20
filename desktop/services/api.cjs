@@ -128,7 +128,7 @@ function createApi(ctx) {
 
   const methods = {
     // ----- assets（A01–A08，见 assets-api.cjs）-----
-    ...createAssetsMethods({electron, layout, configRepo, getWindow, logger}),
+    ...createAssetsMethods({electron, layout, configRepo, getWindow, logger, db: ctx.db}),
     // ----- services -----
     'services.status': serviceStatus,
     'services.startComfy': () => locks.environment.run(async () => {
