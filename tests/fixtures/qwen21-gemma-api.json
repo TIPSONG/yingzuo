@@ -1,0 +1,333 @@
+{
+ "_source": "脱敏契约夹具（PR11-R07）。结构按 Codex 审阅中本机五图的已确认事实构造：TextEncodeQwenImage21（ComfyUI comfy_extras/nodes_qwen.py 定义：prompt/negative_prompt/resolution/images.image_N，输出 positive/negative/latent）、PrimitiveStringMultiline→LMStudioPromptEnhancer.prompt（forceInput 连线）、input_image_1/2、PreviewAny、SaveImageAdvanced、ResolutionSelector。不是从真实 ComfyUI 编译得到的样例；节点 ID、模型名为虚构。ResolutionSelector（控件 aspect_ratio/megapixels/multiple，输出 width/height）与 SaveImageAdvanced（filename_prefix、format 及动态子项 format.bit_depth/format.input_color_space）按 Comfy-Org 官方模板 image_qwen_image_2_1_t2i 的公开 UI 工作流（widgets_values_named）核对；megapixels 取值为示意。API 中动态子项键名以 object_info 为准，仍建议 Codex 只读探测一次。",
+ "t2i": {
+  "1": {
+   "class_type": "UnetLoaderGGUF",
+   "inputs": {
+    "unet_name": "qwen-image-2.1-Q6_K.gguf"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen3-vl.safetensors",
+    "type": "qwen_image"
+   }
+  },
+  "20": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "一只橘猫坐在窗台"
+   }
+  },
+  "3": {
+   "class_type": "LMStudioPromptEnhancer",
+   "inputs": {
+    "prompt": [
+     "20",
+     0
+    ],
+    "system_prompt": "s",
+    "generation_mode": "Image",
+    "lmstudio_base_url": "http://127.0.0.1:1234/v1",
+    "lmstudio_api_key": "",
+    "model": "auto",
+    "temperature": 0.7,
+    "max_tokens": 500,
+    "enable_llm": true,
+    "cache_buster": 0,
+    "release_vram": true,
+    "disable_thinking": true,
+    "context_length": 8192
+   }
+  },
+  "4": {
+   "class_type": "TextEncodeQwenImage21",
+   "inputs": {
+    "clip": [
+     "2",
+     0
+    ],
+    "prompt": [
+     "3",
+     0
+    ],
+    "negative_prompt": "模糊，低质量",
+    "vae": [
+     "9",
+     0
+    ],
+    "resolution": 1024
+   }
+  },
+  "7": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": 42,
+    "steps": 20,
+    "cfg": 2.5,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1,
+    "model": [
+     "1",
+     0
+    ],
+    "positive": [
+     "4",
+     0
+    ],
+    "negative": [
+     "4",
+     1
+    ],
+    "latent_image": [
+     "4",
+     2
+    ]
+   }
+  },
+  "8": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "7",
+     0
+    ],
+    "vae": [
+     "9",
+     0
+    ]
+   }
+  },
+  "9": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "qwen_image_2.1_vae.safetensors"
+   }
+  },
+  "12": {
+   "class_type": "SaveImageAdvanced",
+   "inputs": {
+    "images": [
+     "8",
+     0
+    ],
+    "filename_prefix": "Qwen_image_2.1",
+    "format": "png",
+    "format.bit_depth": "8-bit",
+    "format.input_color_space": "sRGB"
+   }
+  },
+  "13": {
+   "class_type": "PreviewAny",
+   "inputs": {
+    "source": [
+     "3",
+     0
+    ]
+   }
+  }
+ },
+ "edit": {
+  "1": {
+   "class_type": "UnetLoaderGGUF",
+   "inputs": {
+    "unet_name": "qwen-image-2.1-Q6_K.gguf"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen3-vl.safetensors",
+    "type": "qwen_image"
+   }
+  },
+  "10": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "base.png"
+   }
+  },
+  "11": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "ref.png"
+   }
+  },
+  "14": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "ref3.png"
+   }
+  },
+  "20": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "把背景换成海边"
+   }
+  },
+  "3": {
+   "class_type": "LMStudioPromptEnhancer",
+   "inputs": {
+    "prompt": [
+     "20",
+     0
+    ],
+    "input_image_1": [
+     "10",
+     0
+    ],
+    "input_image_2": [
+     "11",
+     0
+    ],
+    "enable_llm": true,
+    "cache_buster": 3,
+    "context_length": 8192,
+    "lmstudio_api_key": ""
+   }
+  },
+  "30:4": {
+   "class_type": "TextEncodeQwenImage21",
+   "inputs": {
+    "clip": [
+     "2",
+     0
+    ],
+    "prompt": [
+     "3",
+     0
+    ],
+    "negative_prompt": "",
+    "vae": [
+     "9",
+     0
+    ],
+    "resolution": 1024,
+    "images.image_1": [
+     "10",
+     0
+    ],
+    "images.image_2": [
+     "11",
+     0
+    ],
+    "images.image_3": [
+     "14",
+     0
+    ]
+   }
+  },
+  "30:15": {
+   "class_type": "ResolutionSelector",
+   "inputs": {
+    "aspect_ratio": "1:1 (Square)",
+    "megapixels": 1,
+    "multiple": 8
+   }
+  },
+  "30:6": {
+   "class_type": "EmptySD3LatentImage",
+   "inputs": {
+    "width": [
+     "30:15",
+     0
+    ],
+    "height": [
+     "30:15",
+     1
+    ],
+    "batch_size": 1
+   }
+  },
+  "30:7": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": 7,
+    "steps": 20,
+    "cfg": 2.5,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1,
+    "model": [
+     "1",
+     0
+    ],
+    "positive": [
+     "30:4",
+     0
+    ],
+    "negative": [
+     "30:4",
+     1
+    ],
+    "latent_image": [
+     "30:6",
+     0
+    ]
+   }
+  },
+  "8": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "30:7",
+     0
+    ],
+    "vae": [
+     "9",
+     0
+    ]
+   }
+  },
+  "9": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "qwen_image_2.1_vae.safetensors"
+   }
+  },
+  "12": {
+   "class_type": "SaveImageAdvanced",
+   "inputs": {
+    "images": [
+     "8",
+     0
+    ],
+    "filename_prefix": "Qwen_image_2.1",
+    "format": "png",
+    "format.bit_depth": "8-bit",
+    "format.input_color_space": "sRGB"
+   }
+  }
+ },
+ "promptOnly": {
+  "20": {
+   "class_type": "PrimitiveStringMultiline",
+   "inputs": {
+    "value": "海边日落"
+   }
+  },
+  "3": {
+   "class_type": "LMStudioPromptEnhancer",
+   "inputs": {
+    "prompt": [
+     "20",
+     0
+    ],
+    "enable_llm": true,
+    "cache_buster": 0,
+    "context_length": 8192
+   }
+  },
+  "13": {
+   "class_type": "PreviewAny",
+   "inputs": {
+    "source": [
+     "3",
+     0
+    ]
+   }
+  }
+ }
+}

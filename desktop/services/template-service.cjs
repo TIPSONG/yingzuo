@@ -1,0 +1,146 @@
+'use strict';
+// T01–T04：templates.* 接口。
+const fs = require('node:fs');
+const path = require('node:path');
+const {AppError, CODES} = require('../core/errors.cjs');
+const {TemplateRepository} = require('../repositories/template-repo.cjs');
+const ImportPipeline = require('../../shared/import-pipeline.cjs');
+const F = require('../../shared/form-schema.cjs');
+const B = require('../../shared/bindings.cjs');
+const {sanitizeFields} = require('../../shared/form-secrets.cjs');
+const {createGraphStoragePolicy, assertSafeExport} = require('../../shared/graph-storage-policy.cjs');
+
+function createTemplateService({db, layout, editor, taskService, dialog, getWindow, builtins = () => [], pool = null}) {
+  const repo = new TemplateRepository(db, layout.templates);
+  repo.secureGraph = g => (editor?.secureDisk ? editor.secureDisk(g) : g); // C01：所有创建/版本（含直接导入、内置、在线导入）
+  const objectInfo = () => editor?.graphPolicy?.()?.getObjectInfo?.() ?? taskService?.cachedObjectInfo?.() ?? null;
+  repo.secureForm = fields => sanitizeFields(fields, {objectInfo: objectInfo()});
+  const tabGraph = tabId => editor.enqueue(() => editor.commands.tabGraph(tabId));
+  // S05：存为模板前把敏感输入（如 API Key）转入系统加密存储，图中只保留占位；导出时占位清空、不导出凭据
+  const securedGraph = async tabId => { const t = await tabGraph(tabId); if (!taskService?.secrets) return t; const c = await compile(tabId); return {...t, graph: taskService.secrets.redactGraph(t.graph, c.apiPrompt)}; };
+  const pin = async (tabId, templateId, version) => { const vid = version?.versionId ?? version?.version_id ?? null; if (vid && editor?.commands?.setTemplateVersion) await editor.enqueue(() => editor.commands.setTemplateVersion(tabId, templateId, vid)); };
+  const pinned = async (tabId, templateId, version) => { await pin(tabId, templateId, version); return version; };
+  /** C06：以标签固定的模板版本为起点；只有用户明确选择升级（upgrade）才用最新版。 */
+  const baseVersion = (id, c, {upgrade = false} = {}) => {
+    const vid = !upgrade && c?.templateId === id ? c.templateVersionId ?? null : null;
+    if (vid) { try { const v = repo.version(vid); if (v?.templateId === id) return v; } catch { /* 固定版本已不存在时退回最新版 */ } }
+    return repo.current(id);
+  };
+  const compile = async tabId => { if (!taskService) throw new AppError(CODES.SERVICE_UNAVAILABLE, '任务服务不可用，无法编译工作流。'); return taskService.compile(tabId); };
+  function importText(text, {name, folder, tags, source}) {
+    let info;
+    try { info = ImportPipeline.analyze(text, {name}); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
+    if (info.format !== 'ui') throw new AppError(CODES.INVALID_ARGUMENT, 'API 格式没有界面信息，不能直接存为模板。请先在创作页导入（会用官方 loadApiJson 重建），再“存为模板”。');
+    return repo.create({name: info.name, graph: info.graph, folder, tags, source});
+  }
+  const methods = {
+    'templates.list': async (filter = {}) => ({templates: repo.list(filter), folders: repo.folders()}),
+    'templates.get': async id => { const t = repo.get(id); if (!t) throw new AppError(CODES.NOT_FOUND, '模板不存在。'); return {...t, versions: repo.versions(id)}; },
+    'templates.update': async (id, patch) => repo.update(id, patch),
+    'templates.import': async ({folder = '', tags = []} = {}) => {
+      const r = await dialog.showOpenDialog(getWindow(), {title: '导入模板', properties: ['openFile', 'multiSelections'], filters: [{name: 'ComfyUI 工作流', extensions: ['json']}]});
+      if (r.canceled || !r.filePaths?.length) return {cancelled: true};
+      const imported = [], failed = [];
+      for (const file of r.filePaths.slice(0, 50)) {
+        try { imported.push(importText(fs.readFileSync(file, 'utf8'), {name: path.basename(file), folder, tags, source: `file:${path.basename(file)}`})); }
+        catch (e) { failed.push({file: path.basename(file), error: e.message}); }
+      }
+      return {imported, failed};
+    },
+    /** 内置五个模板：从 ComfyUI workflows 目录只读导入一次（来源文件不修改）。 */
+    'templates.importBuiltins': async () => {
+      const out = [];
+      for (const b of builtins()) {
+        const source = `builtin:${b.id}`;
+        if (repo.findBySource(source)) { out.push({id: b.id, status: 'exists'}); continue; }
+        if (!b.path || !fs.existsSync(b.path)) { out.push({id: b.id, status: 'missing', path: b.path}); continue; }
+        try { importText(fs.readFileSync(b.path, 'utf8'), {name: b.name, folder: '内置', tags: [b.id.startsWith('gemma') || b.id === 'prompt' ? 'Gemma 润色' : b.id === 'edit' ? '图像编辑' : '文生图'], source}); out.push({id: b.id, status: 'imported'}); }
+        catch (e) { out.push({id: b.id, status: 'failed', error: e.message}); }
+      }
+      return out;
+    },
+    'templates.open': async (id, versionId) => {
+      const v = versionId ? repo.version(versionId) : repo.current(id);
+      if (v.templateId !== id) throw new AppError(CODES.INVALID_ARGUMENT, '版本不属于该模板。');
+      return editor.enqueue(() => editor.commands.openGraph(repo.get(id).name, v.graph, id, v.versionId));
+    },
+    /** T02：把当前标签存为模板新版本；标签不是从模板打开的则新建模板。 */
+    'templates.saveFromTab': async (tabId, {name, note, asNew = false, formSchema} = {}) => {
+      const t = await securedGraph(tabId);
+      // S07：表单沿用标签固定的版本（而不是模板最新版），保存后标签固定到新版本
+      const pinnedForm = () => { try { return t.templateVersionId ? repo.version(t.templateVersionId).formSchema : repo.current(t.templateId).formSchema; } catch { return null; } };
+      if (t.templateId && repo.get(t.templateId) && !asNew) { const version = repo.saveVersion(t.templateId, {graph: t.graph, formSchema: formSchema ?? pinnedForm(), note: note ?? '从工作副本保存'}); await pin(tabId, t.templateId, version); return {template: repo.get(t.templateId), version}; }
+      const created = t.templateId && repo.get(t.templateId) ? repo.saveAs(t.templateId, {name: name ?? `${t.title} 副本`, graph: t.graph, formSchema: formSchema ?? pinnedForm()}) : repo.create({name: name ?? t.title, graph: t.graph, formSchema, source: 'workspace'});
+      const version = repo.versions(created.id)[0];
+      await pin(tabId, created.id, version);
+      return {template: created, version};
+    },
+    'templates.restore': async (id, versionId) => repo.restore(id, versionId),
+    'templates.export': async (id, versionId) => {
+      const v = versionId ? repo.version(versionId) : repo.current(id);
+      const r = await dialog.showSaveDialog(getWindow(), {title: '导出模板', defaultPath: `${repo.get(id).name}.json`, filters: [{name: 'ComfyUI 工作流', extensions: ['json']}]});
+      if (r.canceled || !r.filePath) return {cancelled: true};
+      const ex = assertSafeExport(editor?.exportCopy ? editor.exportCopy(v.graph) : createGraphStoragePolicy({objectInfo}).stripForExport(v.graph));
+      const fields = repo.secureForm(v.formSchema);
+      fs.writeFileSync(r.filePath, JSON.stringify(ex.graph, null, 2));
+      if (fields) fs.writeFileSync(r.filePath.replace(/\.json$/i, '') + '.yingzuo-form.json', JSON.stringify({kind: 'yingzuo-form', version: 1, fields}, null, 2));
+      return {path: r.filePath};
+    },
+    /** T03：表单编辑。默认表单由当前编译结果推断；保存时与图一起成为新版本。 */
+    'templates.formDraft': async (id, tabId, {upgrade = false} = {}) => {
+      const c = await compile(tabId);
+      const base = id ? baseVersion(id, c, {upgrade}) : null;
+      const saved = base ? base.formSchema : null;
+      const fields = saved ?? F.fromBindings(c.bindings);
+      // 可选字段：所有未连线的标量输入（供用户添加）
+      const available = Object.entries(c.apiPrompt).flatMap(([nodeId, n]) => Object.entries(n.inputs ?? {}).filter(([, v]) => !B.isLink(v) && ['string', 'number', 'boolean'].includes(typeof v)).map(([fieldName, v]) => ({nodeId, nodeType: n.class_type, fieldName, value: v})));
+      return {fields, mapping: F.validateMapping(fields, c.apiPrompt), available, fromSaved: !!saved, baseVersionId: base?.versionId ?? null, latestVersionId: id ? repo.current(id).versionId ?? null : null};
+    },
+    'templates.saveForm': async (id, tabId, fields, note, {baseVersionId} = {}) => {
+      const errors = F.validateSchema(fields);
+      if (errors.length) throw new AppError(CODES.INVALID_ARGUMENT, errors[0], {details: {errors}});
+      const c = await compile(tabId);
+      const bad = F.validateMapping(fields, c.apiPrompt).filter(m => m.status !== 'ok');
+      if (bad.length) throw new AppError(CODES.INVALID_ARGUMENT, `有 ${bad.length} 个字段映射失效：${bad[0].reason}`, {details: {bad}});
+      const t = await securedGraph(tabId);
+      // C06：编辑起点不是最新版时，用 expectedCurrent 防止静默覆盖他处的新版本（仍只追加新版本）
+      const version = repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: note ?? '更新表单', ...(baseVersionId ? {expectedCurrent: baseVersionId} : {})}); await pin(tabId, id, version); return version;
+    },
+    /** T04：映射校验与重新绑定（必须同类型同字段）。 */
+    'templates.checkMapping': async (id, tabId, {upgrade = false} = {}) => { const c = await compile(tabId); const fields = baseVersion(id, c, {upgrade}).formSchema ?? []; return F.validateMapping(fields, c.apiPrompt); },
+    'templates.rebind': async (id, tabId, index, nodeId) => {
+      const c = await compile(tabId); const cur = baseVersion(id, c); const fields = [...(cur.formSchema ?? [])];
+      if (!fields[index]) throw new AppError(CODES.NOT_FOUND, '字段不存在。');
+      try { fields[index] = F.rebind(fields[index], c.apiPrompt, nodeId); } catch (e) { throw new AppError(CODES.INVALID_ARGUMENT, e.message); }
+      const t = await securedGraph(tabId);
+      return pinned(tabId, id, repo.saveVersion(id, {graph: t.graph, formSchema: fields, note: `重新绑定 ${fields[index].label ?? fields[index].fieldName} → 节点 ${nodeId}`}));
+    },
+  };
+  /* ---------- T01/S10：模板缩略图（worker 内 sharp 生成 256px PNG） ---------- */
+  async function thumbnailFromImage(id, file) {
+    if (!repo.get(id)) throw new AppError(CODES.NOT_FOUND, '模板不存在。');
+    if (!pool) throw new AppError(CODES.UNSUPPORTED, '缩略图组件不可用。');
+    const tmp = path.join(layout.templates, `thumb-${process.pid}-${Date.now()}.tmp.png`);
+    try { await pool.run('thumbnail', {src: file, tmp, size: 256, format: 'png'}); return repo.setThumbnail(id, fs.readFileSync(tmp)); }
+    finally { fs.rmSync(tmp, {force: true}); }
+  }
+  /** 任务成功后：来自模板且模板还没有缩略图时，用第一张输出图生成。 */
+  async function autoThumbnail(templateId, file) {
+    const t = templateId && repo.get(templateId);
+    if (!t || t.thumbnail || !file || !fs.existsSync(file)) return null;
+    return thumbnailFromImage(templateId, file);
+  }
+  methods['templates.thumbnail'] = async id => {
+    const t = repo.get(id); if (!t) throw new AppError(CODES.NOT_FOUND, '模板不存在。');
+    if (!t.thumbnail || !/^thumbs\/[0-9a-f]{64}\.png$/.test(t.thumbnail)) return {dataUrl: null};
+    const file = path.join(layout.templates, ...t.thumbnail.split('/'));
+    return fs.existsSync(file) ? {dataUrl: `data:image/png;base64,${fs.readFileSync(file).toString('base64')}`} : {dataUrl: null};
+  };
+  methods['templates.setThumbnail'] = async id => {
+    const r = await dialog.showOpenDialog(getWindow(), {title: '选择模板缩略图', properties: ['openFile'], filters: [{name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp']}]});
+    if (r.canceled || !r.filePaths?.length) return {cancelled: true};
+    return thumbnailFromImage(id, r.filePaths[0]);
+  };
+  return {repo, methods, autoThumbnail, thumbnailFromImage};
+}
+module.exports = {createTemplateService};
